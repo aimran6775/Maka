@@ -16,7 +16,7 @@ before the first Mac build. Status column is updated by the fix session.
 | M6 | MED | "New external recipient" judge trigger defeated by drafting first (`isNewExternal` scans drafts stored as `direction:'out'`). | Exclude `status:'draft'` from `isNewExternal` and from `sentLastHour`. | fixed 36c270e |
 | L1 | LOW | Browser handoff detection runs after the action and suppresses repeats for the same kind+URL once returned; a returned checkout page lets the next "Place order" click run unchecked. | Detect before and after each action; on a payment page require the handoff be `returned` with explicit notes to continue. | fixed f1cac05 |
 | L2 | LOW | Stripe amounts treated as USD regardless of charge currency. | Convert or restrict to USD charges; refuse otherwise. | fixed c6ee0c2 |
-| L3 | LOW | A throwing `tool.domain()` yields no domain → tool runs under the no-domain path. | Fall back to `TOOL_DOMAINS[name]` or refuse. | open |
+| L3 | LOW | A throwing `tool.domain()` yields no domain → tool runs under the no-domain path. | Fall back to `TOOL_DOMAINS[name]` or refuse. | fixed (sha in the next commit) |
 | L4 | LOW | Delegation `budgetUsd` for sub-runs unchecked against the delegator's budget. | Cap at the delegator's remaining budget. | open |
 | L5 | LOW | The Chief is unjudged by design (D51); a connector fixture at the Peak would let it act in money domains without a judge. | Refuse connector fixtures at the Peak, or judge the Chief's money-domain actions. | open |
 

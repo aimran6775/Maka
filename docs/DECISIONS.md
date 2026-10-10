@@ -1078,3 +1078,12 @@ therefore a USD charge's refund: another currency has no provable amount (the Ga
 and the tool refuses it even when approved, naming the currency and the dashboard as
 the place to do it by hand. Stripe's own reads and the Finance card keep showing every
 currency as the platform reports it.
+
+## D121. A domain the tool cannot name is not "no domain" (safety L3)
+
+A `domain()` that threw yielded null, and null is what domain-free tools like
+`fs.write` return, so the call ran under the no-domain path with nothing but the
+per-call confirmation. The gate now tells the two apart: a throw falls back to the
+tool's entry in `TOOL_DOMAINS` (every leashed tool has one), and a tool with no entry
+is refused `DOMAIN_UNKNOWN`. Refusing beats guessing a domain: a tool that cannot say
+what it is about to do should not do it.

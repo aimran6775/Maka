@@ -902,3 +902,30 @@ test('L2 a refund of a charge in another currency is never counted as USD: the a
     await fake.close();
   }
 });
+
+// ---------- L3: a tool whose domain() throws never runs under the no-domain path ----------
+
+test('L3 a throwing domain() falls back to the tool\'s known domain from TOOL_DOMAINS, and a tool with no fallback is refused rather than run unleashed', async () => {
+  const ran = [];
+  const throwing = (name) => ({ name, description: name, inputSchema: { type: 'object', additionalProperties: false, properties: {} }, confirm: false, domain: () => { throw new Error('the store is gone'); }, amountUsd: () => 0, summarize: () => name, async run() { ran.push(name); return { ok: true, output: 'sent' }; } });
+  // 'mail.send' is in TOOL_DOMAINS (outbound_messages); 'x.send' is not
+  const h = await adsHarness({ leash: { outbound_messages: { level: 'draft' } }, registry: { 'mail.send': throwing('mail.send'), 'x.send': throwing('x.send') } });
+  try {
+    assert.equal(h.gate.leashFor('mail.send', {}).domain, 'outbound_messages', 'the fallback domain');
+    assert.equal(h.gate.leashFor('mail.send', {}).level, 'draft');
+    const pending = h.call('m1', 'mail.send', {});
+    const item = await waitUntil(() => h.gateQueue.pending()[0]);
+    assert.equal(item.domain, 'outbound_messages', 'the Gate sees the fallback domain');
+    await h.gateQueue.resolve(item.itemId, { decision: 'reject', notes: 'no' });
+    assert.equal((await pending).code, 'GATE_REJECT');
+    assert.deepEqual(ran, []);
+    const refused = await h.call('x1', 'x.send', {});
+    assert.equal(refused.ok, false);
+    assert.equal(refused.code, 'DOMAIN_UNKNOWN');
+    assert.match(refused.error, /domain/);
+    assert.deepEqual(ran, [], 'nothing ran unleashed');
+    assert.equal(h.gate.leashFor('x.send', {}), null);
+  } finally {
+    await h.cleanup();
+  }
+});

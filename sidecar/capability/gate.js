@@ -20,7 +20,8 @@
 //
 // A tool's domain is `tool.domain` when the tool declares one (a string, or a function of
 // the input for tools whose domain depends on what they send), else shared/leash.js
-// TOOL_DOMAINS. Tools with no domain (fs.write) keep the phase 1 per-call confirmation
+// TOOL_DOMAINS; a domain function that throws falls back to TOOL_DOMAINS, and with no
+// fallback the call is refused DOMAIN_UNKNOWN (safety L3). Tools with no domain (fs.write) keep the phase 1 per-call confirmation
 // through ask() when they are marked `confirm: true`. A tool may declare
 // `amountUsd(input, toolContext)` (money the action moves: a finite number ≥ 0, where 0 is a
 // proven "moves nothing"; null / NaN / a throw mean unknown, and an unknown money_out amount
@@ -82,20 +83,24 @@ export function createToolGate({
     const base = typeof grants === 'function' ? grants(getLayout(), agentId) : grantsFor(getLayout(), agentId);
     return [...new Set(base)].filter((name) => registry[name]).sort();
   };
+  // The tool's leash domain. Safety L3: a domain() that throws does not make the tool
+  // domain-free; it falls back to the tool's known domain in TOOL_DOMAINS, and a tool with
+  // no fallback is refused (`failed` says so) rather than run under the no-domain path.
   const domainOf = (tool, input) => {
     if (typeof tool.domain === 'function') {
       try {
-        return tool.domain(input || {}) || null;
-      } catch {
-        return null;
+        return { domain: tool.domain(input || {}) || null, failed: false };
+      } catch (err) {
+        const fallback = domainOfTool(tool.name);
+        return fallback ? { domain: fallback, failed: false, fellBack: true } : { domain: null, failed: true, error: err && err.message ? err.message : String(err) };
       }
     }
-    return tool.domain !== undefined ? tool.domain : domainOfTool(tool.name);
+    return { domain: tool.domain !== undefined ? tool.domain : domainOfTool(tool.name), failed: false };
   };
   const leashFor = (toolName, input) => {
     const tool = registry[toolName];
     if (!tool) return null;
-    const domain = domainOf(tool, input);
+    const { domain } = domainOf(tool, input);
     if (!domain) return null;
     const agent = agentOf(getLayout(), agentId);
     return resolveLeash(currentLeash(), { agentId, roomId: agent ? agent.roomId : undefined }, domain);
@@ -160,7 +165,9 @@ export function createToolGate({
       const problem = inputProblem(tool, call.input);
       if (problem) return { ok: false, error: `invalid input for ${call.name}: ${problem}` };
 
-      const domain = domainOf(tool, call.input);
+      const resolved = domainOf(tool, call.input);
+      if (resolved.failed) return { ok: false, code: 'DOMAIN_UNKNOWN', error: `${call.name} could not say which leash domain it falls under (${resolved.error}) and has no known domain to fall back on, so it does not run` };
+      const domain = resolved.domain;
       if (domain) {
         const entry = leashFor(call.name, call.input);
         // The money an action moves, as the tool proves it. Safety H2: for money_out a
