@@ -4,7 +4,9 @@
 //                              leash, ledger, gate, judge, agents, work items
 //   GET  /api/events           SSE stream of every event (replays after Last-Event-ID)
 //   POST /api/run              { agentId?, prompt, provider?, model?, maxTurns?, budgetUsd? } → 202
-//                              { runId, queued } (one run per agent at a time, global cap)
+//                              { runId, queued } (one run per agent at a time, global cap);
+//                              other fields are dropped (safety M3: review / step / system /
+//                              workItemId are internal to the Chief and the trails)
 //   POST /api/cancel           { runId? } (no id: everything, queued included)
 //   GET  /api/work             work items, newest first; /api/work/:id one item
 //   POST /api/work             { toAgentId, brief, budgetUsd?, deadline?, evidence? } the
@@ -113,6 +115,15 @@ class HttpError extends Error {
     this.status = status;
     this.code = code || `HTTP_${status}`;
   }
+}
+
+// The fields POST /api/run accepts (safety M3); everything else in the body is dropped.
+export const RUN_BODY_FIELDS = Object.freeze(['agentId', 'prompt', 'provider', 'model', 'maxTurns', 'budgetUsd']);
+
+export function pickFields(body, fields) {
+  const out = {};
+  for (const k of fields) if (body && body[k] !== undefined) out[k] = body[k];
+  return out;
 }
 
 function readBody(req) {
@@ -293,7 +304,10 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/run' && method === 'POST') {
       const body = await readJsonBody(req);
       try {
-        const { runId, agentId, provider, model, tier, queued } = await runs.start(body);
+        // Safety M3: only the documented fields reach the run manager. `review`, `step`,
+        // `system` and `workItemId` are internal (the Chief's planning runs, the trails)
+        // and a request could otherwise switch the judge off for any Ranger.
+        const { runId, agentId, provider, model, tier, queued } = await runs.start(pickFields(body, RUN_BODY_FIELDS));
         return sendJson(res, 202, { runId, agentId, provider, model, tier, queued });
       } catch (err) {
         if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);

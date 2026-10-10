@@ -1000,3 +1000,12 @@ freely". An agent-scoped cap (the agent's own leash entry names it) is checked a
 that agent's own ledger rows; a zone or park cap against the park's total, the stricter
 of the two readings for a shared cap. The ledger therefore records every action under
 its agent as well as under its domain.
+
+## D115. The run route is a whitelist (safety M3)
+
+`POST /api/run` handed its whole JSON body to `runs.start()`, whose `review: false`,
+`step`, `system` and `workItemId` options exist for the Chief's planning runs and the
+trails. A request could switch the judge off for any Ranger. The route now copies the
+six documented fields and nothing else; the internal options stay reachable only from
+the sidecar's own modules. A whitelist rather than a blacklist, so the next internal
+option is private by default.

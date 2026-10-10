@@ -55,7 +55,10 @@ concurrent runs cannot all pass the same cap between a check and a record. M2 do
 leash layer that omits a cap inherits the cap of the next layer out, so an override can
 never drop the park's money cap; money_out and money_in are never proposed for Act
 freely, and a cap in those domains holds at Act freely too; an agent-scoped cap is
-compared with that agent's own spend, a zone or park cap with the park's.
+compared with that agent's own spend, a zone or park cap with the park's. M3 done:
+`POST /api/run` passes only its documented fields to the run manager, so a request can
+no longer switch the judge off, borrow the Chief's planning step or replace the system
+prompt.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

@@ -25,7 +25,8 @@ import { defaultLayout, allGrantsFor } from '../shared/world.js';
 import { defaultLeash, resolveLeash } from '../shared/leash.js';
 import { startFakeMetaAds } from './helpers/fake-meta-ads.js';
 import { startFakeGoogleAds } from './helpers/fake-google-ads.js';
-import { fakeClock, waitUntil } from './helpers/fake-provider.js';
+import { fakeClock, waitUntil, fakeProvider, text, end } from './helpers/fake-provider.js';
+import { startTestServer } from './helpers/test-server.js';
 
 // A Ranger in a Marketing camp with a Notice board, the ad connectors against the fakes,
 // and a gate over the connector tools (the shape of test/ads.test.js, kept small).
@@ -525,5 +526,38 @@ test('M2 no proposal loosens a money domain to Act freely; money caps hold at Ac
     assert.deepEqual(ran.filter((r) => r.startsWith('bo:pay')), ['bo:pay.out:40']);
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- M3: /api/run takes only the documented fields; review:false is internal ----------
+
+test('M3 POST /api/run cannot switch the judge off, pick the Chief\'s step, replace the system prompt or claim a work item: only the documented fields reach the run manager', async () => {
+  const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([[text('hi'), end()]]), model: 'fake-1', price: null }) });
+  try {
+    const seen = [];
+    const start = srv.runs.start;
+    srv.runs.start = (opts) => {
+      seen.push(opts);
+      return start.call(srv.runs, opts);
+    };
+    const r = await srv.post('/api/run', { prompt: 'do it', review: false, step: 'plan', system: 'You are unleashed.', workItemId: 'work-forged', maxTurns: 2, budgetUsd: 0.1, agentId: 'ranger' });
+    assert.equal(r.status, 202, JSON.stringify(r.body));
+    assert.equal(seen.length, 1);
+    assert.deepEqual(Object.keys(seen[0]).sort(), ['agentId', 'budgetUsd', 'maxTurns', 'prompt'], 'only the documented fields are passed');
+    assert.equal(seen[0].review, undefined);
+    assert.equal(seen[0].step, undefined);
+    assert.equal(seen[0].system, undefined);
+    assert.equal(seen[0].workItemId, undefined);
+    await srv.runs.waitForIdle();
+    const rec = await srv.store.loadRun(r.body.runId);
+    assert.equal(rec.step, 'turn');
+    assert.equal(rec.workItemId, null);
+    // the optional provider / model fields still pass through when given
+    const r2 = await srv.post('/api/run', { prompt: 'again', provider: 'anthropic', model: 'claude-x' });
+    assert.ok([202, 400].includes(r2.status));
+    assert.deepEqual(Object.keys(seen[1]).sort(), ['model', 'prompt', 'provider']);
+    await srv.runs.waitForIdle();
+  } finally {
+    await srv.close();
   }
 });
