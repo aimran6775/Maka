@@ -555,6 +555,9 @@ test('real Chromium: the tools drive a page served locally, detect a login page,
     real.returnHandoff(ev.payload.handoffId, { notes: 'signed in' });
     const r = await pending;
     assert.equal(r.ok, true, r.error);
+    // the submitted form is still navigating when the handoff comes back: wait for the account page before reading it
+    const session = await real.forAgent('ranger');
+    await waitUntil(async () => /account\.html$/.test(session.page.url()) && /Welcome back/.test(await session.page.text(400).catch(() => '')), { timeoutMs: 15_000, stepMs: 50 });
     assert.match((await call('r13', 'browser.read', { what: 'text' })).text, /Welcome back, Ranger/);
     const trace = await real.trace('ranger');
     assert.ok(trace.length >= 13);

@@ -21,7 +21,13 @@ before the first Mac build. Status column is updated by the fix session.
 | L5 | LOW | The Chief is unjudged by design (D51); a connector fixture at the Peak would let it act in money domains without a judge. | Refuse connector fixtures at the Peak, or judge the Chief's money-domain actions. | fixed 9ea28a6 |
 
 Also: `npm run test:fast` showed one non-reproducing failure in three runs (213/214 once). Find and
-fix the flaky test.
+fix the flaky test. Status: fixed (sha in the next commit). The failing assertion was
+`test/ads.test.js` reading `.counts` of a manual Google Ads sync that had been answered
+`{ skipped: true, why: 'already syncing' }` because a tool's `after-write` background sync was
+still in flight; `sidecar/connectors/registry.js` now queues syncs of one kind (D124) and
+`test/safety.test.js` holds the regression test. A second timing race showed up in the
+repeated runs made for this fix: `test/browser.test.js`'s real-Chromium login step read the
+account page before the submitted form had finished navigating; the test now waits for it.
 
 Verified correct by the same review (keep it that way): leash resolution order; park default
 money_out = draft with cap 0; every connector write declares the right domain and reaches HTTP

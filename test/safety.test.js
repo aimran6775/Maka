@@ -1022,3 +1022,34 @@ test('L5 a connector fixture cannot be placed at the Peak (place, replace), and 
     await srv.close();
   }
 });
+
+// ---------- the flaky test: a sync requested while one is running is served after it, never skipped ----------
+
+test('flaky test root cause: connectors.sync() during an in-flight sync (a tool\'s after-write sync, a Sync now click) waits for it and then syncs, instead of answering "skipped" with no counts', async () => {
+  const meta = await startFakeMetaAds();
+  const h = await adsHarness({ meta });
+  try {
+    const first = h.connectors.sync('meta_ads', 'after-write');
+    const second = h.connectors.sync('meta_ads', 'manual');
+    const third = h.connectors.sync('meta_ads', 'scheduled');
+    const [a, b, c] = await Promise.all([first, second, third]);
+    for (const [label, out] of [['after-write', a], ['manual', b], ['scheduled', c]]) {
+      assert.equal(out.skipped, undefined, `${label} is not skipped`);
+      assert.equal(out.counts.campaigns, 2, `${label} answers with counts`);
+    }
+    const done = h.events.filter((e) => e.type === 'connector.sync' && e.payload.status === 'done').map((e) => e.payload.reason);
+    assert.deepEqual(done, ['after-write', 'manual', 'scheduled'], 'three syncs, one after the other');
+    const started = h.events.filter((e) => e.type === 'connector.sync' && e.payload.status === 'started').map((e) => e.payload.reason);
+    assert.deepEqual(started, ['after-write', 'manual', 'scheduled']);
+    // a failing sync does not block the next one
+    meta.state.fail = { status: 500, message: 'An unknown error occurred' };
+    // the fake answers 500 until the failing sync has settled; the queued one then runs against a healthy fake
+    const failing = h.connectors.sync('meta_ads', 'manual').then(() => null, (e) => { meta.state.fail = null; return e; });
+    const after = h.connectors.sync('meta_ads', 'manual');
+    assert.equal((await failing).code, 'HTTP_500');
+    assert.equal((await after).counts.campaigns, 2);
+  } finally {
+    await h.cleanup();
+    await meta.close();
+  }
+});

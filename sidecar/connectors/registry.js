@@ -96,9 +96,19 @@ export function createConnectors({ bus, store, scheduler = null, gateQueue = nul
     return spec.makeClient({ token: t, fetch: fetchImpl, env, config: config[kind] || {}, keys });
   }
 
+  // Syncs of one kind run one after the other (D124): a sync requested while one is in
+  // flight (a tool's after-write sync, a Sync now click, the schedule) waits for it and
+  // then runs, so every caller gets its own counts and none is answered "skipped".
   async function runSync(kind, reason) {
+    const { r } = rt(kind); // an unknown kind rejects, as before
+    const run = () => runSyncNow(kind, reason);
+    r.syncQueue = (r.syncQueue || Promise.resolve()).then(run, run);
+    return r.syncQueue;
+  }
+
+  async function runSyncNow(kind, reason) {
     const { spec, r } = rt(kind);
-    if (r.syncing) return { skipped: true, why: 'already syncing' };
+    if (r.syncing) return { skipped: true, why: 'already syncing' }; // unreachable behind the queue; kept as a guard
     r.syncing = true;
     const started = clock.now();
     emit('connector.sync', { connector: kind, status: 'started', reason });

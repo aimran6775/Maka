@@ -56,6 +56,14 @@ one directory per Ranger, deliverables land in `outbox/`). The workspace root ma
 external drive: when it is unmounted Maka pauses runs and shows "workspace offline", and
 never writes anywhere else.
 
+Scripting the sidecar: every request that changes the park (anything but a GET) needs the
+per-boot token that `GET /api/state` returns, sent as `x-maka-token`, with
+`Content-Type: application/json` and, from a browser, a same-origin `Origin`; the park page
+and the menu bar item do this for you (`docs/SECURITY_REVIEW_2026-10-10.md`, M4). Rangers'
+network tools reach the public internet only (never loopback, the LAN or this machine), a
+money-out action whose amount the tool cannot prove goes to the Gate whatever the leash,
+and money caps are inherited and never earned away (the same review, H1, H2, M2).
+
 Keystore alternative to env vars (development, without the app): `$MAKA_HOME/keystore.json`
 containing `{ "anthropic": "sk-ant-...", "openrouter": "..." }` with file mode `0600`. The
 sidecar refuses to read a keystore with looser permissions. Inside the macOS app the

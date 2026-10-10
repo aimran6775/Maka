@@ -1115,3 +1115,13 @@ run manager withholds every tool a connector fixture would grant there (the gene
 `connector.status` / `connector.sync` included: nothing a connector brings is the
 Chief's), so a hand-edited `layout.json` changes nothing. The Chief reads the figures
 through the Peak's cards and the reflection, as before.
+
+## D124. Syncs of one connector queue; none is skipped
+
+The review saw `npm run test:fast` fail once in three runs. The cause was not the
+test: a connector write kicks off an `after-write` sync in the background, and a sync
+requested while one was running answered `{ skipped: true }` with no counts, so a
+manual sync that landed in that window (the test's, or a Sync now click in the park)
+got a non-answer. Syncs of one kind now queue behind the running one and each caller
+gets its own counts; a failing sync does not block the next. The scheduler's job and a
+tool's after-write sync go through the same queue.
