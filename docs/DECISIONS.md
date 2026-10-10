@@ -1009,3 +1009,19 @@ trails. A request could switch the judge off for any Ranger. The route now copie
 six documented fields and nothing else; the internal options stay reachable only from
 the sidecar's own modules. A whitelist rather than a blacklist, so the next internal
 option is private by default.
+
+## D116. A per-boot token, a same-origin Origin and JSON for every change (safety M4)
+
+The sidecar listens on loopback, and loopback is not a trust boundary: any page open in
+any browser on the machine could POST to it, a "simple" cross-origin form or text/plain
+request needs no preflight, and the routes parsed JSON whatever the content type said.
+Three checks now guard every non-GET `/api` request, in this order: the per-boot token
+in `x-maka-token` (made at boot, handed out only in `GET /api/state`, which a foreign
+origin cannot read because the sidecar sends no CORS headers; compared timing-safe), the
+`Origin` header when a browser sends one (its host must be the request's `Host`), and
+`application/json`. The token is per boot and never on disk, so a restart invalidates
+it; the park page reads it again when its event stream reconnects and retries one 403
+on its own. The shell's menu bar item keeps the token from its own `/api/state` poll.
+The Resend webhook is the one exempt route: it comes from outside, carries no token and
+is checked by its svix signature. Test fakes get the token from the app, as the page
+does; nothing in the sidecar turns the checks off.

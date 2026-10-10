@@ -561,3 +561,78 @@ test('M3 POST /api/run cannot switch the judge off, pick the Chief\'s step, repl
     await srv.close();
   }
 });
+
+// ---------- M4: mutating routes need the per-boot token, a same-origin request and a JSON body ----------
+
+test('M4 a cross-origin or token-less request cannot mutate the sidecar: the per-boot token from /api/state, a matching Origin and application/json are required; GETs and the signed webhook are not', async () => {
+  const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([[text('hi'), end()]]), model: 'fake-1', price: null }) });
+  try {
+    const state = (await srv.get('/api/state')).body;
+    assert.equal(typeof state.token, 'string');
+    assert.ok(state.token.length >= 32, 'a real token');
+    const token = state.token;
+    const host = new URL(srv.url).host;
+    const raw = async (method, p, { headers = {}, body = '{"away":true}' } = {}) => {
+      const res = await fetch(srv.url + p, { method, headers, body });
+      let parsed = null;
+      try {
+        parsed = await res.json();
+      } catch {
+        /* no body */
+      }
+      return { status: res.status, body: parsed };
+    };
+    const json = { 'content-type': 'application/json' };
+    // no token: refused before anything is read
+    let r = await raw('POST', '/api/away', { headers: json });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.code, 'TOKEN_REQUIRED');
+    assert.equal(srv.away.state().away, false, 'nothing changed');
+    // a wrong token
+    r = await raw('POST', '/api/away', { headers: { ...json, 'x-maka-token': 'nope' } });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.code, 'TOKEN_INVALID');
+    // a cross-site page that somehow holds the token: the Origin does not match the Host
+    r = await raw('POST', '/api/away', { headers: { ...json, 'x-maka-token': token, origin: 'http://evil.example' } });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.code, 'ORIGIN_MISMATCH');
+    r = await raw('POST', '/api/away', { headers: { ...json, 'x-maka-token': token, origin: 'null' } });
+    assert.equal(r.status, 403);
+    // a simple cross-origin POST (text/plain, no preflight) is not JSON
+    r = await raw('POST', '/api/away', { headers: { 'content-type': 'text/plain', 'x-maka-token': token } });
+    assert.equal(r.status, 415);
+    r = await raw('POST', '/api/away', { headers: { 'x-maka-token': token } });
+    assert.equal(r.status, 415, 'no content-type at all');
+    r = await raw('POST', '/api/run', { headers: { 'content-type': 'multipart/form-data; boundary=x', 'x-maka-token': token }, body: '--x--' });
+    assert.equal(r.status, 415);
+    assert.equal(srv.away.state().away, false, 'still nothing changed');
+    // the real thing: token + JSON, no Origin (a native client) or a matching Origin (the park page)
+    r = await raw('POST', '/api/away', { headers: { ...json, 'x-maka-token': token } });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(srv.away.state().away, true);
+    r = await raw('POST', '/api/away', { headers: { ...json, 'x-maka-token': token, origin: `http://${host}` }, body: '{"away":false}' });
+    assert.equal(r.status, 200);
+    assert.equal(srv.away.state().away, false);
+    // PUT and DELETE routes too
+    const leashBefore = JSON.stringify(srv.leashState.get());
+    r = await raw('PUT', '/api/leash', { headers: json, body: JSON.stringify({ ...srv.leashState.get(), domains: { ...srv.leashState.get().domains, money_out: { level: 'act_free' } } }) });
+    assert.equal(r.status, 403);
+    assert.equal(JSON.stringify(srv.leashState.get()), leashBefore, 'the leash is untouched');
+    r = await raw('DELETE', '/api/mail/addresses/peak%40makapark.com', { headers: json, body: undefined });
+    assert.equal(r.status, 403);
+    r = await raw('POST', '/api/gate/gate-x', { headers: json, body: '{"decision":"approve"}' });
+    assert.equal(r.status, 403);
+    // reads need nothing; the helper (token + JSON) still works; the signed webhook is guarded by its signature, not the token
+    assert.equal((await srv.get('/api/gate')).status, 200);
+    assert.equal((await srv.post('/api/away', { away: false })).status, 200);
+    const hook = await raw('POST', '/api/mail/resend/webhook', { headers: { ...json, 'svix-id': 'm1', 'svix-timestamp': '1', 'svix-signature': 'v1,nope' }, body: '{}' });
+    assert.notEqual(hook.status, 403, `the webhook answers on its own terms: ${hook.status}`);
+    assert.equal(hook.body.code, 'NO_SECRET', 'its own answer: no RESEND_WEBHOOK_SECRET in this test, so the signature cannot be checked');
+    const page = await fetch(`${srv.url}/`);
+    assert.equal(page.status, 200);
+    assert.equal(typeof srv.token, 'string');
+  } finally {
+    await srv.close();
+  }
+});
+

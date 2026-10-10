@@ -1,7 +1,10 @@
 // HTTP + SSE server. Routes:
 //   GET  /api/state            snapshot: providers (configured or not), layout, active and
 //                              queued runs, spend, pending prompts, object kinds, recent runs,
-//                              leash, ledger, gate, judge, agents, work items
+//                              leash, ledger, gate, judge, agents, work items, and `token`:
+//                              the per-boot token every mutating request must send in
+//                              x-maka-token, with application/json and a same-origin Origin
+//                              (safety M4; the Resend webhook is signed instead)
 //   GET  /api/events           SSE stream of every event (replays after Last-Event-ID)
 //   POST /api/run              { agentId?, prompt, provider?, model?, maxTurns?, budgetUsd? } → 202
 //                              { runId, queued } (one run per agent at a time, global cap);
@@ -89,7 +92,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
 import { makeEvent, CONTRACT_VERSION, PAYLOAD_SCHEMAS } from '../shared/events.js';
 import { validate } from '../shared/schema.js';
 import { LAYOUT_SCHEMA, OBJECT_KINDS, roomOf, tileInRoom } from '../shared/world.js';
@@ -115,6 +118,49 @@ class HttpError extends Error {
     this.status = status;
     this.code = code || `HTTP_${status}`;
   }
+}
+
+// Safety M4: every mutating /api route (anything but GET / HEAD / OPTIONS) needs the
+// per-boot token the page fetched from /api/state in `x-maka-token`, an `Origin` that
+// matches the `Host` when a browser sends one, and `application/json`. A cross-origin
+// page cannot read /api/state (no CORS headers), so it never holds the token; a
+// "simple" cross-origin POST (text/plain, no preflight) is refused on its content type
+// and its missing token both. The Resend webhook is the one exception: it comes from
+// outside and is guarded by its svix signature.
+export const TOKEN_HEADER = 'x-maka-token';
+export const TOKEN_EXEMPT_PATHS = Object.freeze(['/api/mail/resend/webhook']);
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+export function makeToken() {
+  return randomBytes(24).toString('base64url');
+}
+
+function sameToken(given, expected) {
+  if (typeof given !== 'string' || !given) return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+// Throws the HttpError that refuses a mutating request without its proofs.
+export function checkMutation(req, token) {
+  const headers = req.headers || {};
+  const given = headers[TOKEN_HEADER];
+  if (given === undefined || given === '') throw new HttpError(403, `this request changes the park and needs the ${TOKEN_HEADER} header with the token from GET /api/state`, 'TOKEN_REQUIRED');
+  if (!sameToken(Array.isArray(given) ? given[0] : given, token)) throw new HttpError(403, `the ${TOKEN_HEADER} header does not match this sidecar's token (it changes on every start; read it again from GET /api/state)`, 'TOKEN_INVALID');
+  const origin = headers.origin;
+  if (origin !== undefined) {
+    let originHost = null;
+    try {
+      originHost = new URL(String(origin)).host.toLowerCase();
+    } catch {
+      originHost = null;
+    }
+    const host = String(headers.host || '').toLowerCase();
+    if (!originHost || !host || originHost !== host) throw new HttpError(403, `the request's Origin (${origin}) is not this sidecar (${host || 'unknown host'})`, 'ORIGIN_MISMATCH');
+  }
+  const type = String(headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  if (type !== 'application/json') throw new HttpError(415, `mutating requests take application/json, got ${type || 'no content type'}`, 'JSON_REQUIRED');
 }
 
 // The fields POST /api/run accepts (safety M3); everything else in the body is dropped.
@@ -222,9 +268,10 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, research = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, research = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
+  if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
 
   async function serveStatic(root, rel, res) {
     const target = path.resolve(root, '.' + path.posix.normalize('/' + rel));
@@ -257,6 +304,8 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     const url = new URL(req.url, 'http://localhost');
     const p = url.pathname;
     const method = req.method;
+    // Safety M4: nothing under /api changes without the token, a same-origin Origin and JSON.
+    if (p.startsWith('/api/') && !SAFE_METHODS.has(method) && !TOKEN_EXEMPT_PATHS.includes(p)) checkMutation(req, token);
 
     if (p === '/api/events' && method === 'GET') {
       const last = Number(req.headers['last-event-id'] || url.searchParams.get('since') || 0) || 0;
@@ -268,6 +317,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
       return sendJson(res, 200, {
         contractVersion: CONTRACT_VERSION,
         seq: bus.seq,
+        token, // safety M4: sent back in x-maka-token on every mutating request
         home,
         workspaceRoot,
         workspace: workspace ? workspace.state() : { root: workspaceRoot, online: true, known: false, since: 0, reason: null },
@@ -696,7 +746,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     return serveStatic(staticReal, p === '/' ? 'index.html' : p.slice(1), res);
   }
 
-  return async (req, res) => {
+  const handler = async (req, res) => {
     try {
       await handle(req, res);
     } catch (err) {
@@ -706,6 +756,8 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
       else res.end();
     }
   };
+  handler.token = token;
+  return handler;
 }
 
 export function createHttpServer(app) {

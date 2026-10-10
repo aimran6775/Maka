@@ -87,7 +87,7 @@ test('state, layout placement rules, events replay, static files', async () => {
     assert.equal((await fetch(`${srv.url}/shared/../package.json`)).status, 404);
     assert.equal((await fetch(`${srv.url}/..%2fpackage.json`)).status, 404);
     assert.equal((await fetch(`${srv.url}/api/nope`)).status, 404);
-    assert.equal((await fetch(`${srv.url}/api/run`, { method: 'POST', body: '{not json' })).status, 400);
+    assert.equal((await fetch(`${srv.url}/api/run`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-maka-token': srv.token }, body: '{not json' })).status, 400);
   } finally {
     await srv.close();
   }

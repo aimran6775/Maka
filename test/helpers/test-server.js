@@ -185,8 +185,10 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     async del(p) {
       return api.send('DELETE', p);
     },
+    // The per-boot token (safety M4); send() carries it like the park page does.
+    token: app.token,
     async send(method, p, body) {
-      const res = await fetch(url + p, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+      const res = await fetch(url + p, { method, headers: { 'content-type': 'application/json', 'x-maka-token': app.token }, body: body === undefined ? undefined : JSON.stringify(body) });
       return { status: res.status, body: await res.json() };
     },
     post: (p, body) => api.send('POST', p, body),

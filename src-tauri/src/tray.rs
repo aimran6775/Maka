@@ -110,6 +110,11 @@ pub fn refresh(app: &AppHandle) {
     let shell = app.state::<ShellState>();
     let url = shell.url.lock().unwrap().clone();
     let state = url.and_then(|u| local_http::get(&format!("{u}/api/state"), Duration::from_secs(3)).ok()).and_then(|r| if r.status == 200 { serde_json::from_str::<Value>(&r.body).ok() } else { None });
+    // The per-boot token rides along with the state (safety M4); keep the last one seen so
+    // a toggle from the menu can prove itself.
+    if let Some(t) = state.as_ref().and_then(token_from_state) {
+        *shell.token.lock().unwrap() = Some(t);
+    }
     let view = view_from_state(state.as_ref());
     let handles = app.state::<TrayHandles>();
     let _ = handles.tray.set_title(Some(view.title.as_str()));
@@ -120,15 +125,23 @@ pub fn refresh(app: &AppHandle) {
     let _ = handles.login.set_checked(app.autolaunch().is_enabled().unwrap_or(false));
 }
 
+/// The per-boot token `/api/state` carries (safety M4), when the answer has one.
+pub fn token_from_state(state: &Value) -> Option<String> {
+    state.get("token").and_then(|t| t.as_str()).filter(|t| !t.is_empty()).map(|t| t.to_string())
+}
+
 fn toggle_away(app: &AppHandle) {
     let shell = app.state::<ShellState>();
     let Some(url) = shell.url.lock().unwrap().clone() else { return };
+    let token = shell.token.lock().unwrap().clone();
     let handles = app.state::<TrayHandles>();
     let now = handles.away.is_checked().unwrap_or(false);
     // The check item already flipped in the UI; the sidecar's answer is the truth, so the
-    // next refresh sets it from /api/state whatever happened here.
+    // next refresh sets it from /api/state whatever happened here. Without a token (the
+    // poll has not answered yet) the sidecar refuses the toggle, and the refresh shows the
+    // true state.
     let body = format!("{{\"away\":{}}}", now);
-    let _ = local_http::post_json(&format!("{url}/api/away"), &body, Duration::from_secs(5));
+    let _ = local_http::post_json(&format!("{url}/api/away"), &body, token.as_deref(), Duration::from_secs(5));
     refresh(app);
 }
 

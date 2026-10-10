@@ -15,6 +15,18 @@ import { tileToWorld, TILE_WORLD } from './park/placement.js';
 let state = initialState();
 const getState = () => state;
 
+// The per-boot token (safety M4): read once from /api/state, sent in x-maka-token on
+// every mutating request. A 403 TOKEN_INVALID means the sidecar restarted; the token is
+// read again once and the request retried.
+let apiToken = null;
+async function loadToken() {
+  const res = await fetch('/api/state');
+  if (!res.ok) throw new Error(`cannot read /api/state (${res.status})`);
+  const snap = await res.json();
+  apiToken = snap.token || null;
+  return snap;
+}
+
 const api = {
   async get(path) {
     const res = await fetch(path);
@@ -26,13 +38,18 @@ const api = {
     }
     return { ok: res.ok, status: res.status, body: parsed };
   },
-  async post(path, body) {
-    const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  async post(path, body, { retried = false } = {}) {
+    if (!apiToken) await loadToken();
+    const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-maka-token': apiToken || '' }, body: JSON.stringify(body) });
     let parsed = {};
     try {
       parsed = await res.json();
     } catch {
       /* no body */
+    }
+    if (res.status === 403 && parsed && (parsed.code === 'TOKEN_INVALID' || parsed.code === 'TOKEN_REQUIRED') && !retried) {
+      apiToken = null;
+      return api.post(path, body, { retried: true });
     }
     return { ok: res.ok, status: res.status, body: parsed };
   },
@@ -174,8 +191,7 @@ async function loadPark() {
 }
 
 async function main() {
-  const res = await fetch('/api/state');
-  const snap = await res.json();
+  const snap = await loadToken();
   setState(applySnapshot(state, snap));
   connectEvents({
     since: snap.seq || 0,
@@ -183,8 +199,11 @@ async function main() {
     onStatus: async (connected) => {
       setState({ ...state, connected });
       if (connected) {
-        const r = await fetch('/api/state');
-        if (r.ok) setState(applySnapshot(state, await r.json()));
+        try {
+          setState(applySnapshot(state, await loadToken())); // a restarted sidecar has a new token
+        } catch {
+          /* the next reconnect tries again */
+        }
       }
     },
   });

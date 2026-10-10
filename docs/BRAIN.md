@@ -58,7 +58,10 @@ freely, and a cap in those domains holds at Act freely too; an agent-scoped cap 
 compared with that agent's own spend, a zone or park cap with the park's. M3 done:
 `POST /api/run` passes only its documented fields to the run manager, so a request can
 no longer switch the judge off, borrow the Chief's planning step or replace the system
-prompt.
+prompt. M4 done: every mutating `/api` request needs the per-boot token from
+`/api/state` in `x-maka-token`, a same-origin Origin when a browser sends one, and
+`application/json`; the park page and the menu bar item carry the token, the Resend
+webhook keeps its signature instead.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

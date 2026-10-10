@@ -32,6 +32,9 @@ pub const MAX_RESTARTS_PER_MINUTE: usize = 3;
 pub struct Shell {
     pub sidecar: Mutex<Option<sidecar::Sidecar>>,
     pub url: Mutex<Option<String>>,
+    /// The sidecar's per-boot token from `/api/state` (safety M4): every mutating request
+    /// the shell sends carries it in `x-maka-token`. Refreshed by the tray poll.
+    pub token: Mutex<Option<String>>,
     pub home: Mutex<Option<PathBuf>>,
     pub quitting: Mutex<bool>,
     /// The splash page's own URL (tauri://localhost/index.html), kept so an error can be shown
