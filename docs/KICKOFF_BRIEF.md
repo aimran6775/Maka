@@ -66,6 +66,29 @@ reports), Books Ranger (orders, refunds, daily P&L from real connector data).
 If the owner's first business is different (services, content, SaaS), swap the roles; the
 harness is vertical-agnostic.
 
+## Model strategy (owner decision 2026-10-10): local workers, Claude as judge
+- Two tiers. WORKER models are local open-weight models served by Ollama (or any
+  OpenAI-compatible local endpoint) at zero marginal cost, so Rangers can run 24/7.
+  The JUDGE is Claude via the Anthropic API, used sparingly for the steps where quality
+  decides the outcome: planning a task brief, reviewing a worker's result before it passes
+  the Entrance Gate, resolving an ambiguity, and any action at leash level "Act with cap"
+  or "Act freely" in a money or outbound domain.
+- Routing is explicit, per step, in the sidecar: every run records which model did which
+  turn and what it cost. The park shows worker vs judge activity distinctly (a Ranger
+  radios the Ranger Station when the judge is consulted).
+- The judge never silently rewrites a worker's output; it returns approve / revise-with-
+  notes / reject, and a reject or revise goes back to the worker as a new turn. Caps on
+  judge calls per run and per day are part of the spend rail.
+- Honest caveat recorded for the user: local models are smaller and need tool-calling
+  support (`ollama show <model>` lists it); long tasks need a large context window and a
+  machine with enough unified memory. The judge pattern catches errors, it does not make a
+  weak worker strong. Maka reports worker model quality from real outcomes (judge verdict
+  rates), never from benchmarks.
+- Phase 1 addition: an `ollama` provider (OpenAI-compatible chat completions with tools at
+  127.0.0.1:11434) alongside Anthropic and OpenRouter, and a `router.js` that picks the model
+  per step from a policy object. Phase 2 adds the judge step in the loop and the verdict
+  ledger.
+
 ## Stack
 - ONE Node process (`sidecar/`): HTTP + SSE, static frontend, agent loop, providers,
   capability gate, connectors, atomic on-disk persistence. Node core modules only.
@@ -75,6 +98,8 @@ harness is vertical-agnostic.
 - Tests: `node --test`; `npm run test:fast` is the merge gate.
 
 ## Phase 1 (foundation) — steps 1-6 done, 7-8 remaining
+6b. `sidecar/providers/ollama.js` + `sidecar/router.js` per the Model strategy section, with
+   tests using the fake provider; no real model needed.
 7. Frontend: canvas park with the Ranger Station zone and one Ranger whose body visibly
    reflects real run state (idle / thinking / tool running / waiting on you / done / error),
    build mode to place fixtures, a COMMS window with streaming output, a spend readout fed

@@ -112,3 +112,7 @@ the change could be made, pending the owner's answers to scoping questions.
 - Autonomy: per-domain leash levels (Observe / Draft for review / Act with cap / Act freely),
   earned loosening, hard daily cap on money out, away mode with a full evidence log.
 - First vertical (assumed, to confirm): e-commerce store ops with Shopify + Stripe.
+- Models: local open-weight WORKER models via Ollama / OpenAI-compatible endpoints run the
+  routine turns 24/7 at no marginal cost; Claude (Anthropic API) is the JUDGE for planning,
+  result review before the Gate, ambiguity, and money/outbound actions. Routing is explicit
+  per step and every turn records model and cost.
