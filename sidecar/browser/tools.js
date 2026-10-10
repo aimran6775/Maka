@@ -8,6 +8,14 @@
 
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
+import { defaultNetGuard } from '../netguard.js';
+
+// Safety H1: a Ranger's browser only opens public URLs (never the sidecar, the LAN or
+// loopback); sidecar/browser/control.js checks the page it lands on after every action.
+async function guardUrl(ctx, url) {
+  const verdict = await (ctx.netGuard || defaultNetGuard()).check(url);
+  return verdict.ok ? null : { ok: false, code: 'NET_GUARD', error: verdict.reason };
+}
 
 function noBrowser(ctx) {
   return !ctx.browser ? { ok: false, error: 'browser control is not available in this run' } : null;
@@ -56,6 +64,8 @@ export const browserOpen = {
   summarize: (input) => `open ${input.url} in the browser`,
   async run(input, ctx) {
     if (!/^https?:\/\//i.test(input.url)) return { ok: false, error: 'browser.open takes an http(s) URL' };
+    const refused = await guardUrl(ctx, input.url);
+    if (refused) return refused;
     return viaControl(ctx, 'open', input, async (page) => {
       const s = await page.navigate(input.url);
       const text = await page.text(1500);
@@ -141,6 +151,10 @@ export const browserDownload = {
   async run(input, ctx) {
     if (!input.url && !input.selector && !input.text) return { ok: false, error: 'give a url, a selector or the text of the link' };
     if (input.url && !/^https?:\/\//i.test(input.url)) return { ok: false, error: 'browser.download takes an http(s) URL' };
+    if (input.url) {
+      const refused = await guardUrl(ctx, input.url);
+      if (refused) return refused;
+    }
     const dir = path.join(ctx.workspaceDir, 'downloads');
     await fsp.mkdir(dir, { recursive: true });
     return viaControl(ctx, 'download', input, async (page) => {

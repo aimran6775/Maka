@@ -19,6 +19,7 @@ import { BROWSER_TOOLS } from '../sidecar/browser/tools.js';
 import { OBJECT_KINDS, defaultLayout, allGrantsFor } from '../shared/world.js';
 import { defaultLeash, TOOL_DOMAINS } from '../shared/leash.js';
 import { startFakeCdp } from './helpers/fake-cdp.js';
+import { createNetGuard } from '../sidecar/netguard.js';
 import { startTestServer } from './helpers/test-server.js';
 import { fakeProvider, fakeClock, text, toolCall, end, waitUntil } from './helpers/fake-provider.js';
 
@@ -271,10 +272,12 @@ async function harness({ driver = fakeDriver(), leashLevel = 'act_free' } = {}) 
   const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
   const workspaceRoot = path.join(dir, 'ws');
   await fsp.mkdir(path.join(workspaceRoot, 'ranger'), { recursive: true });
-  const browser = await createBrowserControl({ bus, workspaceRoot, env: {}, config: { headless: true }, clock, driver, log: { error() {} } }).init();
+  // The fakes live on made-up hosts and loopback: the outbound guard (test/safety.test.js) is off here.
+  const netGuard = createNetGuard({ allowLocal: true });
+  const browser = await createBrowserControl({ bus, workspaceRoot, env: {}, config: { headless: true }, clock, driver, netGuard, log: { error() {} } }).init();
   const registry = { ...browser.tools };
   const gateFor = (agentId, { runId = 'run-1', signal } = {}) => ({
-    gate: createToolGate({ getLayout: layoutState.get, agentId, workspaceDir: path.join(workspaceRoot, agentId), registry, grants: allGrantsFor, toolContext: { agents, browser }, getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId, agentId }), log: (item) => gateQueue.log({ ...item, runId, agentId }) } }),
+    gate: createToolGate({ getLayout: layoutState.get, agentId, workspaceDir: path.join(workspaceRoot, agentId), registry, grants: allGrantsFor, toolContext: { agents, browser, netGuard }, getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId, agentId }), log: (item) => gateQueue.log({ ...item, runId, agentId }) } }),
     ctx: { runId, signal },
   });
   return { dir, bus, events, clock, layoutState, leashState, gateQueue, ledger, workspaceRoot, browser, driver, gateFor, cleanup: async () => { await browser.close(); await fsp.rm(dir, { recursive: true, force: true }); } };
@@ -509,8 +512,9 @@ test('real Chromium: the tools drive a page served locally, detect a login page,
   }
   const site = await serveFixtures();
   const h = await harness({ driver: undefined });
-  const real = await createBrowserControl({ bus: h.bus, workspaceRoot: h.workspaceRoot, env: process.env, config: { headless: true, chromiumPath: bin }, clock: h.clock, log: { error() {} } }).init();
-  const gate = createToolGate({ getLayout: h.layoutState.get, agentId: 'ranger', workspaceDir: path.join(h.workspaceRoot, 'ranger'), registry: { ...real.tools }, grants: allGrantsFor, toolContext: { browser: real }, getLeash: () => h.leashState.get(), ledger: h.ledger });
+  const netGuard = createNetGuard({ allowLocal: true }); // the fixture site is on loopback
+  const real = await createBrowserControl({ bus: h.bus, workspaceRoot: h.workspaceRoot, env: process.env, config: { headless: true, chromiumPath: bin }, clock: h.clock, netGuard, log: { error() {} } }).init();
+  const gate = createToolGate({ getLayout: h.layoutState.get, agentId: 'ranger', workspaceDir: path.join(h.workspaceRoot, 'ranger'), registry: { ...real.tools }, grants: allGrantsFor, toolContext: { browser: real, netGuard }, getLeash: () => h.leashState.get(), ledger: h.ledger });
   const ctx = { runId: 'run-real' };
   const call = async (id, name, input) => {
     const r = await gate.execute({ id, name, input }, ctx);

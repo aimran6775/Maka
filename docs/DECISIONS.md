@@ -935,3 +935,20 @@ A runbook that names a script that was renamed, or forgets a variable the script
 is worse than none. `test/release.test.js` reads `docs/RELEASE_RUNBOOK.md` and fails
 when a `scripts/release*.mjs`, a `SIGNING_ENV` variable, a gate command or the bundled
 Node version is missing from it, so the document and the scripts move together.
+
+## D111. Rangers reach the public internet only, decided after DNS (safety H1)
+
+A Ranger's `web.fetch`, `web.read`, `browser.open` and `browser.download`, and every
+page its browser lands on, are checked by one guard (`sidecar/netguard.js`): the name
+must not mean "this machine" or "this network" (`localhost`, `*.local`, `*.internal`,
+`*.home.arpa`, a bare name), and after resolution every address must be public: no
+loopback, link-local, RFC 1918, CGNAT, unspecified, multicast or documentation range,
+in any IPv6 disguise (mapped, NAT64, 6to4), and none of this machine's own interface
+addresses on any port. Resolution happens before the request because a public name may
+resolve to 127.0.0.1; redirects are followed by hand so a public page cannot bounce the
+fetch onto the sidecar. A name that does not resolve is refused: nothing proves it is
+public. The browser is checked after every action, not only at open, because a click on
+a public page could land on Maka's own UI, which would fetch the frontend's token and
+work the Gate. The guard has one switch, `allowLocal`, for the test server, the suites,
+the demo and the park check, whose fakes listen on 127.0.0.1; the sidecar never sets it
+and a tool whose context names no guard falls back to the strict one.

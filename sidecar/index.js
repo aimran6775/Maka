@@ -35,6 +35,7 @@ import { createAway } from './away.js';
 import { createMailSetup } from './mail/setup.js';
 import { createMailSystem } from './mail/system.js';
 import { createBrowserControl } from './browser/control.js';
+import { createNetGuard } from './netguard.js';
 import { createConnectors } from './connectors/registry.js';
 import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { createResearch } from './research/index.js';
@@ -91,7 +92,10 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const agents = createAgents({ layoutState, leashState, bus, activeRunFor: (id) => (runs ? runs.activeFor(id) : null) });
   await agents.ensureChief(); // the Chief Ranger is a singleton at the Mountain Peak (D45)
   await agents.ensureZone('visitor_center'); // the front door: deliverables walk here (D56)
-  const toolContext = {};
+  // Safety H1: every Ranger-facing network tool checks its target against this guard
+  // (public internet only; never loopback, the LAN or this machine).
+  const netGuard = createNetGuard();
+  const toolContext = { netGuard };
   const registry = { ...TOOLS, ...CREW_TOOLS }; // chief tools join below; the gate reads it at call time
   const router = createRouter(policy);
   const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online });
@@ -108,7 +112,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const mail = await createMailSystem({ bus, store, scheduler, getLayout: layoutState.get, env, keystorePath, workspaceRoot, domain: config.mailDomain || undefined, pollMs: config.mailPollMs || undefined, ceilings: config.mailCeilings || {}, router, ledger, log }).init();
   Object.assign(registry, mail.tools);
   toolContext.mail = mail;
-  const browser = await createBrowserControl({ bus, env, workspaceRoot, config: config.browser || {}, log }).init();
+  const browser = await createBrowserControl({ bus, env, workspaceRoot, config: config.browser || {}, netGuard, log }).init();
   Object.assign(registry, browser.tools);
   toolContext.browser = browser;
   connectors = createConnectors({ bus, store, scheduler, gateQueue, env, keystorePath, config: config.connectors || {}, log });

@@ -18,6 +18,7 @@ import { createAway } from '../../sidecar/away.js';
 import { createMailSetup } from '../../sidecar/mail/setup.js';
 import { createMailSystem } from '../../sidecar/mail/system.js';
 import { createBrowserControl } from '../../sidecar/browser/control.js';
+import { createNetGuard } from '../../sidecar/netguard.js';
 import { createConnectors } from '../../sidecar/connectors/registry.js';
 import { createResearch } from '../../sidecar/research/index.js';
 import { createOllama } from '../../sidecar/ollama.js';
@@ -39,7 +40,10 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 
 // `judgeProvider`: a (name, opts) => { provider, model, price } factory for the judge tier; when
 // absent no judge is wired, so runs are not reviewed (the phase 1 behaviour).
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null } = {}) {
+// `netGuard`: the outbound URL guard the tools and the browser use (sidecar/netguard.js).
+// The fakes every suite talks to listen on 127.0.0.1, so the default here turns the guard
+// off; a test of the guard itself passes a strict one. The sidecar never turns it off.
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -63,7 +67,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     await agents.ensureChief();
     await agents.ensureZone('visitor_center');
   }
-  const toolContext = {};
+  const toolContext = { netGuard };
   const registry = { ...TOOLS, ...CREW_TOOLS };
   const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent, fetch: localFetch, workspaceOnline: () => workspace.state().online });
   runsRef = runs;
@@ -79,7 +83,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   toolContext.mail = mailSystem;
   // `browser`: { driver } injects a fake page factory; { real: true } launches a headless
   // Chromium (tests skip when none is installed). Absent: no browser control is wired.
-  const browserControl = browser ? await createBrowserControl({ bus, env, workspaceRoot, clock, config: { headless: true, chromiumPath: browser.chromiumPath }, driver: browser.driver, log: { error() {} } }).init() : null;
+  const browserControl = browser ? await createBrowserControl({ bus, env, workspaceRoot, clock, config: { headless: true, chromiumPath: browser.chromiumPath }, driver: browser.driver, netGuard, log: { error() {} } }).init() : null;
   if (browserControl) {
     Object.assign(registry, browserControl.tools);
     toolContext.browser = browserControl;

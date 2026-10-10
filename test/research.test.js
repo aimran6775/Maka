@@ -22,6 +22,7 @@ import { ENV_VARS } from '../sidecar/providers/keys.js';
 import { OBJECT_KINDS, defaultLayout, allGrantsFor } from '../shared/world.js';
 import { defaultLeash, TOOL_DOMAINS } from '../shared/leash.js';
 import { startFakeResearch, ARTICLE_HTML } from './helpers/fake-research.js';
+import { createNetGuard } from '../sidecar/netguard.js';
 import { startTestServer } from './helpers/test-server.js';
 import { fakeProvider, fakeClock, text, toolCall, end, waitUntil } from './helpers/fake-provider.js';
 
@@ -100,7 +101,7 @@ async function harness({ fake, env = {}, judgeScripts = null } = {}) {
   const workspaceRoot = path.join(dir, 'ws');
   await fsp.mkdir(path.join(workspaceRoot, 'scout'), { recursive: true });
   const research = createResearch({ env, keystorePath, judge, workspaceRoot, endpoints: fake.endpoints, clock });
-  const gateFor = (toolContext = {}) => createToolGate({ getLayout: layoutState.get, agentId: 'scout', workspaceDir: path.join(workspaceRoot, 'scout'), registry: { ...research.tools }, grants: allGrantsFor, toolContext: { judge, ...toolContext }, getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId: 'run-1', agentId: 'scout' }), log: (item) => gateQueue.log({ ...item, runId: 'run-1', agentId: 'scout' }) } });
+  const gateFor = (toolContext = {}) => createToolGate({ getLayout: layoutState.get, agentId: 'scout', workspaceDir: path.join(workspaceRoot, 'scout'), registry: { ...research.tools }, grants: allGrantsFor, toolContext: { judge, netGuard: createNetGuard({ allowLocal: true }), ...toolContext }, getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId: 'run-1', agentId: 'scout' }), log: (item) => gateQueue.log({ ...item, runId: 'run-1', agentId: 'scout' }) } });
   const gate = gateFor();
   const ofType = (t) => events.filter((e) => e.type === t).map((e) => e.payload);
   const call = (id, name, input, g = gate) => g.execute({ id, name, input }, { runId: 'run-1', turn: 1 });
@@ -164,7 +165,7 @@ test('the Trailhead sign grants the kit (research; the brief has no domain); web
     assert.match(no.error, /BRAVE_SEARCH_API_KEY/);
     const pages = [];
     const driver = { find: async () => '/fake/chromium', launch: async () => ({ wsUrl: 'ws://fake', kill() {} }), connect: async () => ({ close() {}, closed: new Promise(() => {}) }), openPage: async () => { const p = { url: 'about:blank' }; const page = { url: () => p.url, async navigate(u) { p.url = u; return { url: u, title: 'DuckDuckGo' }; }, async summary() { return { url: p.url, title: 'DuckDuckGo' }; }, async facts() { return { url: p.url, title: 'DuckDuckGo', text: 'results' }; }, async evaluate(expr) { const res = await fetch(p.url); const html = await res.text(); return [...html.matchAll(/class="result__a" href="([^"]+)">([^<]+)<\/a>/g)].map((m) => { const u = new URL(m[1].replace(/^\/\//, 'https://')); return { title: m[2], url: u.searchParams.get('uddg') || u.toString(), snippet: '' }; }).slice(0, Number(/\((\d+)\)$/.exec(expr)[1])); }, async screenshot() { return Buffer.from('png'); }, async bringToFront() {}, async close() {} }; pages.push(page); return page; } };
-    const browser = await createBrowserControl({ bus: h2.bus, workspaceRoot: h2.workspaceRoot, env: {}, config: { headless: true }, clock: h2.clock, driver, log: { error() {} } }).init();
+    const browser = await createBrowserControl({ bus: h2.bus, workspaceRoot: h2.workspaceRoot, env: {}, config: { headless: true }, clock: h2.clock, driver, netGuard: createNetGuard({ allowLocal: true }), log: { error() {} } }).init();
     const g = h2.gateFor({ browser });
     const r = await h2.call('s2', 'web.search', { query: 'paper lanterns', count: 2 }, g);
     assert.equal(r.ok, true, r.error);

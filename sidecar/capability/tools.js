@@ -12,6 +12,7 @@
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { validate } from '../../shared/schema.js';
+import { guardedFetch, defaultNetGuard } from '../netguard.js';
 
 export const READ_LIMIT_BYTES = 200 * 1024;
 export const WRITE_LIMIT_BYTES = 1024 * 1024;
@@ -168,6 +169,10 @@ export const webFetch = {
       return { ok: false, error: `not a valid URL: ${input.url}` };
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return { ok: false, error: `only http and https are allowed, got ${url.protocol}` };
+    // Safety H1: only the public internet, checked after DNS and on every redirect hop.
+    const guard = ctx.netGuard || defaultNetGuard();
+    const verdict = await guard.check(url);
+    if (!verdict.ok) return { ok: false, code: 'NET_GUARD', error: verdict.reason };
     const fetchImpl = ctx.fetch || globalThis.fetch;
     const ac = new AbortController();
     const onAbort = () => ac.abort();
@@ -177,7 +182,7 @@ export const webFetch = {
     }
     const timer = setTimeout(() => ac.abort(), ctx.fetchTimeoutMs || FETCH_TIMEOUT_MS);
     try {
-      const res = await fetchImpl(url.toString(), { method: 'GET', redirect: 'follow', signal: ac.signal, headers: { 'user-agent': 'Maka/0.1 (+local agent harness)', accept: 'text/html, text/plain, application/json;q=0.9, */*;q=0.5' } });
+      const res = await guardedFetch(url.toString(), { method: 'GET', signal: ac.signal, headers: { 'user-agent': 'Maka/0.1 (+local agent harness)', accept: 'text/html, text/plain, application/json;q=0.9, */*;q=0.5' } }, { fetch: fetchImpl, guard });
       const type = (res.headers.get('content-type') || '').toLowerCase();
       const raw = Buffer.from(await res.arrayBuffer());
       let text = raw.subarray(0, FETCH_LIMIT_BYTES).toString('utf8');
@@ -188,6 +193,7 @@ export const webFetch = {
     } catch (err) {
       if (ac.signal.aborted && ctx.signal && ctx.signal.aborted) return { ok: false, error: 'cancelled' };
       if (ac.signal.aborted) return { ok: false, error: `fetch timed out after ${ctx.fetchTimeoutMs || FETCH_TIMEOUT_MS} ms` };
+      if (err && (err.code === 'NET_GUARD' || err.code === 'TOO_MANY_REDIRECTS' || err.code === 'BAD_REDIRECT')) return { ok: false, code: err.code, error: err.message };
       return { ok: false, error: `fetch failed: ${err && err.message ? err.message : err}` };
     } finally {
       clearTimeout(timer);

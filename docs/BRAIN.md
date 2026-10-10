@@ -40,6 +40,13 @@ Three ideas carry everything:
 
 ## Current state
 
+Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
+findings are being fixed in order, each with a regression test in `test/safety.test.js`
+and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing
+network tool (`web.fetch`, `web.read`, `browser.open`, `browser.download`) and every page
+the browser lands on to the public internet, checked after DNS and on every redirect hop,
+so a Ranger cannot drive Maka's own routes through its tools.
+
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release
 tag and the tree is clean, then runs `test:fast`, the phase 2 demo and the shell check,

@@ -7,6 +7,7 @@ import { validate } from '../shared/schema.js';
 import { OBJECT_KINDS, LAYOUT_SCHEMA, ZONE_KINDS, AGENT_ROLES, defaultLayout, grantsFor, tileInRoom } from '../shared/world.js';
 import { TOOLS, TOOL_NAMES, resolveInWorkspace, htmlToText, READ_LIMIT_BYTES, inputProblem } from '../sidecar/capability/tools.js';
 import { createToolGate } from '../sidecar/capability/gate.js';
+import { createNetGuard } from '../sidecar/netguard.js';
 import { runLoop } from '../sidecar/loop.js';
 import { fakeProvider, fakeClock, recorder, text, toolCall, end } from './helpers/fake-provider.js';
 
@@ -114,7 +115,8 @@ test('fs.read and fs.write: round trip, truncation, size limit, directories', as
 
 test('web.fetch: scheme check, html to text, truncation, timeout, non-2xx, cancel', async () => {
   const calls = [];
-  const fetch = async (url, init) => {
+  const netGuard = createNetGuard({ allowLocal: true }); // the made-up .test hosts never resolve; the guard has its own suite
+  const fetchImpl = async (url, init) => {
     calls.push({ url, init });
     if (url.startsWith('https://slow.test')) {
       return new Promise((_, reject) => init.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; reject(e); }));
@@ -123,24 +125,24 @@ test('web.fetch: scheme check, html to text, truncation, timeout, non-2xx, cance
     if (url.startsWith('https://missing.test')) return new Response('<h1>Not found</h1>', { status: 404, headers: { 'content-type': 'text/html' } });
     return new Response('<html><head><style>x{}</style><script>bad()</script></head><body><h1>Title</h1><p>Hello &amp; welcome</p></body></html>', { headers: { 'content-type': 'text/html; charset=utf-8' } });
   };
-  const ok = await TOOLS['web.fetch'].run({ url: 'https://example.test/page' }, { fetch });
+  const ok = await TOOLS['web.fetch'].run({ url: 'https://example.test/page' }, { fetch: fetchImpl, netGuard });
   assert.equal(ok.ok, true);
   assert.equal(ok.output, 'HTTP 200 text/html; charset=utf-8\n\nTitle\nHello & welcome');
   assert.equal(calls[0].init.method, 'GET');
-  const bad = await TOOLS['web.fetch'].run({ url: 'file:///etc/passwd' }, { fetch });
+  const bad = await TOOLS['web.fetch'].run({ url: 'file:///etc/passwd' }, { fetch: fetchImpl, netGuard });
   assert.equal(bad.ok, false);
   assert.match(bad.error, /only http and https/);
-  assert.equal((await TOOLS['web.fetch'].run({ url: 'not a url' }, { fetch })).ok, false);
-  const big = await TOOLS['web.fetch'].run({ url: 'https://big.test/' }, { fetch });
+  assert.equal((await TOOLS['web.fetch'].run({ url: 'not a url' }, { fetch: fetchImpl, netGuard })).ok, false);
+  const big = await TOOLS['web.fetch'].run({ url: 'https://big.test/' }, { fetch: fetchImpl, netGuard });
   assert.match(big.output, /\[truncated: showing 512000 of 614400 bytes\]$/);
-  const slow = await TOOLS['web.fetch'].run({ url: 'https://slow.test/' }, { fetch, fetchTimeoutMs: 20 });
+  const slow = await TOOLS['web.fetch'].run({ url: 'https://slow.test/' }, { fetch: fetchImpl, netGuard, fetchTimeoutMs: 20 });
   assert.equal(slow.ok, false);
   assert.match(slow.error, /timed out after 20 ms/);
-  const missing = await TOOLS['web.fetch'].run({ url: 'https://missing.test/' }, { fetch });
+  const missing = await TOOLS['web.fetch'].run({ url: 'https://missing.test/' }, { fetch: fetchImpl, netGuard });
   assert.equal(missing.ok, false);
   assert.match(missing.error, /HTTP 404/);
   const ac = new AbortController();
-  const pending = TOOLS['web.fetch'].run({ url: 'https://slow.test/' }, { fetch, signal: ac.signal, fetchTimeoutMs: 5000 });
+  const pending = TOOLS['web.fetch'].run({ url: 'https://slow.test/' }, { fetch: fetchImpl, netGuard, signal: ac.signal, fetchTimeoutMs: 5000 });
   ac.abort();
   assert.deepEqual(await pending, { ok: false, error: 'cancelled' });
   assert.equal(htmlToText('<p>a</p><p>b</p>'), 'a\nb');

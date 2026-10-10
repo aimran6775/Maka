@@ -6,13 +6,16 @@
 // Superintendent hands the page back (POST /api/browser/handoff/:id/return) or the run
 // ends.
 //
-//   createBrowserControl({ workspaceRoot, bus, env, config, clock, driver, log })
+//   createBrowserControl({ workspaceRoot, bus, env, config, clock, driver, netGuard, log })
 //     .init() -> { tools, forAgent, act, returnHandoff, handoffs, trace, status,
 //                  closeAgent, close }
 //
 // `driver` = { find, launch, connect, openPage } defaults to sidecar/browser/cdp.js; tests
 // inject a fake page. The Chromium for a Ranger closes when its run ends (the profile on
 // disk keeps cookies, so a login survives); docs/DECISIONS.md D73.
+// `netGuard` (sidecar/netguard.js, safety H1): after every action the page the browser is
+// on is checked; a page on loopback, the LAN or this machine (Maka's own UI included) is
+// left for about:blank and the action fails with NET_GUARD.
 
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
@@ -21,6 +24,7 @@ import { makeEvent } from '../../shared/events.js';
 import { findChromium, launchChromium, connectCdp, openPage } from './cdp.js';
 import { detectHandoff } from './detect.js';
 import { BROWSER_TOOLS } from './tools.js';
+import { defaultNetGuard } from '../netguard.js';
 
 export const PROFILE_DIR = 'browser-profile';
 export const TRACE_DIR = 'browser-trace';
@@ -42,6 +46,7 @@ export function createBrowserControl({
   config = {},
   clock = { now: () => Date.now() },
   driver = defaultDriver,
+  netGuard = defaultNetGuard(),
   log = console,
 } = {}) {
   if (!workspaceRoot) throw new TypeError('createBrowserControl needs workspaceRoot');
@@ -133,6 +138,20 @@ export function createBrowserControl({
       entry.title = s.title;
     } catch {
       /* page gone */
+    }
+    // Safety H1: wherever the action led, the page must be on the public internet.
+    if (!entry.error && entry.url && /^https?:/i.test(entry.url)) {
+      const verdict = await netGuard.check(entry.url);
+      if (!verdict.ok) {
+        entry.ok = false;
+        entry.error = `the page landed on ${entry.url}: ${verdict.reason}; the browser left it`;
+        entry.code = 'NET_GUARD';
+        try {
+          await session.page.navigate('about:blank');
+        } catch {
+          /* the trace says where it was */
+        }
+      }
     }
     entry.screenshot = await snapshot(session, action);
     entry.ms = clock.now() - started;
