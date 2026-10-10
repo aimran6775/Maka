@@ -124,7 +124,9 @@ export function createComms({ parent, getState, api, x, y, w }) {
       granted.length ? el('span', { text: granted.join(', ') }) : el('span', { class: 'muted', text: 'nothing (place fixtures in BUILD)' }),
     );
     const active = Boolean(state.activeRun);
-    runBtn.disabled = active || !state.connected;
+    const offline = Boolean(state.workspace && !state.workspace.online);
+    runBtn.disabled = active || !state.connected || offline;
+    runBtn.title = offline ? 'workspace offline: runs are paused' : '';
     cancelBtn.disabled = !active;
 
     const run = currentRun(state);

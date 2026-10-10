@@ -1,13 +1,19 @@
 // Maka sidecar entry point: one Node process serving HTTP + SSE and the static frontend.
 //
-//   node sidecar/index.js            (PORT=8790, MAKA_HOME=./.maka, MAKA_WORKSPACE=./workspace)
+//   node sidecar/index.js
+//   PORT=8790  HOST=127.0.0.1  MAKA_HOME=./.maka  MAKA_WORKSPACE=~/Maka/workspace
+//   $MAKA_HOME/config.json may set { "workspaceRoot": "/Volumes/LaCie/Maka/workspace" };
+//   the env var wins over the file. The root may go away (external drive): runs pause.
 //
 // Everything here is wiring; behaviour lives in loop.js, capability/, providers/, runs.js,
 // server.js and store.js, all of which are tested with fakes.
 
 import path from 'node:path';
+import { promises as fsp } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 import { createStore } from './store.js';
+import { createWorkspaceWatcher } from './workspace.js';
 import { createEventBus } from './bus.js';
 import { createRunManager } from './runs.js';
 import { createApp, createHttpServer, createLayoutState } from './server.js';
@@ -24,8 +30,9 @@ export const REPO_ROOT = path.resolve(here, '..');
 
 export async function boot({ env = process.env, port = Number(env.PORT) || 8790, host = env.HOST || '127.0.0.1', log = console } = {}) {
   const home = path.resolve(env.MAKA_HOME || path.join(process.cwd(), '.maka'));
-  const workspaceRoot = path.resolve(env.MAKA_WORKSPACE || path.join(process.cwd(), 'workspace'));
   const keystorePath = defaultKeystorePath({ MAKA_HOME: home });
+  const config = await loadOrDefault(path.join(home, 'config.json'), validateConfig, () => ({}), log, 'config.json');
+  const workspaceRoot = path.resolve(env.MAKA_WORKSPACE || config.workspaceRoot || path.join(os.homedir(), 'Maka', 'workspace'));
 
   const store = createStore({ root: home });
   await store.init();
@@ -45,7 +52,14 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const leash = await loadOrDefault(path.join(home, 'leash.json'), validateLeash, defaultLeash, log, 'leash.json');
   const leashState = { get: () => leash };
 
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leash });
+  const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, onOffline: () => runs.cancel() });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leash, workspaceOnline: () => workspace.state().online });
+  try {
+    await fsp.mkdir(workspaceRoot, { recursive: true });
+  } catch (err) {
+    log.warn(`workspace root ${workspaceRoot} cannot be created (${err.message}); runs stay paused until it exists`);
+  }
+  await workspace.start();
 
   const app = createApp({
     bus,
@@ -53,6 +67,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     runs,
     layoutState,
     leashState,
+    workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
     staticRoot: path.join(REPO_ROOT, 'frontend'),
@@ -73,7 +88,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const url = `http://${host}:${addr.port}`;
   log.info(`Maka sidecar listening on ${url}`);
   log.info(`  data: ${home}`);
-  log.info(`  workspaces: ${workspaceRoot}`);
+  log.info(`  workspaces: ${workspaceRoot} (${workspace.state().online ? 'online' : `OFFLINE: ${workspace.state().reason}`})`);
   const providers = await providerStatus({ env, keystorePath });
   for (const [name, s] of Object.entries(providers)) {
     if (s.local) log.info(`  provider ${name}: ${s.reachable ? `reachable at ${s.host}, models: ${s.models.join(', ') || '(none installed)'}` : `not reachable at ${s.host} (start Ollama or set OLLAMA_HOST)`}`);
@@ -82,6 +97,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${policy.tiers.judge.provider}${policy.tiers.judge.model ? '/' + policy.tiers.judge.model : ''}`);
 
   async function close() {
+    workspace.stop();
     runs.cancel();
     await runs.waitForIdle();
     server.closeAllConnections();
@@ -89,6 +105,10 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   }
 
   return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, close };
+}
+
+function validateConfig(data) {
+  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 } } }, data);
 }
 
 async function loadOrDefault(file, validateFn, defaultFn, log, label) {

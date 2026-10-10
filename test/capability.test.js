@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { validate } from '../shared/schema.js';
-import { OBJECT_KINDS, LAYOUT_SCHEMA, defaultLayout, grantsFor, tileInRoom } from '../shared/world.js';
+import { OBJECT_KINDS, LAYOUT_SCHEMA, ZONE_KINDS, AGENT_ROLES, defaultLayout, grantsFor, tileInRoom } from '../shared/world.js';
 import { TOOLS, TOOL_NAMES, resolveInWorkspace, htmlToText, READ_LIMIT_BYTES, inputProblem } from '../sidecar/capability/tools.js';
 import { createToolGate } from '../sidecar/capability/gate.js';
 import { runLoop } from '../sidecar/loop.js';
@@ -36,6 +36,16 @@ test('world: default layout validates; grants derive from objects in the agent r
   assert.equal(tileInRoom(layout.rooms[0], 13, 1), false);
   const bad = layoutWith(['piano']);
   assert.equal(validate(LAYOUT_SCHEMA, bad).ok, false);
+  assert.ok(ZONE_KINDS.includes('mountain_peak') && ZONE_KINDS.includes('operations_support'));
+  assert.equal(layout.rooms[0].kind, 'ranger_station');
+  const badKind = defaultLayout();
+  badKind.rooms[0].kind = 'casino';
+  assert.equal(validate(LAYOUT_SCHEMA, badKind).ok, false);
+  const withRole = defaultLayout();
+  withRole.agents[0].role = 'chief_ranger';
+  withRole.agents[0].parentAgentId = 'superintendent';
+  assert.equal(validate(LAYOUT_SCHEMA, withRole).ok, true);
+  assert.deepEqual([...AGENT_ROLES], ['superintendent', 'chief_ranger', 'ranger', 'junior_ranger']);
 });
 
 test('sandbox: dotdot, absolute and symlink escapes are refused; inside paths resolve', async () => {

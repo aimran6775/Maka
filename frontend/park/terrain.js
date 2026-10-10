@@ -63,10 +63,17 @@ export function heightAt(x, z, seed, clearings = []) {
     const t = Math.min(1, dz / (RIVER_HALF_WIDTH * 2.5));
     h = h * smooth(t) + (TERRAIN.waterLevel - 1.5) * (1 - smooth(t));
   }
-  // Clearings: blend to a flat plateau at the clearing's height.
+  // Clearings: blend to a flat plateau at the clearing's height. A peak clearing also
+  // raises a wide cone of ground around it so it reads as a mountain.
   for (const c of clearings) {
     const d = Math.hypot(x - c.x, z - c.z);
-    if (d < c.radius * 1.6) {
+    if (c.kind === 'peak') {
+      const reach = c.radius * 5;
+      if (d < reach) {
+        const t = smooth(Math.min(1, Math.max(0, (d - c.radius) / (reach - c.radius))));
+        h = h * t + c.height * (1 - t);
+      }
+    } else if (d < c.radius * 1.6) {
       const t = Math.min(1, Math.max(0, (d - c.radius) / (c.radius * 0.6)));
       h = h * smooth(t) + c.height * (1 - smooth(t));
     }

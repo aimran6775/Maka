@@ -66,12 +66,18 @@ test('spline: endpoints exact, arc length monotonic, constant-speed sampling', (
 test('placement: default layout gives one zone clearing, a gate clearing, one trail, scattered foliage off clearings and trails', () => {
   const layout = { ...defaultLayout(), seed: 77 };
   const model = buildParkModel(layout);
-  assert.equal(model.clearings.length, 2);
+  assert.equal(model.clearings.length, 3);
   assert.equal(model.clearings[0].id, 'ranger-station');
   assert.equal(model.clearings[1].kind, 'gate');
   assert.ok(model.clearings[1].z > model.clearings[0].z, 'gate is south of the station');
-  assert.equal(model.trails.length, 1);
+  const peak = model.clearings[2];
+  assert.equal(peak.kind, 'peak');
+  assert.ok(peak.height > model.clearings[0].height + 15, 'the Peak is a visible high point');
+  assert.ok(Math.abs(model.heightAt(peak.x + 2, peak.z - 2) - peak.height) < 1e-6, 'flat on top');
+  assert.ok(model.heightAt(peak.x + peak.radius * 3, peak.z) > model.clearings[0].height, 'ground rises toward the Peak');
+  assert.equal(model.trails.length, 2);
   assert.equal(model.trails[0].from, 'ranger-station');
+  assert.equal(model.trails[1].to, 'mountain-peak');
   assert.ok(model.trails[0].table.length > 20);
   assert.ok(model.foliage.filter((f) => f.kind === 'tree').length > 300);
   assert.ok(model.foliage.filter((f) => f.kind === 'rock').length > 50);
@@ -91,7 +97,7 @@ test('placement: default layout gives one zone clearing, a gate clearing, one tr
   assert.deepEqual(tileToWorld(7, 7), { x: 2, z: 2 });
   // A second zone adds a trail between zones.
   const two = { ...layout, rooms: [...layout.rooms, { id: 'camp', name: 'Campground', x: 20, y: 1, w: 6, h: 6 }] };
-  assert.equal(trailsFor(clearingsFor(two)).length, 3);
+  assert.equal(trailsFor(clearingsFor(two)).length, 4);
   assert.ok(scatterFoliage(layout, model.clearings, model.trails, { trees: 10, rocks: 2 }).length <= 12);
 });
 

@@ -33,9 +33,12 @@ Phase 1, step 7 done: the first slice of the 3D park. `npm run assets` vendors T
 and the CC0 kits (hash-verified), `npm start` serves the park: seeded terrain with a river,
 sky and sun from the real clock, instanced forest, the Ranger Station clearing with its
 building, the Entrance Gate clearing with its gate, a trail between them, one animated
-Ranger whose clip and place follow real run state, orbit / fly / follow cameras, click to
-inspect, build mode by clicking inside a clearing, and the DOM panels (COMMS, SPEND, BUILD,
-INSPECT, Gate cards). Everything shown comes from sidecar events and GET endpoints.
+Ranger whose clip and place follow real run state, the Mountain Peak as a raised control
+centre with a phase 1 panel, orbit / fly / follow cameras, click to inspect, build mode by
+clicking inside a clearing, and the DOM panels (COMMS, SPEND, BUILD, INSPECT, Gate cards).
+The workspace root is configurable and may vanish (external drive): the sidecar then
+pauses runs and the page says "workspace offline". Everything shown comes from sidecar
+events and GET endpoints.
 
 ### The event contract (`shared/events.js`)
 

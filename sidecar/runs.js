@@ -45,6 +45,7 @@ export function createRunManager({
   systemPrompt = DEFAULT_SYSTEM_PROMPT,
   policy = defaultPolicy(),
   leash = defaultLeash(),
+  workspaceOnline = () => true, // the watcher's view; a run never starts while offline
 } = {}) {
   if (!bus || !store || typeof getLayout !== 'function' || !workspaceRoot) {
     throw new TypeError('createRunManager needs bus, store, getLayout and workspaceRoot');
@@ -93,6 +94,11 @@ export function createRunManager({
       if (typeof prompt !== 'string' || !prompt.trim()) {
         const err = new Error('prompt is required');
         err.code = 'BAD_REQUEST';
+        throw err;
+      }
+      if (!workspaceOnline()) {
+        const err = new Error(`workspace root ${workspaceRoot} is offline; runs are paused until it is back`);
+        err.code = 'WORKSPACE_OFFLINE';
         throw err;
       }
       const layout = getLayout();

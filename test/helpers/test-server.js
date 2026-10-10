@@ -6,6 +6,7 @@ import { promises as fsp } from 'node:fs';
 import { createStore } from '../../sidecar/store.js';
 import { createEventBus } from '../../sidecar/bus.js';
 import { createRunManager } from '../../sidecar/runs.js';
+import { createWorkspaceWatcher } from '../../sidecar/workspace.js';
 import { createApp, createHttpServer, createLayoutState } from '../../sidecar/server.js';
 import { providerStatus } from '../../sidecar/providers/provider.js';
 import { keystoreStatus } from '../../sidecar/providers/keys.js';
@@ -25,13 +26,19 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const bus = createEventBus();
   const layoutState = createLayoutState({ initial: layout, store, bus, clock });
   await store.saveLayout(layout);
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leash, fetch: localFetch });
+  await fsp.mkdir(workspaceRoot, { recursive: true });
+  let runsRef = null;
+  const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, intervalMs: 60000, onOffline: () => runsRef && runsRef.cancel() });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leash, fetch: localFetch, workspaceOnline: () => workspace.state().online });
+  runsRef = runs;
+  await workspace.check();
   const app = createApp({
     bus,
     store,
     runs,
     layoutState,
     leashState: { get: () => runs.leash || null },
+    workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
     staticRoot: path.join(REPO_ROOT, 'frontend'),
@@ -51,6 +58,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     bus,
     runs,
     layoutState,
+    workspace,
     async get(p) {
       const res = await fetch(url + p);
       return { status: res.status, body: await res.json() };
@@ -105,6 +113,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
       };
     },
     async close() {
+      workspace.stop();
       runs.cancel();
       await runs.waitForIdle();
       server.closeAllConnections();

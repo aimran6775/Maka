@@ -29,6 +29,23 @@ const int1 = { type: 'integer', minimum: 1 };
 // reports to; it is optional so existing layouts stay valid.
 export const AGENT_ROLES = deepFreeze(['superintendent', 'chief_ranger', 'ranger', 'junior_ranger']);
 
+// Zone kinds (docs/KICKOFF_BRIEF.md, "The park" and "Operating systems inside Maka").
+// Phase 1 builds the Ranger Station, the Entrance Gate and the Mountain Peak; the
+// department zones and the others are names a layout may use, nothing more yet.
+export const ZONE_KINDS = deepFreeze([
+  'ranger_station',
+  'entrance_gate',
+  'mountain_peak',
+  'visitor_center',
+  'trailhead',
+  'sales',
+  'marketing',
+  'finance',
+  'operations_support',
+  'research',
+  'product_listings',
+]);
+
 export const LAYOUT_SCHEMA = deepFreeze({
   type: 'object',
   required: ['version', 'rooms', 'objects', 'agents'],
@@ -44,7 +61,7 @@ export const LAYOUT_SCHEMA = deepFreeze({
         type: 'object',
         required: ['id', 'name', 'x', 'y', 'w', 'h'],
         additionalProperties: false,
-        properties: { id, name: { type: 'string' }, x: int0, y: int0, w: int1, h: int1 },
+        properties: { id, name: { type: 'string' }, x: int0, y: int0, w: int1, h: int1, kind: { type: 'string', enum: ZONE_KINDS } },
       },
     },
     objects: {
@@ -75,7 +92,7 @@ export function defaultLayout() {
   return {
     version: 1,
     seed: DEFAULT_SEED,
-    rooms: [{ id: 'ranger-station', name: 'Ranger Station', x: 1, y: 1, w: 12, h: 8 }],
+    rooms: [{ id: 'ranger-station', name: 'Ranger Station', kind: 'ranger_station', x: 1, y: 1, w: 12, h: 8 }],
     objects: [],
     agents: [{ id: 'ranger', name: 'Ranger', roomId: 'ranger-station', x: 3, y: 4, role: 'ranger' }],
   };

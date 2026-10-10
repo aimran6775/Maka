@@ -28,6 +28,7 @@ export function initialState() {
     agentRuns: {}, // agentId -> runId of the run that last touched it
     pendingPrompts: [], // [{ promptId, runId, callId, tool, reason, input }]
     handoffs: {}, // agentId -> { fromZone, toZone, workItemId, startedAt } (latest work.handoff per walker)
+    workspace: null, // { root, online, known, since, reason } from the sidecar's watcher
     spend: { totalUsd: 0, reconciledTurns: 0, unreconciledTurns: 0 },
     invalidEvents: 0,
   };
@@ -63,6 +64,7 @@ export function applySnapshot(state, snap) {
   next.providers = snap.providers || {};
   next.policy = snap.policy || null;
   next.leash = snap.leash || null;
+  next.workspace = snap.workspace || null;
   next.keystore = snap.keystore || { path: '', problem: null };
   next.layout = snap.layout;
   next.objectKinds = snap.objectKinds || {};
@@ -212,6 +214,14 @@ export function applyEvent(state, event) {
     }
     case 'layout.seed': {
       next.layout = { ...next.layout, seed: p.seed };
+      break;
+    }
+    case 'workspace.offline': {
+      next.workspace = { ...(next.workspace || {}), root: p.root, online: false, known: true, since: event.ts, reason: p.reason };
+      break;
+    }
+    case 'workspace.online': {
+      next.workspace = { ...(next.workspace || {}), root: p.root, online: true, known: true, since: event.ts, reason: null };
       break;
     }
     case 'work.handoff': {

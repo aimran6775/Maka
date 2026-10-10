@@ -38,7 +38,7 @@ npm start                             # node sidecar/index.js
 
 Then open <http://127.0.0.1:8790>. Orbit with the mouse, scroll to zoom, switch to fly or
 follow with the buttons at the bottom, re-roll the terrain seed there too. Click the Ranger,
-a zone, a fixture or the Entrance Gate to inspect it. Routine turns run on the local worker model (Ollama at
+a zone, a fixture, the Entrance Gate or the Mountain Peak to inspect it. Routine turns run on the local worker model (Ollama at
 `OLLAMA_HOST`, default `http://127.0.0.1:11434`, model `OLLAMA_MODEL` or the first installed).
 Claude via the Anthropic API is the judge tier; the judge step itself lands in phase 2.
 Without Ollama running, a default run answers `400 OLLAMA_UNREACHABLE`; without a key, an
@@ -49,7 +49,10 @@ Local models are smaller than Claude and must support tool calling (`ollama show
 lists it). The judge pattern catches errors; it does not make a weak worker strong.
 
 Environment: `PORT` (8790), `HOST` (127.0.0.1), `MAKA_HOME` (`./.maka`, data and keystore),
-`MAKA_WORKSPACE` (`./workspace`, one directory per agent; deliverables land in `outbox/`).
+`MAKA_WORKSPACE` (default `~/Maka/workspace`, or `workspaceRoot` in `$MAKA_HOME/config.json`;
+one directory per Ranger, deliverables land in `outbox/`). The workspace root may live on an
+external drive: when it is unmounted Maka pauses runs and shows "workspace offline", and
+never writes anywhere else.
 
 Keystore alternative to env vars: `$MAKA_HOME/keystore.json` containing
 `{ "anthropic": "sk-ant-...", "openrouter": "..." }` with file mode `0600`. The sidecar

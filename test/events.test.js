@@ -19,6 +19,8 @@ const SAMPLES = {
   'object.reclaim': { objectId: 'o1', roomId: 'room-1' },
   'work.handoff': { fromAgentId: 'chief', toAgentId: 'ranger', fromRoomId: 'ranger-station', toRoomId: 'camp', trailId: 't1', workItemId: 'w1', summary: 'draft listings' },
   'layout.seed': { seed: 42 },
+  'workspace.offline': { root: '/Volumes/LaCie/Maka/workspace', reason: 'ENOENT' },
+  'workspace.online': { root: '/Volumes/LaCie/Maka/workspace' },
 };
 
 test('the contract lists exactly the phase 1 events and is frozen', () => {

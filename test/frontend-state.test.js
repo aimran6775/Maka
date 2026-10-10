@@ -136,3 +136,14 @@ test('layout.seed and work.handoff update the park inputs', () => {
   assert.equal(s.handoffs.ranger.toZone, 'camp');
   assert.equal(typeof s.handoffs.ranger.startedAt, 'number');
 });
+
+test('workspace offline/online events update the workspace view', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ workspace: { root: '/w', online: true, known: true, since: 1, reason: null } }));
+  assert.equal(s.workspace.online, true);
+  s = reduce(s, [ev('workspace.offline', { root: '/w', reason: 'ENOENT' })]);
+  assert.equal(s.workspace.online, false);
+  assert.equal(s.workspace.reason, 'ENOENT');
+  s = reduce(s, [ev('workspace.online', { root: '/w' })]);
+  assert.equal(s.workspace.online, true);
+});

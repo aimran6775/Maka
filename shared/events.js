@@ -157,6 +157,10 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
   }),
   // Added v1 (additive): the Superintendent re-rolled the park seed.
   'layout.seed': payload(['seed'], { seed: int1 }),
+  // Added v1 (additive): the workspace root (an external drive, say) became unreachable.
+  // Runs are stopped and no new run starts until workspace.online follows.
+  'workspace.offline': payload(['root', 'reason'], { root: nonEmpty, reason: str }),
+  'workspace.online': payload(['root'], { root: nonEmpty }),
 });
 
 export const EVENT_TYPES = deepFreeze(Object.keys(PAYLOAD_SCHEMAS));

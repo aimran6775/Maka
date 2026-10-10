@@ -45,6 +45,14 @@ export function clearingsFor(layout) {
     const gz = first.z + first.radius + 26;
     out.push({ id: `gate:${first.id}`, kind: 'gate', name: 'Entrance Gate', zoneId: first.id, x: gx, z: gz, radius: 9, height: heightAt(gx, gz, seed) });
   }
+  // The Mountain Peak: the control centre, a visible high point north-west of the first
+  // zone with a small station on it (docs/KICKOFF_BRIEF.md, "Operating systems inside Maka").
+  if (layout.rooms.length) {
+    const first = out[0];
+    const px = first.x - first.radius - 46;
+    const pz = first.z - first.radius - 40;
+    out.push({ id: 'mountain-peak', kind: 'peak', name: 'Mountain Peak', x: px, z: pz, radius: 8, height: Math.max(heightAt(px, pz, seed), 0) + 22 });
+  }
   // Keep heights above water so clearings never flood.
   for (const c of out) c.height = Math.max(c.height, TERRAIN.waterLevel + 2);
   return out;
@@ -53,6 +61,7 @@ export function clearingsFor(layout) {
 // Trails: each zone to the Gate (and zone to zone for later phases, in layout order).
 export function trailsFor(clearings) {
   const gate = clearings.find((c) => c.kind === 'gate');
+  const peak = clearings.find((c) => c.kind === 'peak');
   const zones = clearings.filter((c) => c.kind === 'zone');
   const trails = [];
   if (gate) {
@@ -60,6 +69,10 @@ export function trailsFor(clearings) {
       const points = trailBetween(z, gate, 0.2);
       trails.push({ id: `trail:${z.id}:${gate.id}`, from: z.id, to: gate.id, points, table: arcLengthTable(points, 48) });
     }
+  }
+  if (peak && zones[0]) {
+    const points = trailBetween(zones[0], peak, -0.3);
+    trails.push({ id: `trail:${zones[0].id}:${peak.id}`, from: zones[0].id, to: peak.id, points, table: arcLengthTable(points, 64) });
   }
   for (let i = 1; i < zones.length; i++) {
     const points = trailBetween(zones[i - 1], zones[i], 0.25);

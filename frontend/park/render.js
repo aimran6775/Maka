@@ -370,11 +370,12 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
 
   function buildClearing(m, c) {
     const g = new THREE.Group();
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(c.radius, 40), new THREE.MeshStandardMaterial({ color: c.kind === 'gate' ? 0xc2ad86 : 0x6fae52, roughness: 1 }));
+    const discColor = c.kind === 'gate' ? 0xc2ad86 : c.kind === 'peak' ? 0x9a948a : 0x6fae52;
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(c.radius, 40), new THREE.MeshStandardMaterial({ color: discColor, roughness: 1 }));
     disc.rotation.x = -Math.PI / 2;
     disc.position.set(c.x, c.height + 0.06, c.z);
     disc.receiveShadow = true;
-    disc.userData.pick = { type: c.kind === 'gate' ? 'gate' : 'zone', id: c.kind === 'gate' ? c.zoneId : c.id };
+    disc.userData.pick = { type: c.kind === 'gate' ? 'gate' : c.kind === 'peak' ? 'peak' : 'zone', id: c.kind === 'gate' ? c.zoneId : c.id };
     g.add(disc);
     pickables.push(disc);
     const y = c.height;
@@ -383,6 +384,10 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       if (kit.station.tent) g.add(place(kit.station.tent.clone(), c.x + c.radius * 0.5, y, c.z - c.radius * 0.4, { rotation: -Math.PI / 3, scale: 3.6 }));
       if (kit.station.campfire) g.add(place(kit.station.campfire.clone(), c.x + c.radius * 0.1, y, c.z + c.radius * 0.1, { scale: 2.8 }));
       if (kit.station.signpost) g.add(place(kit.station.signpost.clone(), c.x - c.radius * 0.6, y, c.z + c.radius * 0.55, { rotation: Math.PI / 2, scale: 3 }));
+    } else if (c.kind === 'peak') {
+      if (kit.station.structure) g.add(place(kit.station.structure.clone(), c.x, y, c.z - 1.5, { rotation: Math.PI / 5, scale: 3.4 }));
+      if (kit.station.signpost) g.add(place(kit.station.signpost.clone(), c.x + 4, y, c.z + 3, { rotation: Math.PI / 3, scale: 3 }));
+      if (kit.station.campfire) g.add(place(kit.station.campfire.clone(), c.x - 3.5, y, c.z + 2.5, { scale: 2.4 }));
     } else {
       if (kit.gate.doorway) g.add(place(kit.gate.doorway.clone(), c.x, y, c.z, { scale: 4 }));
       if (kit.gate.fence) {
@@ -612,8 +617,10 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       const point = { x: hit.point.x, z: hit.point.z };
       if (pick.type === 'zone') return onPick({ type: 'zone', room: state.layout.rooms.find((r) => r.id === pick.id), point });
       if (pick.type === 'gate') return onPick({ type: 'gate', room: state.layout.rooms.find((r) => r.id === pick.id), point });
+      if (pick.type === 'peak') return onPick({ type: 'peak', point });
       if (pick.type === 'terrain' && model) {
         const c = model.clearings.find((cl) => Math.hypot(cl.x - hit.point.x, cl.z - hit.point.z) < cl.radius);
+        if (c && c.kind === 'peak') return onPick({ type: 'peak', point });
         if (c) return onPick(c.kind === 'gate' ? { type: 'gate', room: state.layout.rooms.find((r) => r.id === c.zoneId), point } : { type: 'zone', room: state.layout.rooms.find((r) => r.id === c.id), point });
         return onPick({ type: 'ground', point });
       }

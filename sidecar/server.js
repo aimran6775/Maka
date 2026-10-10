@@ -134,7 +134,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -175,6 +175,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, pr
         seq: bus.seq,
         home,
         workspaceRoot,
+        workspace: workspace ? workspace.state() : { root: workspaceRoot, online: true, known: false, since: 0, reason: null },
         providers,
         keystore: { path: keystore.path, problem: keystore.problem },
         layout: layoutState.get(),
@@ -194,6 +195,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, pr
         return sendJson(res, 202, { runId, agentId, provider, model, tier });
       } catch (err) {
         if (err.code === 'RUN_ACTIVE') throw new HttpError(409, err.message, err.code);
+        if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);
         if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST'].includes(err.code)) throw new HttpError(400, err.message, err.code);
         throw err;
       }

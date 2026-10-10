@@ -52,12 +52,14 @@ test('state, layout placement rules, events replay, static files', async () => {
     const stream = await srv.sse(0);
     const ev = await stream.waitFor((e) => e.type === 'object.reclaim');
     assert.equal(ev.payload.objectId, 'win-1');
-    assert.deepEqual(stream.events.map((e) => e.type), ['object.place', 'object.place', 'object.place', 'object.reclaim']);
+    const layoutEvents = stream.events.filter((e) => !e.type.startsWith('workspace.'));
+    assert.deepEqual(stream.events[0].type, 'workspace.online', 'the watcher reports the root first');
+    assert.deepEqual(layoutEvents.map((e) => e.type), ['object.place', 'object.place', 'object.place', 'object.reclaim']);
     for (const e of stream.events) assert.equal(validateEvent(e).ok, true);
-    assert.deepEqual(stream.events.map((e) => e.seq), [1, 2, 3, 4]);
+    assert.deepEqual(layoutEvents.map((e) => e.seq), [2, 3, 4, 5]);
     stream.close();
-    const partial = await srv.sse(3);
-    await partial.waitFor((e) => e.seq === 4);
+    const partial = await srv.sse(4);
+    await partial.waitFor((e) => e.seq === 5);
     assert.equal(partial.events.length, 1);
     partial.close();
 
@@ -117,7 +119,7 @@ test('run lifecycle over HTTP: events stream, persistence, spend, 409 while acti
     const endEv = await stream.waitFor((e) => e.type === 'agent.run.end');
     assert.equal(endEv.payload.reason, 'completed');
     assert.equal(endEv.payload.finalText, 'thinking done');
-    const types = stream.events.map((e) => e.type);
+    const types = stream.events.filter((e) => !e.type.startsWith('workspace.')).map((e) => e.type);
     assert.deepEqual(types, ['agent.run.start', 'agent.token', 'agent.token', 'cost.estimate', 'agent.run.end']);
     const cost = stream.events.find((e) => e.type === 'cost.estimate').payload;
     assert.equal(cost.usd, (1000 * 1 + 500 * 2) / 1e6);
@@ -227,7 +229,7 @@ test('provider failure becomes agent.run.error and the run record says so; NO_KE
     const r2 = await real.post('/api/run', { prompt: 'x', provider: 'anthropic' });
     assert.equal(r2.body.code, 'NO_KEY');
     assert.equal((await real.post('/api/run', { prompt: 'x', provider: 'bogus' })).body.code, 'UNKNOWN_PROVIDER');
-    assert.equal(real.bus.seq, 0);
+    assert.ok(real.bus.recent(10).every((e) => e.type.startsWith('workspace.')), 'no run event was emitted');
   } finally {
     await real.close();
   }
@@ -283,6 +285,39 @@ test('routing over HTTP: default run uses the worker tier and records it; explic
     assert.equal(r2.body.tier, null);
     assert.deepEqual(seen[1], { name: 'anthropic', model: 'claude-opus-5-5' });
     await srv.runs.waitForIdle();
+    stream.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+test('workspace offline: run refused with 503, active run stopped, online/offline events emitted', async () => {
+  const hold = new Promise(() => {});
+  const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([[text('a'), async () => { await hold; }]]), model: 'm', price: PRICE }) });
+  try {
+    const stream = await srv.sse(0);
+    await stream.waitFor((e) => e.type === 'workspace.online');
+    assert.equal((await srv.get('/api/state')).body.workspace.online, true);
+    const r = await srv.post('/api/run', { prompt: 'hang' });
+    assert.equal(r.status, 202);
+    await stream.waitFor((e) => e.type === 'agent.token');
+    // The drive goes away.
+    await fsp.rm(srv.workspaceRoot, { recursive: true, force: true });
+    await srv.workspace.check();
+    const off = await stream.waitFor((e) => e.type === 'workspace.offline');
+    assert.equal(off.payload.root, srv.workspaceRoot);
+    assert.match(off.payload.reason, /ENOENT/);
+    const ended = await stream.waitFor((e) => e.type === 'agent.run.end');
+    assert.equal(ended.payload.reason, 'cancelled');
+    const refused = await srv.post('/api/run', { prompt: 'again' });
+    assert.equal(refused.status, 503);
+    assert.equal(refused.body.code, 'WORKSPACE_OFFLINE');
+    assert.equal((await srv.get('/api/state')).body.workspace.online, false);
+    // The drive comes back.
+    await fsp.mkdir(srv.workspaceRoot, { recursive: true });
+    await srv.workspace.check();
+    await stream.waitFor((e) => e.type === 'workspace.online' && e.seq > off.seq);
+    assert.equal((await srv.get('/api/state')).body.workspace.online, true);
     stream.close();
   } finally {
     await srv.close();

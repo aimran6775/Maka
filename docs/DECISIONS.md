@@ -268,3 +268,18 @@ A phase 2 connector that writes somewhere real gets a real domain.
 `test/run-fast.js` fails when a `test/*.test.js` exists that `fast.list` does not name, so
 adding a suite without gating it is an error rather than a quiet gap. Everything in `test/`
 is in the fast list today; there is no slow tier yet.
+
+## D33. The workspace root defaults under the home directory and can go away
+
+`MAKA_WORKSPACE`, else `workspaceRoot` in `$MAKA_HOME/config.json`, else
+`~/Maka/workspace`. A watcher polls the root; when it is unreachable the sidecar emits
+`workspace.offline`, stops the active run (as `cancelled`, there is no mid-call pause),
+answers `503 WORKSPACE_OFFLINE` to new runs, and emits `workspace.online` when it returns.
+The sidecar's own data (`MAKA_HOME`) stays where it was so the park and ledgers survive an
+unplugged drive; agents never write outside the root.
+
+## D34. The Mountain Peak is a clearing kind, not a room
+
+The Peak is derived by the park model from the first zone's position, like the Entrance
+Gate, so no layout record changes and the sidecar needs no new route. `ZONE_KINDS` carries
+`mountain_peak` for the day a layout places it explicitly.

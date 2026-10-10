@@ -68,6 +68,19 @@ export function createInspect({ parent, getState, x, y, w }) {
     ];
   }
 
+  function renderPeak(s) {
+    setTitle('INSPECT · Mountain Peak');
+    const runs = s.runOrder.map((id) => s.runs[id]).reverse();
+    return [
+      el('div', { class: 'muted small', text: 'The control centre. Phase 1 shows what the harness has done this session; ventures, the Chief Ranger and connector ledgers arrive in phase 2.' }),
+      row('ventures', 'no ventures yet'),
+      row('spend', `${fmtUsd(s.spend.totalUsd)} reconciled${s.spend.unreconciledTurns ? ` · ${s.spend.unreconciledTurns} unpriced turn(s)` : ''}`),
+      row('workspace', s.workspace ? (s.workspace.online ? `online · ${s.workspace.root}` : `OFFLINE (${s.workspace.reason || 'unreachable'}) · ${s.workspace.root}`) : '—'),
+      row('runs', runs.length ? `${runs.length} this session` : 'none this session'),
+      ...runs.slice(0, 10).map((r) => el('div', { class: `use ${r.status === 'error' ? 'failed' : r.status === 'ended' ? 'ok' : 'running'}`, text: `${r.runId} · ${r.status}${r.reason ? ` (${r.reason})` : ''} · ${fmtUsd(r.spentUsd)} · ${r.prompt.slice(0, 40)}` })),
+    ];
+  }
+
   return {
     select(info) {
       selection = info;
@@ -77,7 +90,7 @@ export function createInspect({ parent, getState, x, y, w }) {
       const s = getState();
       if (!selection) {
         setTitle('INSPECT');
-        setChildren(body, el('div', { class: 'muted', text: 'Click a Ranger, a fixture, the Entrance Gate or a zone.' }));
+        setChildren(body, el('div', { class: 'muted', text: 'Click a Ranger, a fixture, the Entrance Gate, the Mountain Peak or a zone.' }));
         return;
       }
       if (selection.type === 'agent') {
@@ -90,6 +103,7 @@ export function createInspect({ parent, getState, x, y, w }) {
         if (!obj) return this.select(null);
         return setChildren(body, ...renderObject(s, obj));
       }
+      if (selection.type === 'peak') return setChildren(body, ...renderPeak(s));
       if (selection.type === 'zone' || selection.type === 'gate') {
         const room = s.layout.rooms.find((r) => r.id === selection.room.id);
         if (!room) return this.select(null);
