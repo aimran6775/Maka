@@ -1,6 +1,8 @@
 // Runs the suites listed in test/fast.list with `node --test`.
-// Exit code is node's: non-zero when any listed suite fails or is missing.
-import { readFileSync, existsSync } from 'node:fs';
+// Exit code is node's: non-zero when any listed suite fails or is missing. Also fails when a
+// `test/*.test.js` file exists that fast.list does not name, so a suite cannot slip out of
+// the merge gate by omission (list it, or rename it off `.test.js` on purpose).
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -19,6 +21,12 @@ if (missing.length) {
 }
 if (!files.length) {
   console.error('fast.list is empty');
+  process.exit(2);
+}
+const onDisk = readdirSync(path.join(root, 'test')).filter((f) => f.endsWith('.test.js')).map((f) => `test/${f}`);
+const unlisted = onDisk.filter((f) => !files.includes(f));
+if (unlisted.length) {
+  console.error(`test suites exist that fast.list does not name:\n  ${unlisted.join('\n  ')}`);
   process.exit(2);
 }
 

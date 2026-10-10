@@ -15,20 +15,29 @@ test('levels are ordered, labels exist, data is frozen', () => {
   assert.deepEqual(PAYLOAD_SCHEMAS['permission.prompt'].properties.leash.properties.level.enum, [...LEASH_LEVELS]);
 });
 
+test('domains are exactly the brief\'s final phase 1 list', () => {
+  assert.deepEqual([...DOMAINS], ['outbound_messages', 'publishing', 'money_out', 'money_in', 'data_deletion', 'account_settings', 'account_creation', 'browser_control', 'research']);
+});
+
 test('defaults follow the brief: draft everywhere, research act_free, money_out capped at 0', () => {
   const leash = defaultLeash();
   assert.equal(validateLeash(leash).ok, true);
   assert.deepEqual(Object.keys(leash.domains).sort(), [...DOMAINS].sort());
+  assert.equal(leash.domains.browser_control.level, 'draft');
+  assert.equal(leash.domains.account_creation.level, 'draft');
   assert.equal(leash.domains.research.level, 'act_free');
   assert.equal(leash.domains.outbound_messages.level, 'draft');
   assert.equal(leash.domains.money_out.level, 'draft');
   assert.equal(leash.domains.money_out.dailyCapUsd, 0);
 });
 
-test('every phase 1 tool has a domain; leashFor reports domain and level', () => {
-  for (const t of TOOL_NAMES) assert.ok(DOMAINS.includes(TOOL_DOMAINS[t]), `${t} has a domain`);
+test('every phase 1 tool is mapped (to a domain or explicitly to none); leashFor reports domain and level', () => {
+  for (const t of TOOL_NAMES) {
+    assert.ok(t in TOOL_DOMAINS, `${t} is mapped`);
+    assert.ok(TOOL_DOMAINS[t] === null || DOMAINS.includes(TOOL_DOMAINS[t]), `${t} maps to a real domain or null`);
+  }
   const leash = defaultLeash();
-  assert.deepEqual(leashFor(leash, 'fs.write'), { domain: 'workspace', level: 'draft', dailyCapUsd: null });
+  assert.equal(leashFor(leash, 'fs.write'), null, 'workspace writes have no leash domain');
   assert.deepEqual(leashFor(leash, 'web.fetch'), { domain: 'research', level: 'act_free', dailyCapUsd: null });
   assert.equal(leashFor(leash, 'teleport'), null);
   assert.equal(domainOfTool('fs.read'), 'research');

@@ -44,7 +44,7 @@ test('a full run drives the Ranger through thinking → tool-running → waiting
   assert.deepEqual(s.runs[runId].items, [{ kind: 'text', turn: 1, text: 'Writing' }]);
   s = reduce(s, [ev('agent.tool_call', { runId, turn: 1, callId: 'c1', name: 'fs.write', input: { path: 'a', content: 'b' } })]);
   assert.equal(s.agentStates.ranger, 'tool-running');
-  s = reduce(s, [ev('permission.prompt', { promptId: 'p1', runId, callId: 'c1', tool: 'fs.write', reason: 'r', input: { path: 'a' }, leash: { domain: 'workspace', level: 'draft' } })]);
+  s = reduce(s, [ev('permission.prompt', { promptId: 'p1', runId, callId: 'c1', tool: 'fs.write', reason: 'r', input: { path: 'a' }, leash: { domain: 'publishing', level: 'draft' } })]);
   assert.equal(s.agentStates.ranger, 'waiting');
   assert.equal(s.pendingPrompts.length, 1);
   assert.equal(s.pendingPrompts[0].leash.level, 'draft');

@@ -15,22 +15,27 @@ export const LEASH_LEVEL_LABELS = deepFreeze({
   act_free: 'Act freely',
 });
 
+// Final for the phase 1 data model (docs/KICKOFF_BRIEF.md, "Leash domains").
 export const DOMAINS = deepFreeze([
-  'research', // read-only: fetching pages, reading workspace files
-  'workspace', // writing files inside the agent's own workspace
   'outbound_messages',
   'publishing',
   'money_out',
   'money_in',
   'data_deletion',
   'account_settings',
+  'account_creation',
+  'browser_control',
+  'research', // read-only: fetching pages, reading workspace files
 ]);
 
 // Which domain each phase 1 tool belongs to. Phase 2 connectors add their own rows.
+// `fs.write` has no leash domain: it only touches the Ranger's own workspace, so it is not
+// outbound, money or an account. It is still confirmed per call at the Gate (tools.js
+// `confirm: true`); leashFor() returns null for it and the prompt says so.
 export const TOOL_DOMAINS = deepFreeze({
   'fs.read': 'research',
   'web.fetch': 'research',
-  'fs.write': 'workspace',
+  'fs.write': null,
 });
 
 export const LEASH_SCHEMA = deepFreeze({
@@ -60,7 +65,6 @@ export function defaultLeash() {
   const domains = {};
   for (const d of DOMAINS) domains[d] = { level: 'draft' };
   domains.research = { level: 'act_free' };
-  domains.workspace = { level: 'draft' };
   domains.money_out = { level: 'draft', dailyCapUsd: 0 };
   return { version: 1, domains };
 }

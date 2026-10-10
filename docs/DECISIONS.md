@@ -254,3 +254,17 @@ Foliage is instanced per model variant with Three's frustum culling; there is no
 LOD yet. On SwiftShader in headless Chromium the scene renders at a few frames per second,
 which is a software rasteriser, not a target. The 60 fps on M1 target is unverified here
 and is listed as such in CODE_MAP.
+
+## D31. `fs.write` has no leash domain in phase 1
+
+The brief's final domain list is about actions with outside effect (messages, publishing,
+money, deletion, accounts, browser). Writing inside the Ranger's own workspace is none of
+those, so `TOOL_DOMAINS['fs.write']` is `null`, the permission prompt carries no `leash`
+field, and the Gate card says so. The per-call confirmation stays (tools.js `confirm`).
+A phase 2 connector that writes somewhere real gets a real domain.
+
+## D32. The merge gate refuses unlisted suites
+
+`test/run-fast.js` fails when a `test/*.test.js` exists that `fast.list` does not name, so
+adding a suite without gating it is an error rather than a quiet gap. Everything in `test/`
+is in the fast list today; there is no slow tier yet.

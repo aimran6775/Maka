@@ -28,7 +28,7 @@ export function createPermission({ parent, getState, api }) {
             el('div', { class: 'perm-gate', text: 'ENTRANCE GATE' }),
             el('div', { class: 'perm-title', text: `Allow ${q.tool}?` }),
             el('div', { class: 'muted small', text: q.reason }),
-            q.leash ? el('div', { class: 'perm-leash', text: `leash: ${q.leash.domain} · ${LEASH_LEVEL_LABELS[q.leash.level] || q.leash.level}` }) : el('div', { class: 'perm-leash muted', text: 'leash: not reported' }),
+            q.leash ? el('div', { class: 'perm-leash', text: `leash: ${q.leash.domain} · ${LEASH_LEVEL_LABELS[q.leash.level] || q.leash.level}` }) : el('div', { class: 'perm-leash muted', text: 'no leash domain (workspace-only action, confirmed per call)' }),
             el('pre', { class: 'perm-input', text: summarize(q.input) }),
             el('div', { class: 'row' },
               el('button', { class: 'btn primary', text: 'Allow', onclick: () => answer(q, true) }),

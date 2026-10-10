@@ -29,7 +29,7 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 | --- | --- |
 | `shared/schema.js` | Tiny JSON-schema-like validator: `validate`, `assertValid`, `deepFreeze`. Supports type, properties/required/additionalProperties, items, enum, const, min/max for strings, numbers and arrays, anyOf. Nothing else. |
 | `shared/world.js` | World data: `OBJECT_KINDS` (fixtures: trailhead_sign → `web.fetch`; supply_cache → `fs.read` + `fs.write`), `AGENT_ROLES` (superintendent, chief_ranger, ranger, junior_ranger), `LAYOUT_SCHEMA` (rooms, objects, agents with optional `role` and `parentAgentId`, park `seed`), `defaultLayout()` (one zone "Ranger Station", one Ranger), `grantsFor(layout, agentId)`. Zones are `rooms` and fixtures are `objects` on the wire; those names are frozen. Fixtures for phase 2 connectors (radio tower, park store, notice board, fee booth, ledger desk) are not listed because their tools do not exist. |
-| `shared/leash.js` | Leash model as data: `LEASH_LEVELS` (observe → draft → act_capped → act_free), `DOMAINS`, `TOOL_DOMAINS` (phase 1 tools → research / workspace), `LEASH_SCHEMA`, `defaultLeash()` (draft everywhere, research act_free, money_out capped at $0), `leashFor(leash, tool)`. Phase 1 only reports the level on permission prompts; enforcement in the gate is phase 2. |
+| `shared/leash.js` | Leash model as data: `LEASH_LEVELS` (observe → draft → act_capped → act_free), the brief's final nine `DOMAINS`, `TOOL_DOMAINS` (`fs.read` and `web.fetch` → research; `fs.write` → none, it is workspace-only and confirmed per call), `LEASH_SCHEMA`, `defaultLeash()` (draft everywhere, research act_free, money_out capped at $0), `leashFor(leash, tool)`. Phase 1 only reports the level on permission prompts; enforcement in the gate is phase 2. |
 | `shared/events.js` | The frozen, additive-only event contract. `EVENT_TYPES`, `PAYLOAD_SCHEMAS`, `ENVELOPE_SCHEMA`, `validateEvent`, `assertEvent`, `makeEvent`. Thirteen events: `agent.run.start`, `agent.token`, `agent.tool_call`, `agent.tool_result`, `agent.run.end`, `agent.run.error`, `cost.estimate` (optional `tier`), `permission.prompt` (optional `leash`), `permission.response`, `object.place`, `object.reclaim`, `work.handoff` (phase 2 emits it), `layout.seed`. |
 
 ## `sidecar/` — the one Node process
@@ -106,7 +106,7 @@ emits no `work.handoff`.
 | Path | What it is |
 | --- | --- |
 | `test/fast.list` | The suites that gate a push, one path per line. |
-| `test/run-fast.js` | Runs `node --test` over `fast.list`; fails on a missing or empty list. |
+| `test/run-fast.js` | Runs `node --test` over `fast.list`; fails on a missing or empty list, and on any `test/*.test.js` the list does not name. |
 | `test/schema.test.js` | Validator behaviour. |
 | `test/events.test.js` | Every event type validates, round-trips JSON, rejects bad shapes; contract is frozen. |
 | `test/loop.test.js` | Loop invariants against the fake provider: tool pairing, index accumulation, bad JSON, guards, cancellation at three points, provider failure. |
@@ -127,6 +127,10 @@ emits no `work.handoff`.
 
 Judge step in the loop (hook point exists, nothing calls it), leash enforcement in the gate
 (data exists, nothing enforces it), connectors and their fixtures (radio tower, park store,
-notice board, fee booth, ledger desk), trails as handoff queues, concurrent Rangers, Lookout
-Tower ledgers, away mode, Tauri shell (`src-tauri/`), Keychain, MCP, channels. None of these
-have stubs in the UI; when they arrive they get a row here first.
+notice board, fee booth, ledger desk), the mail system (Cloudflare DNS, Fastmail JMAP,
+Resend; station mailboxes), browser control over CDP, the Mountain Peak control centre and
+department zones, trails as real handoff queues (the park can animate a `work.handoff`,
+nothing emits one), the Chief Ranger and Junior Rangers (roles exist as data only),
+concurrent Rangers, away mode and the evidence log, distance LOD, the WebGPU renderer
+path, Tauri shell (`src-tauri/`), Keychain, MCP, channels, the makapark.com download and
+update pages. None of these have stubs in the UI; when they arrive they get a row here first.

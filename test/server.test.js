@@ -269,7 +269,7 @@ test('routing over HTTP: default run uses the worker tier and records it; explic
     assert.deepEqual(seen[0], { name: 'ollama', model: 'qwen2.5:7b' });
     assert.equal(r.body.tier, 'worker');
     const prompt = await stream.waitFor((e) => e.type === 'permission.prompt');
-    assert.deepEqual(prompt.payload.leash, { domain: 'workspace', level: 'draft' });
+    assert.equal('leash' in prompt.payload, false, 'fs.write has no leash domain in phase 1');
     await srv.post('/api/permission', { promptId: prompt.payload.promptId, runId: r.body.runId, allow: true });
     await stream.waitFor((e) => e.type === 'agent.run.end');
     const tiers = stream.events.filter((e) => e.type === 'cost.estimate').map((e) => e.payload.tier);

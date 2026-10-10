@@ -149,7 +149,7 @@ test('gate: definitions follow the layout, ungranted tools are refused at call t
     assert.deepEqual(gate.definitions().map((d) => d.name), ['fs.read', 'fs.write', 'web.fetch']);
     const written = await gate.execute({ id: 'c2', name: 'fs.write', input: { path: 'a.txt', content: 'x' } }, { runId: 'r' });
     assert.equal(written.ok, true);
-    assert.deepEqual(asks[0], { runId: 'r', callId: 'c2', tool: 'fs.write', reason: TOOLS['fs.write'].description, input: { path: 'a.txt', content: 'x' }, leash: { domain: 'workspace', level: 'draft' } });
+    assert.deepEqual(asks[0], { runId: 'r', callId: 'c2', tool: 'fs.write', reason: TOOLS['fs.write'].description, input: { path: 'a.txt', content: 'x' }, leash: undefined });
 
     answer = false;
     const refused = await gate.execute({ id: 'c3', name: 'fs.write', input: { path: 'b.txt', content: 'y' } }, { runId: 'r' });
