@@ -22,6 +22,9 @@
 //   POST /api/mission          { text, budgetUsd, horizon? } → the Chief plans (202 { mission, runId })
 //   GET  /api/reflections      reflection summaries, newest first; /api/reflections/:id the document
 //   POST /api/reflect          run the reflection now (202 { started }) — the result is reflection.posted
+//   GET  /api/mail/dns         keys wired?, last plan, last apply
+//   POST /api/mail/dns/plan    dry-run diff of the mail domain's DNS (Resend records vs Cloudflare)
+//   POST /api/mail/dns/apply   parks the write at the Entrance Gate (account_settings); 202 { itemId }
 //   GET  /api/away             away state (flag, since, counters, last digest)
 //   POST /api/away             { away: true|false } → away.changed (+ away.digest and the digest on return)
 //   GET  /api/away/log         the evidence log lines (JSON array)
@@ -169,7 +172,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -230,6 +233,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         mission: chief ? chief.state() : null,
         reflection: reflect ? reflect.state() : null,
         away: away ? away.state() : null,
+        mail: mailSetup ? await mailSetup.status() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -316,6 +320,21 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         if (err.status) throw new HttpError(err.status, err.message, err.code);
         if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST'].includes(err.code)) throw new HttpError(400, err.message, err.code);
         if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);
+        throw err;
+      }
+    }
+    if (p === '/api/mail/dns' && method === 'GET') {
+      if (!mailSetup) throw new HttpError(404, 'no mail setup');
+      return sendJson(res, 200, await mailSetup.status());
+    }
+    if ((p === '/api/mail/dns/plan' || p === '/api/mail/dns/apply') && method === 'POST') {
+      if (!mailSetup) throw new HttpError(404, 'no mail setup');
+      try {
+        if (p.endsWith('/plan')) return sendJson(res, 200, await mailSetup.plan());
+        return sendJson(res, 202, await mailSetup.apply());
+      } catch (err) {
+        if (err.status) throw new HttpError(err.status, err.message, err.code);
+        if (['NO_KEY', 'NO_ZONE', 'NETWORK', 'BAD_RESPONSE', 'CLOUDFLARE'].includes(err.code) || /^HTTP_/.test(err.code || '')) throw new HttpError(502, err.message, err.code);
         throw err;
       }
     }

@@ -498,3 +498,22 @@ Away state lives in `away.json` with the start time and running counters, so a r
 while away stays away and the digest still covers the whole absence. The Gate queue stamps
 `away: true` on action items through its `isAway` hook rather than by consulting the away
 module, so the queue stays independent of it.
+
+## D61. DNS values come from Resend's domain API; Maka adds only DMARC
+
+Resend tells each account exactly which SPF, DKIM, MX and return-path records its domain
+needs (selectors and hosts differ per region and account), so `dns.js` reads them from
+`GET /domains/:id` and never carries a table of them. The one record Resend does not
+provide is DMARC; Maka adds `v=DMARC1; p=none; rua=mailto:gate@<domain>` so reports reach
+the Gate's mailbox and no mail is rejected while the setup is young. Tightening to
+`quarantine` or `reject` is a later owner decision.
+
+## D62. The DNS apply is always a Gate item, and the Superintendent is its agent
+
+Writing DNS for the mail domain is a one-time owner decision with outside effect, so
+`apply()` parks it in the Gate queue under `account_settings` with the diff as evidence,
+whatever the leash says, and the agent id is `superintendent`. The plan diff removes
+foreign MX records at a name Resend owns (mail must not be split between providers) and
+leaves other TXT records at the same name alone (site verifications live there too).
+Keys: `CLOUDFLARE_API_TOKEN` (the owner's account-scoped token) and `RESEND_API_KEY`,
+from the environment or the 0600 keystore like the model keys.

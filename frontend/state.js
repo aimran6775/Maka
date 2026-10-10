@@ -24,6 +24,8 @@ export function initialState() {
     reflection: null, // { latest, schedule, job } from the snapshot; latest kept current by reflection.posted
     budgetAlerts: [], // budget.threshold payloads this session, oldest first
     away: null, // { away, since, actions, waiting, spentUsd, lastDigest } from the snapshot and away.changed / away.digest
+    mail: null, // { domain, keys: { resend, cloudflare }, lastPlan, lastApply } from the snapshot; dns kept current by mail.dns
+    mailDns: [], // mail.dns payloads this session, oldest first
     leash: null, // leash policy from the snapshot (shared/leash.js shape)
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
@@ -85,6 +87,7 @@ export function applySnapshot(state, snap) {
   next.mission = snap.mission || null;
   next.reflection = snap.reflection || null;
   next.away = snap.away || null;
+  next.mail = snap.mail || null;
   next.spendByAgent = (snap.reflection && snap.reflection.spentByAgent) || {};
   next.leash = snap.leash || null;
   next.workspace = snap.workspace || null;
@@ -328,6 +331,10 @@ export function applyEvent(state, event) {
     case 'reflection.posted': {
       const latest = { id: p.reflectionId, at: event.ts, reason: p.reason, status: p.status, skipReason: p.skipReason || null, missionId: p.missionId || null, model: p.model || null, usd: typeof p.usd === 'number' ? p.usd : null, portfolio: p.portfolio || '', ventures: p.ventures || [], briefings: p.briefings || [], path: p.path || null };
       next.reflection = { ...(next.reflection || {}), latest };
+      break;
+    }
+    case 'mail.dns': {
+      next.mailDns = [...next.mailDns, { ...p, ts: event.ts }];
       break;
     }
     case 'away.changed': {

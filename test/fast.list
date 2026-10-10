@@ -20,3 +20,4 @@ test/chief.test.js
 test/scheduler.test.js
 test/reflect.test.js
 test/away.test.js
+test/mail-dns.test.js

@@ -39,6 +39,14 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 9 done: the mail domain's DNS. With `RESEND_API_KEY` and
+`CLOUDFLARE_API_TOKEN` wired, "Plan DNS" on the Peak (or `POST /api/mail/dns/plan`) asks
+Resend for makapark.com's records, adds DMARC, diffs them against the Cloudflare zone and
+shows what would change; "Apply DNS" parks the write at the Entrance Gate as an
+`account_settings` item with the diff as evidence, and only an approval registers the
+domain at Resend if needed, writes the records and asks Resend to verify. Tested against
+fake Cloudflare and Resend servers; `docs/LIVE_TEST.md` will carry the live sequence.
+
 Phase 2 step 8 done: away mode. "I'm away" on the Peak card (or `POST /api/away`) turns
 on the evidence log: every Gate decision and the other notable events are appended to
 `<root>/_peak/away-log.ndjson`, Gate items are stamped `away`, and the Peak shows "Away

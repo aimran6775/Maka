@@ -7,6 +7,8 @@ import { fakeProvider, text, toolCall, end } from './helpers/fake-provider.js';
 import { validateEvent } from '../shared/events.js';
 import { boot } from '../sidecar/index.js';
 import os from 'node:os';
+import { startFakeCloudflare } from './helpers/fake-cloudflare.js';
+import { startFakeResend } from './helpers/fake-resend.js';
 
 const PRICE = { inputPerMTok: 1, outputPerMTok: 2 };
 const scripted = (turns) => async () => ({ provider: fakeProvider(turns), model: 'fake-model', price: PRICE });
@@ -556,6 +558,55 @@ test('away mode over HTTP: Gate items are stamped and logged while away; return 
     stream.close();
   } finally {
     await srv.close();
+  }
+});
+
+test('mail DNS over HTTP: no keys is a plain 400, plan is a dry run, apply waits at the Gate and writes on approve', async () => {
+  const cf = await startFakeCloudflare({ records: [{ type: 'MX', name: 'makapark.com', content: 'old.mail.example', priority: 20 }] });
+  const rs = await startFakeResend({ domains: [{ name: 'makapark.com' }] });
+  const bare = await startTestServer({ makeProvider: scripted([]) });
+  try {
+    const st = await bare.get('/api/mail/dns');
+    assert.deepEqual(st.body.keys, { resend: false, cloudflare: false });
+    const r = await bare.post('/api/mail/dns/plan', {});
+    assert.equal(r.status, 400, 'a missing key is a configuration error');
+    assert.equal(r.body.code, 'NO_KEY');
+    assert.match(r.body.error, /RESEND_API_KEY and CLOUDFLARE_API_TOKEN/);
+  } finally {
+    await bare.close();
+  }
+  const srv = await startTestServer({ makeProvider: scripted([]), env: { RESEND_API_KEY: rs.apiKey, CLOUDFLARE_API_TOKEN: cf.token }, mail: { resendBaseUrl: rs.url, cloudflareBaseUrl: cf.url } });
+  try {
+    assert.deepEqual((await srv.get('/api/state')).body.mail.keys, { resend: true, cloudflare: true });
+    const stream = await srv.sse();
+    const plan = await srv.post('/api/mail/dns/plan', {});
+    assert.equal(plan.status, 200);
+    assert.deepEqual(plan.body.counts, { create: 5, update: 0, remove: 1, unchanged: 0 });
+    assert.equal(cf.state.records.length, 1, 'a plan writes nothing');
+    const planned = await stream.waitFor((e) => e.type === 'mail.dns' && e.payload.change === 'planned');
+    assert.equal(planned.payload.create, 5);
+    const apply = await srv.post('/api/mail/dns/apply', {});
+    assert.equal(apply.status, 202);
+    assert.equal(apply.body.status, 'pending');
+    const item = await stream.waitFor((e) => e.type === 'gate.item' && e.payload.tool === 'mail.dns.apply');
+    assert.equal(item.payload.domain, 'account_settings');
+    assert.equal(item.payload.agentId, 'superintendent');
+    assert.match(item.payload.evidence[0].text, /\+ MX makapark.com inbound.resend.com/);
+    assert.equal((await srv.post('/api/mail/dns/apply', {})).status, 409, 'one apply at a time');
+    assert.equal(cf.state.records.length, 1, 'nothing written before the decision');
+    await srv.post(`/api/gate/${item.payload.itemId}`, { decision: 'approve' });
+    const applied = await stream.waitFor((e) => e.type === 'mail.dns' && e.payload.change !== 'planned');
+    assert.equal(applied.payload.change, 'applied');
+    assert.deepEqual([applied.payload.create, applied.payload.update, applied.payload.remove], [5, 0, 1]);
+    assert.equal(cf.state.records.length, 5);
+    assert.ok(cf.state.records.every((rec) => rec.content !== 'old.mail.example'), 'the old MX is gone');
+    assert.ok(rs.state.calls.some((c) => c.method === 'POST' && /\/verify$/.test(c.path)), 'verification requested at Resend');
+    assert.equal((await srv.get('/api/mail/dns')).body.lastApply.status, 'applied');
+    stream.close();
+  } finally {
+    await srv.close();
+    await cf.close();
+    await rs.close();
   }
 });
 

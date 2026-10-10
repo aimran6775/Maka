@@ -119,6 +119,12 @@ appended to `workspace/_peak/away-log.ndjson`, the Peak shows "Away since …, N
 waiting", and "I'm back" writes a digest next to the log with what happened, what still
 waits on you and what it cost. Nothing is hidden and nothing is rolled back for you: the
 log is the account. That completes Part A of phase 2.
+
+Step 9, the mail domain's DNS: set `RESEND_API_KEY` and `CLOUDFLARE_API_TOKEN` (or the
+keystore keys `resend` and `cloudflare`), click the Peak and "Plan DNS" to see the records
+Resend wants for makapark.com next to what the Cloudflare zone has; "Apply DNS" waits at
+the Entrance Gate and writes them only when you approve. The mail store, addresses,
+receiving and sending are steps 10–12.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

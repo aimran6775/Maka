@@ -15,6 +15,7 @@ import { createChief } from '../../sidecar/chief.js';
 import { createScheduler } from '../../sidecar/scheduler.js';
 import { createReflect } from '../../sidecar/reflect.js';
 import { createAway } from '../../sidecar/away.js';
+import { createMailSetup } from '../../sidecar/mail/setup.js';
 import { TOOLS } from '../../sidecar/capability/tools.js';
 import { CREW_TOOLS } from '../../sidecar/capability/crew.js';
 import { createRouter, defaultPolicy } from '../../sidecar/router.js';
@@ -31,7 +32,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 
 // `judgeProvider`: a (name, opts) => { provider, model, price } factory for the judge tier; when
 // absent no judge is wired, so runs are not reviewed (the phase 1 behaviour).
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {} } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -64,6 +65,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   Object.assign(registry, chief.tools);
   const scheduler = await createScheduler({ store, clock, tickMs: 60_000, log: { error() {} } }).init();
   away = await createAway({ bus, store, gateQueue, workspaceRoot, clock, log: { error() {} } }).init();
+  const mailSetup = createMailSetup({ bus, gateQueue, env, keystorePath, clock, fetch: globalThis.fetch, log: { error() {} }, ...mail });
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, log: { error() {} } }).init();
   await workspace.check();
   const app = createApp({
@@ -79,6 +81,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     chief,
     reflect,
     away,
+    mailSetup,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -108,6 +111,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     scheduler,
     reflect,
     away,
+    mailSetup,
     workspace,
     async get(p) {
       const res = await fetch(url + p);

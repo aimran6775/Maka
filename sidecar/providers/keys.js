@@ -11,7 +11,15 @@ import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 
 export const KEYSTORE_FILENAME = 'keystore.json';
-export const ENV_VARS = Object.freeze({ anthropic: 'ANTHROPIC_API_KEY', openrouter: 'OPENROUTER_API_KEY' });
+// Model providers and, from phase 2, the mail stack and the hosted worker tier. The
+// keystore uses the same names as keys: { "cloudflare": "...", "resend": "re_..." }.
+export const ENV_VARS = Object.freeze({
+  anthropic: 'ANTHROPIC_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  cloudflare: 'CLOUDFLARE_API_TOKEN',
+  resend: 'RESEND_API_KEY',
+  huggingface: 'HF_TOKEN',
+});
 
 export function defaultKeystorePath(env = process.env) {
   return path.join(env.MAKA_HOME || path.join(process.cwd(), '.maka'), KEYSTORE_FILENAME);

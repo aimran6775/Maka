@@ -302,6 +302,19 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     path: str,
     summary: str,
   }),
+  // Added v1 (phase 2 step 9): the mail domain's DNS at Cloudflare. 'planned' carries the
+  // dry-run diff counts; 'applied' what was written; 'failed' why not.
+  'mail.dns': payload(['domain', 'change'], {
+    domain: nonEmpty,
+    change: { type: 'string', enum: ['planned', 'applied', 'failed'] },
+    itemId: str,
+    create: int0,
+    update: int0,
+    remove: int0,
+    unchanged: int0,
+    errors: { type: 'array', items: str },
+    message: str,
+  }),
   // Added v1 (phase 2 step 3): an agent record was created, changed or removed. `agent` is
   // the layout record as it now stands (absent on 'removed').
   'crew.agent': payload(['agentId', 'change'], {

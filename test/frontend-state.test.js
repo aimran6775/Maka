@@ -317,3 +317,12 @@ test('away mode: the Peak counts Gate actions while away and keeps the return di
   assert.equal(s.away.away, false);
   assert.equal(s.away.lastDigest.digestId, 'd1');
 });
+
+test('mail.dns events and the mail status reach the Peak view', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ mail: { domain: 'makapark.com', keys: { resend: true, cloudflare: false }, lastPlan: null, lastApply: null } }));
+  assert.equal(s.mail.keys.cloudflare, false);
+  s = reduce(s, [ev('mail.dns', { domain: 'makapark.com', change: 'planned', create: 3, update: 0, remove: 1, unchanged: 1 })]);
+  assert.equal(s.mailDns.at(-1).change, 'planned');
+  assert.equal(s.mailDns.at(-1).create, 3);
+});
