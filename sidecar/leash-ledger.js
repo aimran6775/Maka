@@ -1,8 +1,14 @@
 // Leash ledger and leash state (phase 2 step 1).
 //
 // createLeashLedger({ store, clock, earnApprovals })
-//   -> { init(), dayKey(), spentToday(domain), checkCap(...), recordAction(...),
-//        recordDecision(...), recordJudge(...), judgeToday(), summary(), state() }
+//   -> { init(), dayKey(), spentToday(domain), reservedToday(domain), checkCap(...),
+//        reserve(...), recordAction(...), recordDecision(...), recordJudge(...),
+//        judgeToday(), summary(), state() }
+//
+// Safety M1: a capped action is reserved before it runs (reserve → execute → commit or
+// release), in one synchronous step, so concurrent runs cannot all pass the same cap
+// between a check and a record. Reservations live in memory only: a crash releases
+// what was in flight, and nothing is written to the day until an action succeeds.
 //
 // The ledger is the sidecar's memory for "what did the leash let through today" and
 // "how many approvals in a row has this Ranger earned". It holds, persisted atomically:
@@ -36,6 +42,17 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
   if (!store) throw new TypeError('createLeashLedger needs store');
   let data = emptyLedger();
   let saving = Promise.resolve();
+  const reserved = new Map(); // domain -> { usd, actions } in flight today (dayKey tracked per entry)
+  let reservedDay = null;
+  const reservedRow = (domain) => {
+    const key = localDayKey(clock.now());
+    if (reservedDay !== key) {
+      reserved.clear();
+      reservedDay = key;
+    }
+    if (!reserved.has(domain)) reserved.set(domain, { usd: 0, actions: 0 });
+    return reserved.get(domain);
+  };
 
   const save = () => {
     saving = saving.then(() => store.saveLeashLedger(data)).catch((err) => console.error('leash ledger save failed:', err));
@@ -69,18 +86,58 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
       const row = d && d.domains[domain];
       return row ? { usd: row.usd, actions: row.actions } : { usd: 0, actions: 0 };
     },
+    // Money and actions reserved by actions still running today (safety M1).
+    reservedToday(domain) {
+      const r = reservedRow(domain);
+      return { usd: r.usd, actions: r.actions };
+    },
     // Would an action of `amountUsd` in `domain` stay under the day's caps? A null cap is
     // no cap. The money cap counts the action itself (0 + amount <= cap), so a 0 USD cap
-    // sends every priced action to the Gate and lets free ones through.
+    // sends every priced action to the Gate and lets free ones through. What other
+    // actions have reserved and not yet committed counts as spent.
     checkCap({ domain, amountUsd = 0, dailyCapUsd = null, dailyCapActions = null }) {
       const t = this.spentToday(domain);
-      if (typeof dailyCapUsd === 'number' && t.usd + amountUsd > dailyCapUsd) {
-        return { ok: false, reason: `daily cap for ${domain} is $${dailyCapUsd}; $${t.usd.toFixed(2)} used today, this action is $${amountUsd.toFixed(2)}` };
+      const r = this.reservedToday(domain);
+      if (typeof dailyCapUsd === 'number' && t.usd + r.usd + amountUsd > dailyCapUsd) {
+        return { ok: false, reason: `daily cap for ${domain} is $${dailyCapUsd}; $${t.usd.toFixed(2)} used today${r.usd ? ` and $${r.usd.toFixed(2)} reserved by actions in flight` : ''}, this action is $${amountUsd.toFixed(2)}` };
       }
-      if (typeof dailyCapActions === 'number' && t.actions + 1 > dailyCapActions) {
-        return { ok: false, reason: `daily cap for ${domain} is ${dailyCapActions} action(s); ${t.actions} used today` };
+      if (typeof dailyCapActions === 'number' && t.actions + r.actions + 1 > dailyCapActions) {
+        return { ok: false, reason: `daily cap for ${domain} is ${dailyCapActions} action(s); ${t.actions} used today${r.actions ? ` and ${r.actions} reserved by actions in flight` : ''}` };
       }
       return { ok: true, reason: null };
+    },
+    // Checks the caps and, when they hold, reserves the amount and the action in the same
+    // synchronous step. Returns { ok, reason, commit(), release() }: commit() records the
+    // action (the reservation becomes spend), release() drops it (the action failed or
+    // never ran). Either is final; the other is then a no-op.
+    reserve({ domain, amountUsd = 0, dailyCapUsd = null, dailyCapActions = null }) {
+      if (!DOMAINS.includes(domain)) throw new Error(`unknown domain "${domain}"`);
+      const cap = this.checkCap({ domain, amountUsd, dailyCapUsd, dailyCapActions });
+      if (!cap.ok) return { ok: false, reason: cap.reason, commit: async () => null, release: () => false };
+      const row = reservedRow(domain);
+      const day = reservedDay;
+      row.usd += amountUsd;
+      row.actions += 1;
+      let settled = false;
+      const drop = () => {
+        if (settled) return false;
+        settled = true;
+        if (reservedDay === day && reserved.has(domain)) {
+          const r = reserved.get(domain);
+          r.usd = Math.max(0, r.usd - amountUsd);
+          r.actions = Math.max(0, r.actions - 1);
+        }
+        return true;
+      };
+      return {
+        ok: true,
+        reason: null,
+        commit: async () => {
+          if (!drop()) return null;
+          return this.recordAction({ domain, amountUsd });
+        },
+        release: drop,
+      };
     },
     // An action in a leash domain was executed (not merely allowed): count it.
     async recordAction({ domain, amountUsd = 0 }) {

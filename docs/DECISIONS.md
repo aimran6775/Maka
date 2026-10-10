@@ -971,3 +971,15 @@ does not manage. The review's "unknown or zero" is met this way rather than by s
 every zero to the Gate: a pause is a reversible, spend-stopping action a Ranger must be
 able to take at 3 a.m. with the owner away, and the zero it reports is proven, not
 defaulted. money_in tools (price changes) keep no amount; the rule is about money leaving.
+
+## D113. The cap is reserved before the action, in one synchronous step (safety M1)
+
+The gate checked the cap, awaited the connector's HTTP call, then recorded the spend;
+four Rangers checking a $50 cap in the same tick each saw $0 used and all four spent
+$40. `ledger.reserve()` now checks and reserves in one synchronous step (Node runs one
+tick at a time, so nothing interleaves between the check and the reservation), the
+action runs holding its reservation, and success commits it as recorded spend while
+failure, a throw or a Gate detour releases it. Reservations stay in memory: a crash
+releases what was in flight, which is the right default because an action that never
+answered may not have happened, and the next sync of the connector is the truth about
+what did. Nothing is written to the day until an action succeeds, as before.

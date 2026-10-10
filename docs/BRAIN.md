@@ -49,7 +49,9 @@ so a Ranger cannot drive Maka's own routes through its tools. H2 done: a money_o
 action whose amount the tool cannot prove (an ad campaign with no campaign-level budget,
 a Stripe charge the store does not know) is a Gate item at every leash level, never a $0
 pass under the cap; a lifetime budget counts in full; activation of a campaign with no
-campaign-level budget is refused outright.
+campaign-level budget is refused outright. M1 done: at Act with cap the ledger reserves
+the amount before the action runs and commits it on success (releases it otherwise), so
+concurrent runs cannot all pass the same cap between a check and a record.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

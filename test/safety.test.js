@@ -336,3 +336,70 @@ test('H2 the gate: a money_out tool whose amountUsd is unknown (null, non-finite
     await h.cleanup();
   }
 });
+
+// ---------- M1: the daily cap is reserved before the action runs, not recorded after ----------
+
+test('M1 four Rangers spending $40 each under a $50 cap at once: one runs, three wait at the Gate; a failed action releases its reservation, a successful one commits it', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-safety-m1-'));
+  const store = createStore({ root: path.join(dir, 'home') });
+  await store.init();
+  const bus = createEventBus();
+  const clock = fakeClock(1_700_000_000_000);
+  const layout = defaultLayout();
+  for (const id of ['r1', 'r2', 'r3', 'r4']) layout.agents.push({ id, name: id, roomId: 'ranger-station', x: 1, y: 1, role: 'ranger' });
+  const layoutState = createLayoutState({ initial: layout, store, bus, clock });
+  const ledger = await createLeashLedger({ store, clock }).init();
+  const leash = defaultLeash();
+  leash.domains.money_out = { level: 'act_capped', dailyCapUsd: 50 };
+  const leashState = createLeashState({ initial: leash, store });
+  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
+  let release;
+  const blocked = new Promise((r) => { release = r; });
+  let outcome = { ok: true, output: 'paid' };
+  const ran = [];
+  const pay = { name: 'pay.supplier', description: 'pay', inputSchema: { type: 'object', additionalProperties: false, properties: { usd: { type: 'number' } } }, confirm: false, domain: 'money_out', amountUsd: (input) => input.usd, summarize: (i) => `pay $${i.usd}`, async run(input, ctx) { ran.push(ctx.agentId); await blocked; return outcome; } };
+  const gateFor = (agentId) => createToolGate({ getLayout: layoutState.get, agentId, workspaceDir: path.join(dir, agentId), registry: { 'pay.supplier': pay }, grants: () => ['pay.supplier'], getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId: `run-${agentId}`, agentId }), log: (item) => gateQueue.log({ ...item, runId: `run-${agentId}`, agentId }) } });
+  try {
+    // all four check the cap in the same tick, before any of them has recorded a cent
+    const calls = ['r1', 'r2', 'r3', 'r4'].map((id) => gateFor(id).execute({ id: `c-${id}`, name: 'pay.supplier', input: { usd: 40 } }, { runId: `run-${id}` }));
+    await waitUntil(() => ran.length + gateQueue.pending().length === 4);
+    assert.equal(ran.length, 1, 'exactly one $40 action runs under a $50 cap');
+    assert.equal(gateQueue.pending().length, 3, 'the other three wait at the Gate');
+    for (const it of gateQueue.pending()) {
+      assert.match(it.reason, /cap/);
+      assert.match(it.reason, /reserved|in flight|40/);
+    }
+    assert.deepEqual(ledger.spentToday('money_out'), { usd: 0, actions: 0 }, 'nothing is recorded until an action succeeds');
+    assert.equal(ledger.reservedToday('money_out').usd, 40, 'the running action holds its reservation');
+    // the running one fails: its reservation is released and the next $40 may run
+    outcome = { ok: false, error: 'card declined' };
+    release();
+    const first = await calls[ran[0] === 'r1' ? 0 : ran[0] === 'r2' ? 1 : ran[0] === 'r3' ? 2 : 3];
+    assert.equal(first.ok, false);
+    assert.deepEqual(ledger.spentToday('money_out'), { usd: 0, actions: 0 });
+    assert.deepEqual(ledger.reservedToday('money_out'), { usd: 0, actions: 0 }, 'a failed action releases what it reserved');
+    for (const it of gateQueue.pending()) await gateQueue.resolve(it.itemId, { decision: 'reject', notes: 'no' });
+    for (const c of await Promise.all(calls)) if (c.ok !== false || c.code !== 'GATE_REJECT') assert.equal(c.ok, false);
+    outcome = { ok: true, output: 'paid' };
+    const again = await gateFor('r2').execute({ id: 'c-again', name: 'pay.supplier', input: { usd: 40 } }, { runId: 'run-r2' });
+    assert.equal(again.ok, true, again.error);
+    assert.deepEqual(ledger.spentToday('money_out'), { usd: 40, actions: 1 }, 'a successful action commits its reservation');
+    assert.deepEqual(ledger.reservedToday('money_out'), { usd: 0, actions: 0 });
+    // the ledger's own API: reserve → the cap sees the reservation; release and commit
+    const r = ledger.reserve({ domain: 'money_out', amountUsd: 10, dailyCapUsd: 50 });
+    assert.equal(r.ok, true);
+    assert.equal(ledger.checkCap({ domain: 'money_out', amountUsd: 1, dailyCapUsd: 50 }).ok, false, 'the cap counts the reservation');
+    r.release();
+    assert.equal(ledger.checkCap({ domain: 'money_out', amountUsd: 1, dailyCapUsd: 50 }).ok, true);
+    const r2 = ledger.reserve({ domain: 'money_out', amountUsd: 5, dailyCapUsd: 50, dailyCapActions: 2 });
+    assert.equal(r2.ok, true);
+    assert.equal(ledger.reserve({ domain: 'money_out', amountUsd: 0, dailyCapUsd: 50, dailyCapActions: 2 }).ok, false, 'the action cap counts reservations too');
+    await r2.commit();
+    assert.deepEqual(ledger.spentToday('money_out'), { usd: 45, actions: 2 });
+    r2.release();
+    assert.deepEqual(ledger.spentToday('money_out'), { usd: 45, actions: 2 }, 'a committed reservation cannot be released');
+    assert.equal(ledger.reserve({ domain: 'money_out', amountUsd: 6, dailyCapUsd: 50 }).ok, false);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});

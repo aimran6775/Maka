@@ -12,7 +12,9 @@
 //   observe     refused with a typed result ({ code: 'LEASH_OBSERVE' }); logged at the Gate
 //   draft       parked as a pending Gate item via submit(); approve runs it, revise/reject
 //               answer the call with the notes ({ code: 'GATE_REVISE' | 'GATE_REJECT' })
-//   act_capped  runs while the ledger says the domain's daily caps hold, else a Gate item
+//   act_capped  reserves the amount in the ledger (safety M1: reserve → run → commit or
+//               release, so concurrent runs cannot all pass the same cap) and runs while
+//               the daily caps hold, else a Gate item
 //   act_free    runs; logged in the ledger (and at the Gate for non-research domains)
 //
 // A tool's domain is `tool.domain` when the tool declares one (a string, or a function of
@@ -118,6 +120,26 @@ export function createToolGate({
     return result;
   }
 
+  // Safety M1: a capped action holds its reservation while it runs; success commits it
+  // (the ledger records the action), anything else releases it.
+  async function runReserved(tool, call, ctx, reservation) {
+    let result;
+    try {
+      result = await run(tool, call, ctx);
+    } catch (err) {
+      reservation.release();
+      throw err;
+    }
+    if (result && result.ok) {
+      try {
+        await reservation.commit();
+      } catch (err) {
+        console.error('leash ledger record failed:', err);
+      }
+    } else reservation.release();
+    return result;
+  }
+
   return {
     granted,
     leashFor,
@@ -175,6 +197,7 @@ export function createToolGate({
         }
         let viaGate = entry.level === 'draft';
         let gateReason = viaGate ? `leash for ${domain} is ${LEASH_LEVEL_LABELS.draft}` : null;
+        let reservation = null; // safety M1: the cap is reserved before the action runs
         if (amountUnknown) {
           viaGate = true;
           gateReason = `the amount this ${domain} action moves cannot be proven (${call.name} names no campaign-level or record-level figure), so no cap can be checked; it needs a decision at the Entrance Gate`;
@@ -182,11 +205,12 @@ export function createToolGate({
           if (!ledger) {
             viaGate = true;
             gateReason = `leash for ${domain} is ${LEASH_LEVEL_LABELS.act_capped} but no ledger can prove the cap`;
-          } else {
-            const cap = ledger.checkCap({ domain, amountUsd, dailyCapUsd: entry.dailyCapUsd, dailyCapActions: entry.dailyCapActions });
-            if (!cap.ok) {
+          } else if (!viaGate && !(ctx.review && ctx.review.escalate)) {
+            reservation = ledger.reserve({ domain, amountUsd, dailyCapUsd: entry.dailyCapUsd, dailyCapActions: entry.dailyCapActions });
+            if (!reservation.ok) {
               viaGate = true;
-              gateReason = cap.reason;
+              gateReason = reservation.reason;
+              reservation = null;
             }
           }
         }
@@ -196,6 +220,7 @@ export function createToolGate({
           gateReason = ctx.review.reason || 'the judge could not review this action; falls back to Draft for review';
         }
         if (viaGate) {
+          if (reservation) reservation.release();
           if (!submit || typeof submit.submit !== 'function') return { ok: false, code: 'GATE_UNAVAILABLE', error: `${call.name} needs a decision at the Entrance Gate and no Gate queue is available` };
           let decision;
           try {
@@ -209,6 +234,7 @@ export function createToolGate({
           return { ok: false, code: 'GATE_REJECT', error: `rejected at the Entrance Gate${decision.notes ? `: ${decision.notes}` : ''}` };
         }
         if (DOMAIN_LOGGED_AT_GATE(domain)) await log('allowed', `leash for ${domain} is ${LEASH_LEVEL_LABELS[entry.level]}`);
+        if (reservation) return runReserved(tool, call, ctx, reservation);
         return runAndRecord(tool, call, ctx, domain, amountUsd);
       }
 
