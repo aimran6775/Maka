@@ -29,10 +29,11 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 1, step 7 done (after the owner's 2026-10-10 scoping decisions; see
-`docs/KICKOFF_BRIEF.md`). `npm start` serves the park: one zone (Ranger Station), one
-Ranger, build mode for the two phase 1 fixtures, COMMS, SPEND and the Entrance Gate card,
-all driven by the sidecar's events. Loop, three providers, router, capability gate with
+Phase 1, steps 1 to 6b done. Step 7 exists as a working 2D pixel-art park (one zone, the
+Entrance Gate, one Ranger from the vendored CC0 sheets, build mode, COMMS, SPEND, Gate
+card, inspector, camera) but is **on hold and superseded**: on 2026-10-10 the owner changed
+the visual direction to 3D and a new step 7 spec is pending. The 2D work is committed as
+WIP so the event-driven UI logic (reducer, SSE client, inspector) can be reused. Loop, three providers, router, capability gate with
 leash data, HTTP + SSE and atomic persistence are tested over real HTTP; the frontend
 reducer is tested under Node and the page was exercised in headless Chromium.
 

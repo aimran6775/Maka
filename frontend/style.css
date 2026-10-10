@@ -83,3 +83,12 @@ body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--sans); ov
 .perm-title { font-size: 15px; font-weight: 600; }
 .perm-leash { font-family: var(--mono); font-size: 11px; }
 .perm-input { margin: 0; max-height: 160px; overflow: auto; font-size: 11px; background: #0f1a14; padding: 6px; border-radius: 4px; white-space: pre-wrap; word-break: break-word; }
+
+.kv { display: flex; gap: 8px; font-size: 12px; align-items: baseline; }
+.kv .k, .k { color: var(--muted); font-family: var(--mono); font-size: 11px; flex: 0 0 72px; }
+.kv .v { flex: 1; word-break: break-word; }
+.leash .kv .k { flex-basis: 130px; }
+.use { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.use.ok { color: var(--ok); }
+.use.failed { color: var(--error); }
+.use.running { color: var(--warn); }

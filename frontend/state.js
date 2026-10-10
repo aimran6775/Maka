@@ -17,6 +17,7 @@ export function initialState() {
     lastSeq: 0,
     providers: {},
     policy: null, // router policy from the snapshot (worker / judge tiers)
+    leash: null, // leash policy from the snapshot (shared/leash.js shape)
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
     objectKinds: {},
@@ -60,6 +61,7 @@ export function applySnapshot(state, snap) {
   next.lastSeq = Math.max(state.lastSeq, next.snapshotSeq);
   next.providers = snap.providers || {};
   next.policy = snap.policy || null;
+  next.leash = snap.leash || null;
   next.keystore = snap.keystore || { path: '', problem: null };
   next.layout = snap.layout;
   next.objectKinds = snap.objectKinds || {};
@@ -230,4 +232,23 @@ export function grantedTools(state, agentId) {
 export function currentRun(state) {
   const id = state.activeRun ? state.activeRun.runId : state.runOrder[state.runOrder.length - 1];
   return id ? state.runs[id] || null : null;
+}
+
+// Tool calls seen this session through the given tools (for a fixture's inspect card).
+export function toolUses(state, toolNames) {
+  const out = [];
+  for (const id of state.runOrder) {
+    const run = state.runs[id];
+    for (const it of run.items) {
+      if (it.kind === 'tool' && toolNames.includes(it.name)) out.push({ runId: id, callId: it.callId, name: it.name, ok: it.result ? it.result.ok : null, input: it.input });
+    }
+  }
+  return out;
+}
+
+// The most recent cost line of a run, i.e. which model last ran a turn for it.
+export function lastModel(run) {
+  if (!run) return null;
+  for (let i = run.items.length - 1; i >= 0; i--) if (run.items[i].kind === 'cost') return run.items[i];
+  return null;
 }

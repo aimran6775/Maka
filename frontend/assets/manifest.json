@@ -1,0 +1,66 @@
+{
+  "generatedBy": "scripts/fetch-assets.mjs",
+  "note": "Every file below was extracted from an archive whose SHA-256 matched the pin. Licenses: see NOTICE.md.",
+  "sources": [
+    {
+      "id": "kenney-tiny-town",
+      "title": "Tiny Town (1.1)",
+      "author": "Kenney",
+      "license": "CC0-1.0",
+      "page": "https://kenney.nl/assets/tiny-town",
+      "url": "https://kenney.nl/media/pages/assets/tiny-town/a415fbeb49-1735736916/kenney_tiny-town.zip",
+      "archiveSha256": "9768692dccff1d706408a5aedd6ca4f6cd1409506cbc84cb2f862919764be977",
+      "licenseEvidence": "License.txt inside the archive: \"License: (Creative Commons Zero, CC0)\"",
+      "files": [
+        {
+          "from": "Tilemap/tilemap_packed.png",
+          "to": "tiny-town.png",
+          "sha256": "3a54d99ecde790d4fdea207a3644cf130fc56fa838f1beb1507c185a95b8e902",
+          "bytes": 5042,
+          "note": "16x16 tiles, 12 columns, no spacing"
+        }
+      ]
+    },
+    {
+      "id": "kenney-roguelike-rpg",
+      "title": "Roguelike/RPG pack",
+      "author": "Kenney",
+      "license": "CC0-1.0",
+      "page": "https://kenney.nl/assets/roguelike-rpg-pack",
+      "url": "https://kenney.nl/media/pages/assets/roguelike-rpg-pack/12c03cd78b-1677697420/kenney_roguelike-rpg-pack.zip",
+      "archiveSha256": "8e7d2378f8f794245645f6d7dc7aeeb246791410a7e512293c594b46a5a9524b",
+      "licenseEvidence": "License.txt inside the archive: \"License (Creative Commons Zero, CC0)\"",
+      "files": []
+    },
+    {
+      "id": "shade-puny-characters",
+      "title": "Puny Characters",
+      "author": "Shade",
+      "license": "CC0-1.0",
+      "page": "https://opengameart.org/content/puny-characters",
+      "url": "https://opengameart.org/sites/default/files/puny-characters.zip",
+      "archiveSha256": "971d7b07eea18fb2cce475cd6554a176ebf783bb064dec5a637ba33c7829320e",
+      "licenseEvidence": "OpenGameArt listing shows license CC0; the archive carries no license file",
+      "files": [
+        {
+          "from": "Puny-Characters/Soldier-Yellow.png",
+          "to": "ranger.png",
+          "sha256": "348ab99b4f54d1a22013d24191a0e1622324db7f78926b5bd465a17516187204",
+          "bytes": 25193,
+          "note": "32x32 frames, 24 columns, 8 direction rows; row 0 faces down"
+        }
+      ]
+    },
+    {
+      "id": "inkbubi-forest-free",
+      "title": "16x16 Pixel Forest Tileset, Top-down (free sample, v1.1)",
+      "author": "inkBubi",
+      "license": "CC0-1.0",
+      "page": "https://opengameart.org/node/180257",
+      "url": "https://opengameart.org/sites/default/files/seasons_of_forest_free_v1_1.zip",
+      "archiveSha256": "e37d01e005fe31577d4f501f33bda98cb77db815e21862e162269889cc07f777",
+      "licenseEvidence": "license.txt inside the archive: \"License: CC0 (Creative Commons Zero)\"",
+      "files": []
+    }
+  ]
+}

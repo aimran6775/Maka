@@ -59,6 +59,11 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 
 ## `frontend/` — static vanilla JS, served by the sidecar, imports only from `/shared/`
 
+**Status: the 2D pixel-art park below works end to end but is SUPERSEDED.** On 2026-10-10
+the owner changed the visual direction to 3D; work stopped on an owner hold and the
+replacement step 7 spec is pending. Everything in this section is committed as work in
+progress so nothing is lost; it is not the final park.
+
 | Path | What it is |
 | --- | --- |
 | `frontend/index.html` | The page: full-bleed canvas, window layer, flash line, status bar. Loads `app.js` as an ES module. |
@@ -66,8 +71,10 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 | `frontend/app.js` | Entry: loads `/api/state`, subscribes to `/api/events`, owns the state object, renders world + windows on each change, resyncs the snapshot after a reconnect. |
 | `frontend/state.js` | Pure reducer (tested under Node): snapshot + validated events → layout, per-Ranger state (idle / thinking / tool-running / waiting / done / error), run transcripts with per-turn cost lines, pending prompts, reconciled spend (never double-counted across snapshot and replay). Invalid events are counted and ignored. |
 | `frontend/events.js` | SSE client with reconnect and Last-Event-ID resume. |
-| `frontend/world.js` | Canvas renderer: zones, fixtures, Ranger bodies, build-mode ghost and tile picking, cosmetic day/night tint from the real clock; theme-agnostic; keeps the park clear of the window insets. |
-| `frontend/theme/park.js` | National park theme data: grass tiles, gravel zone border, fixture drawings (`trailhead_sign`, `supply_cache`), the Ranger body with one badge per harness state. Swap this file to re-skin. |
+| `frontend/world.js` | Canvas renderer: ground and trees over the view, zones with path rings, station, Entrance Gate (a waiting Ranger stands there), fixtures, Ranger bodies, build-mode ghost, pan/zoom camera, click targets (Ranger / fixture / Gate / zone) reported to the inspector; theme-agnostic. |
+| `frontend/theme/park.js` | National park theme built from the vendored CC0 sheets (Tiny Town tiles, Puny Characters Ranger): ground, path ring, station building, Entrance Gate, fixture tiles, Ranger frames per harness state. Primitive drawings stand in until the sheets load; the status bar shows `art: loading / ready / missing`. |
+| `frontend/assets/` | Vendored sheets (`tiny-town.png`, `ranger.png`) plus `manifest.json` with source, license, archive hash and per-file hash. Produced by `scripts/fetch-assets.mjs`; checked by `test/assets.test.js`. |
+| `frontend/ui/inspect.js` | INSPECT window: the card for a clicked Ranger (state, run, model per turn, spend, leash levels), zone (roster, fixtures, grants), fixture (grants, tool calls through it this session) or the Entrance Gate (what is waiting). Only session data, nothing projected. |
 | `frontend/ui/windows.js` | Draggable window helper and tiny DOM builder. |
 | `frontend/ui/comms.js` | COMMS window: "route by policy" (worker tier) or an explicit provider, each labelled wired / not wired / reachable / not reachable; brief, run, cancel; streaming transcript with tool calls, Gate decisions and per-turn model + cost lines. |
 | `frontend/ui/spend.js` | SPEND window fed only by reconciled cost; unpriced turns are counted, never estimated. |
@@ -75,8 +82,15 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 | `frontend/ui/permission.js` | Entrance Gate cards for pending prompts with the tool, its input, and the leash domain and level; Allow / Deny post `permission.response` and the card leaves only when the sidecar echoes the answer. |
 
 Verified end to end in headless Chromium against a test sidecar with a scripted provider
-(place by clicking, run from COMMS, Gate card, allow, run end, spend); the script lives
-outside the repo for now, so this check is manual, not part of `test:fast`.
+(place by clicking, run from COMMS, Gate card with leash level, Ranger standing at the
+Gate, inspector, allow, run end, spend; no console errors); the script lives outside the
+repo for now, so this check is manual, not part of `test:fast`.
+
+## `scripts/`
+
+| Path | What it is |
+| --- | --- |
+| `scripts/fetch-assets.mjs` | Downloads the pinned art archives, verifies SHA-256, extracts only the listed sheets into `frontend/assets/`, writes the manifest. `--check` verifies the vendored files against the manifest. Core-only zip reader inside. |
 
 ## `test/`
 
@@ -93,6 +107,7 @@ outside the repo for now, so this check is manual, not part of `test:fast`.
 | `test/helpers/test-server.js` | Boots the full sidecar stack in a temp dir with an injectable provider factory; SSE client for tests. |
 | `test/router.test.js` | Policy validation and routing; tier stamped on cost events; the loop's review hook (approve / revise / reject / throw / unknown verdict). |
 | `test/leash.test.js` | Leash levels, defaults, tool → domain coverage, validation; contract enum agrees with the model. |
+| `test/assets.test.js` | Zip reader (stored and deflated), vendored files match the manifest, every source is CC0/CC-BY with evidence, hash mismatch refuses to extract. |
 | `test/frontend-state.test.js` | The frontend reducer: state transitions through a run, waiting at the Gate, errors, spend double-count guard, layout events, invalid events. |
 | `test/capability.test.js` | Layout → grants, sandbox escapes (dotdot, absolute, symlinks), read/write/fetch behaviour, gate refusal and confirmation flow, gate driving the real loop. |
 | `test/helpers/fake-provider.js` | Scripted provider, fake clock, event recorder, fake tool set. Test-only. |

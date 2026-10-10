@@ -186,3 +186,17 @@ now; `test:fast` covers the reducer under Node and the sidecar over real HTTP.
   raycast picking. Assets: Kenney Nature Kit, Survival Kit, Animated Characters 1 and 3
   (all CC0, GLTF); Quaternius Ultimate Platformer Pack (CC0, glTF) as fallback rig.
   The 2D pixel-art plan and its assets list are superseded.
+
+## D25. Vendored art is verified, not trusted
+
+`scripts/fetch-assets.mjs` pins each archive's URL and SHA-256, extracts only the sheets
+the renderer draws, and writes a manifest with per-file hashes; `test/assets.test.js`
+checks the vendored files against it on every run. Packs that are pinned but not drawn
+extract nothing. A hash mismatch refuses to extract rather than "updating" the pin.
+
+## D26 (pending). The 2D pixel-art park is superseded by a 3D direction
+
+Relayed on 2026-10-10 after the 2D park was working end to end: the owner wants a 3D park.
+Work stopped on a hold; the 2D slice is committed as WIP. What carries over regardless of
+renderer: the event contract, the frontend reducer and SSE client, the inspector's data
+model, and the rule that every visual state maps to a real event. Awaiting the new spec.
