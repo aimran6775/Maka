@@ -109,3 +109,6 @@ body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--sans); ov
 .item.judge.skipped { color: var(--muted); border-color: var(--muted); }
 .mission-form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .mission-form .prompt { width: 100%; box-sizing: border-box; }
+.btn.small { padding: 2px 7px; font-size: 11px; }
+.sel.small { font-size: 11px; padding: 1px 4px; }
+.gate-row { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }

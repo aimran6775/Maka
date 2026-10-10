@@ -39,6 +39,18 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 7 done: the park shows the crew. Department camps, the Visitor Center (made
+at boot) and a trailhead per venture (made when the Chief submits a plan) are rooms in the
+layout, drawn as clearings dressed per kind; trails run hub-and-spoke through the Ranger
+Station plus trailhead ↔ the camps serving that venture, and a walk between any two zones
+is one or two legs. Every agent has a body cloned from the rigged template with its role's
+tint and size (the Chief gold on the Peak, Juniors small), a name and a state badge; the
+receiver walks the route after a `work.handoff`, and walks its deliverable to the Visitor
+Center after a `work.done` with files. Panels: Ranger (brief / pause / reassign, spend vs
+budget, work items), zone (roster, budget burn, editable leash defaults, queue), trail
+(items in transit), Gate (approve / revise / reject), Peak (portfolio). The headless check
+is `scripts/park-check.mjs`.
+
 Phase 2 step 6 done: the reflection cycle. A persisted cron-like scheduler runs the
 reflection daily (`reflectAt`, 07:00 by default) and a budget watcher runs it when a
 venture or the mission crosses 100 % of its model-spend budget (80 % and 100 % are

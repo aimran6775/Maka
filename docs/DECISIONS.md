@@ -459,3 +459,27 @@ not, because the reflection would be skipped at that cap anyway.
 The scheduler persists each job's next run. A job whose next run is in the past at boot
 runs on the first tick with reason `missed`, then reschedules from that run, so a Mac that
 was asleep at 07:00 still gets its reflection, labelled as late.
+
+## D56. The Visitor Center and trailheads are rooms; trails are hub and spoke
+
+The park is a function of the layout, so everything the park must show is in the layout:
+the Visitor Center is created at boot, a trailhead room (named by its venture) when the
+Chief submits a plan. Trails run from the Ranger Station to every other clearing, plus
+trailhead ↔ each camp whose Rangers serve that venture; a walk between two camps is two
+legs through the station. A full mesh would be unreadable at six camps; the hub keeps every
+zone two hops from any other and the trails legible.
+
+## D57. On a handoff the receiver walks; on a delivery it walks there and back
+
+A `work.handoff` names the sender's zone and the receiver's. The park has the receiver
+walk the route from the sender's zone home, as if collecting the brief, and the walk takes
+real time at `WALK_SPEED` from the event's timestamp. A `work.done` with files sends the
+receiver out to the Visitor Center and back. A work item in transit is listed on the trail
+card from the item's own status, not from the animation.
+
+## D58. Pause is a record field, not a run state
+
+`agent.paused` on the layout record means: no new run starts for this agent and its active
+and queued runs are cancelled when the pause is set. It survives a restart, it is visible
+to every client through `crew.agent`, and the body shows it. Resume clears the field; it
+restarts nothing by itself.

@@ -78,6 +78,7 @@ test('placement: default layout gives one zone clearing, a gate clearing, one tr
   assert.equal(model.trails.length, 2);
   assert.equal(model.trails[0].from, 'ranger-station');
   assert.equal(model.trails[1].to, 'mountain-peak');
+  assert.equal(model.visitorCenter, null);
   assert.ok(model.trails[0].table.length > 20);
   assert.ok(model.foliage.filter((f) => f.kind === 'tree').length > 300);
   assert.ok(model.foliage.filter((f) => f.kind === 'rock').length > 50);
@@ -95,9 +96,10 @@ test('placement: default layout gives one zone clearing, a gate clearing, one tr
   // Zones map from tiles.
   assert.deepEqual(zoneCenter({ x: 6, y: 6, w: 2, h: 2 }), { x: 0, z: 0 });
   assert.deepEqual(tileToWorld(7, 7), { x: 2, z: 2 });
-  // A second zone adds a trail between zones.
+  // A second zone adds a spoke from the station hub.
   const two = { ...layout, rooms: [...layout.rooms, { id: 'camp', name: 'Campground', x: 20, y: 1, w: 6, h: 6 }] };
-  assert.equal(trailsFor(clearingsFor(two)).length, 4);
+  assert.equal(trailsFor(clearingsFor(two)).length, 3);
+  assert.deepEqual(trailsFor(clearingsFor(two)).map((t) => [t.from, t.to]), [['ranger-station', 'gate:ranger-station'], ['ranger-station', 'mountain-peak'], ['ranger-station', 'camp']]);
   assert.ok(scatterFoliage(layout, model.clearings, model.trails, { trees: 10, rocks: 2 }).length <= 12);
 });
 
@@ -109,7 +111,7 @@ test('clips: every agent state has a clip; walking overrides; placement follows 
   assert.equal(clipFor('mystery', false), 'idle');
   const home = { x: 1, z: 2 };
   const gate = { x: 5, z: 40 };
-  assert.deepEqual(placeFor({ agentState: 'idle', home, gate }), { x: 1, z: 2, heading: 0, walking: false, fraction: 1 });
+  assert.deepEqual(placeFor({ agentState: 'idle', home, gate }), { x: 1, z: 2, heading: 0, walking: false, fraction: 1, leg: 'home' });
   assert.equal(placeFor({ agentState: 'waiting', home, gate }).z, 40);
   const pts = [{ x: 0, z: 0 }, { x: 5, z: 1 }, { x: 10, z: 0 }];
   const trail = { table: arcLengthTable(pts, 16) };
@@ -119,7 +121,8 @@ test('clips: every agent state has a clip; walking overrides; placement follows 
   assert.ok(mid.x > 3 && mid.x < 7);
   const end = placeFor({ agentState: 'idle', home, gate, handoff: { trail, startedAt }, now: startedAt + 60000, pointAtFraction });
   assert.equal(end.walking, false);
-  assert.equal(end.x, 10);
+  assert.equal(end.leg, 'home', 'a finished handoff walk ends at home (the route ends in the Ranger\'s own zone)');
+  assert.equal(end.x, home.x);
   assert.equal(badgeFor('waiting'), 'gate');
   assert.equal(badgeFor('idle'), null);
 });
@@ -158,4 +161,73 @@ test('a mountain_peak room is the Peak clearing (no duplicate), and its agents s
   assert.equal(chief.home.x, peaks[0].x);
   assert.equal(chief.home.y, peaks[0].height);
   assert.equal(model.clearings.find((c) => c.kind === 'zone').zoneKind, 'ranger_station');
+});
+
+test('step 7 park: hub-and-spoke trails, trailheads to the camps that serve a venture, two-leg routes, the Visitor Center', async () => {
+  const { buildParkModel, routeBetween, reverseTable, joinTables } = await import('../frontend/park/placement.js');
+  const layout = defaultLayout();
+  layout.rooms.push({ id: 'mountain-peak', name: 'Mountain Peak', kind: 'mountain_peak', x: 0, y: 0, w: 2, h: 2 });
+  layout.rooms.push({ id: 'visitor-center', name: 'Visitor Center', kind: 'visitor_center', x: 21, y: 1, w: 8, h: 6 });
+  layout.rooms.push({ id: 'research', name: 'Research Camp', kind: 'research', x: 31, y: 1, w: 8, h: 6 });
+  layout.rooms.push({ id: 'marketing', name: 'Marketing Camp', kind: 'marketing', x: 41, y: 1, w: 8, h: 6 });
+  layout.rooms.push({ id: 'trailhead-lantern', name: 'Lantern Co Trailhead', kind: 'trailhead', venture: 'lantern-co', x: 1, y: 11, w: 4, h: 4 });
+  layout.agents.push({ id: 'chief-ranger', name: 'Chief', roomId: 'mountain-peak', x: 0, y: 0, role: 'chief_ranger' });
+  layout.agents.push({ id: 'ada', name: 'Ada', roomId: 'research', x: 31, y: 1, role: 'ranger', venture: 'lantern-co' });
+  layout.agents.push({ id: 'jr', name: 'Jr', roomId: 'research', x: 32, y: 1, role: 'junior_ranger', parentAgentId: 'ada', venture: 'lantern-co' });
+  const model = buildParkModel(layout);
+  const pairs = model.trails.map((t) => `${t.from}>${t.to}`);
+  assert.deepEqual(pairs, ['ranger-station>gate:ranger-station', 'ranger-station>mountain-peak', 'ranger-station>visitor-center', 'ranger-station>research', 'ranger-station>marketing', 'ranger-station>trailhead-lantern', 'trailhead-lantern>research']);
+  assert.equal(model.visitorCenter.id, 'visitor-center');
+  assert.equal(model.clearings.find((c) => c.id === 'trailhead-lantern').venture, 'lantern-co');
+  // Routes: direct, two legs through the hub, none.
+  const direct = routeBetween(model.trails, 'research', 'ranger-station');
+  assert.deepEqual(direct.legs, ['trail:ranger-station:research']);
+  assert.deepEqual(direct.table.samples[0], { ...model.trails[3].table.samples.at(-1), dist: 0, t: 0 }, 'reversed to start at research');
+  const two = routeBetween(model.trails, 'mountain-peak', 'research');
+  assert.deepEqual(two.legs, ['trail:ranger-station:mountain-peak', 'trail:ranger-station:research']);
+  assert.ok(Math.abs(two.table.length - (model.trails[1].table.length + model.trails[3].table.length)) < 1e-9);
+  assert.ok(two.table.samples.every((smp, i, arr) => i === 0 || smp.dist >= arr[i - 1].dist), 'distances increase along the joined route');
+  assert.equal(two.table.samples.at(-1).t, 1);
+  assert.equal(model.route('research', 'marketing').legs.length, 2);
+  assert.equal(routeBetween(model.trails, 'research', 'research'), null);
+  assert.equal(routeBetween([], 'a', 'b'), null);
+  const t = arcLengthTable([{ x: 0, z: 0 }, { x: 10, z: 0 }], 4);
+  const r = reverseTable(t);
+  assert.equal(r.samples[0].x, 10);
+  assert.equal(r.samples[0].dist, 0);
+  assert.equal(r.samples.at(-1).dist, t.length);
+  const j = joinTables(t, reverseTable(t));
+  assert.equal(j.length, 2 * t.length);
+  assert.equal(j.samples.length, t.samples.length * 2 - 1);
+  assert.equal(j.samples.at(-1).x, 0);
+  // Bodies: juniors stand where their tile says, the Chief on the Peak.
+  assert.equal(model.agents.find((a) => a.id === 'jr').zoneClearingId, 'research');
+  assert.equal(model.agents.find((a) => a.id === 'chief-ranger').zoneClearingId, 'mountain-peak');
+});
+
+test('step 7 clips: a delivery walks out to the Visitor Center and back; handoff wins over delivery; looks per role', async () => {
+  const { lookFor, ROLE_LOOK } = await import('../frontend/park/clips.js');
+  const home = { x: 0, z: 0 };
+  const gate = { x: 5, z: 40 };
+  const trail = { table: arcLengthTable([{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 20, z: 0 }], 16) };
+  const startedAt = 1000;
+  const secs = (d) => startedAt + (d / WALK_SPEED) * 1000;
+  const out = placeFor({ agentState: 'idle', home, gate, delivery: { trail, startedAt }, now: secs(5), pointAtFraction });
+  assert.equal(out.leg, 'deliver');
+  assert.ok(out.walking && out.x > 3 && out.x < 7);
+  const there = placeFor({ agentState: 'idle', home, gate, delivery: { trail, startedAt }, now: secs(trail.table.length + 5), pointAtFraction });
+  assert.equal(there.leg, 'return');
+  assert.ok(there.walking && there.x > 12 && there.x < 17, 'walking back');
+  const back = placeFor({ agentState: 'idle', home, gate, delivery: { trail, startedAt }, now: secs(2 * trail.table.length + 1), pointAtFraction });
+  assert.deepEqual([back.leg, back.walking, back.x], ['home', false, 0]);
+  const both = placeFor({ agentState: 'idle', home, gate, handoff: { trail, startedAt }, delivery: { trail, startedAt }, now: secs(2), pointAtFraction });
+  assert.equal(both.leg, 'handoff');
+  const waiting = placeFor({ agentState: 'waiting', home, gate, delivery: { trail, startedAt }, now: secs(999), pointAtFraction });
+  assert.equal(waiting.leg, 'gate');
+  assert.equal(lookFor({ role: 'junior_ranger' }).scale, ROLE_LOOK.junior_ranger.scale);
+  assert.ok(lookFor({ role: 'junior_ranger' }).scale < lookFor({ role: 'ranger' }).scale);
+  assert.ok(lookFor({ role: 'chief_ranger' }).scale > 1);
+  assert.equal(lookFor({ role: 'ranger', paused: true }).tint, 0x8a8a8a);
+  assert.equal(lookFor(null).tint, 0xffffff);
+  assert.equal(badgeFor('thinking', { paused: true }), 'paused');
 });

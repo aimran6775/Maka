@@ -27,6 +27,8 @@
 //   GET  /api/agents/:id
 //   PATCH /api/agents/:id      { name?, zoneId?, parentAgentId?, venture?, specialty?, persona?, policy?, leash? }
 //   DELETE /api/agents/:id
+//   POST /api/agents/:id/pause   cancels its runs, no new runs until resume
+//   POST /api/agents/:id/resume
 //   GET  /api/leash            the live leash policy
 //   PUT  /api/leash            replace the leash policy (validated, persisted)
 //   GET  /api/runs             run summaries, newest first
@@ -235,7 +237,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         return sendJson(res, 202, { runId, agentId, provider, model, tier, queued });
       } catch (err) {
         if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);
-        if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST'].includes(err.code)) throw new HttpError(400, err.message, err.code);
+        if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST', 'AGENT_PAUSED'].includes(err.code)) throw new HttpError(400, err.message, err.code);
         throw err;
       }
     }
@@ -345,6 +347,13 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         const a = agents.get(id);
         if (!a) throw new HttpError(404, `no agent "${id}"`);
         return sendJson(res, 200, a);
+      }
+      if (method === 'POST' && (id.endsWith('/pause') || id.endsWith('/resume'))) {
+        const paused = id.endsWith('/pause');
+        const agentId = id.slice(0, -(paused ? '/pause' : '/resume').length);
+        const updated = await rethrow(() => agents.setPaused(agentId, paused, { by: 'superintendent' }));
+        const cancelled = paused ? runs.cancelFor(agentId) : 0;
+        return sendJson(res, 200, { ...updated, cancelledRuns: cancelled });
       }
       if (method === 'PATCH') return sendJson(res, 200, await rethrow(async () => agents.update(id, await readJsonBody(req), { by: 'superintendent' })));
       if (method === 'DELETE') return sendJson(res, 200, await rethrow(() => agents.remove(id, { by: 'superintendent' })));

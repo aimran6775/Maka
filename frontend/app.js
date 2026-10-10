@@ -62,6 +62,7 @@ async function onPick(info) {
   }
   if (info && info.type === 'ground') return inspect.select(null);
   inspect.select(info);
+  if (info && info.type === 'agent' && park) park.follow(info.agent.id);
 }
 
 const comms = createComms({ parent: ui, getState, api, x: 16, y: 16, w: 440 });
@@ -178,3 +179,6 @@ async function main() {
 main().catch((err) => {
   status.textContent = `failed to load: ${err.message}`;
 });
+
+// Diagnostics hook for scripts/park-check.mjs (read-only: state and the park handle).
+window.maka = { getState, park: () => park };

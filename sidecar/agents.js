@@ -97,17 +97,18 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
 
   // The first room of a kind, created on the layout grid when none exists (department
   // camps for the Chief's staffing, the Visitor Center, trailheads).
-  async function ensureZone(kind, { name, id } = {}) {
+  async function ensureZone(kind, { name, id, venture, size } = {}) {
     if (!ZONE_KINDS.includes(kind)) throw fail('BAD_REQUEST', `unknown zone kind "${kind}"`);
     if (kind === 'mountain_peak') return ensurePeak();
     const l = layout();
-    const existing = l.rooms.find((r) => r.kind === kind && (!id || r.id === id));
+    const existing = l.rooms.find((r) => r.kind === kind && (!id || r.id === id) && (!venture || r.venture === venture));
     if (existing) return existing;
-    const rect = freeZoneRect(l);
+    const rect = freeZoneRect(l, size || (kind === 'trailhead' ? { w: 4, h: 4 } : {}));
     if (!rect) throw fail('CONFLICT', 'no room left on the layout grid', 409);
-    const roomId = id || kind.replace(/_/g, '-');
+    const roomId = id || (venture ? `${kind.replace(/_/g, '-')}-${venture}` : kind.replace(/_/g, '-'));
     if (l.rooms.some((r) => r.id === roomId)) throw fail('CONFLICT', `room "${roomId}" exists with another kind`, 409);
     const room = { id: roomId, name: name || ZONE_LABELS[kind] || kind, kind, ...rect };
+    if (venture) room.venture = venture;
     await layoutState.replace({ ...l, rooms: [...l.rooms, room] });
     return room;
   }
@@ -168,7 +169,7 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
       const l = layout();
       const current = agentOf(l, id);
       if (!current) throw fail('NOT_FOUND', `no agent "${id}"`, 404);
-      const allowed = ['name', 'zoneId', 'parentAgentId', 'venture', 'specialty', 'persona', 'policy', 'budgetUsd', 'x', 'y', 'leash'];
+      const allowed = ['name', 'zoneId', 'parentAgentId', 'venture', 'specialty', 'persona', 'policy', 'budgetUsd', 'x', 'y', 'leash', 'paused'];
       const unknown = Object.keys(patch).filter((k) => !allowed.includes(k));
       if (unknown.length) throw fail('BAD_REQUEST', `cannot change ${unknown.join(', ')}`);
       if ('role' in patch) throw fail('BAD_REQUEST', 'role cannot change');
@@ -224,6 +225,10 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
         if (patch.budgetUsd === null) delete record.budgetUsd;
         else record.budgetUsd = patch.budgetUsd;
       }
+      if (patch.paused !== undefined) {
+        if (patch.paused) record.paused = true;
+        else delete record.paused;
+      }
       const next = { ...l, agents: l.agents.map((a) => (a.id === id ? record : a)) };
       const r = validate(LAYOUT_SCHEMA, next);
       if (!r.ok) throw fail('BAD_REQUEST', `agent invalid: ${r.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`);
@@ -249,6 +254,19 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
         if (!v.ok) throw fail('BAD_REQUEST', `leash invalid: ${v.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`);
         await leashState.set(leash);
       }
+      emit({ agentId: id, change: 'updated', agent: record, by });
+      return view(record);
+    },
+    // Pause: no new runs start for the agent until resumed; its active and queued runs are
+    // cancelled by the caller (the run manager) so nothing keeps going behind the owner's back.
+    async setPaused(id, paused, { by = 'superintendent' } = {}) {
+      const l = layout();
+      const current = agentOf(l, id);
+      if (!current) throw fail('NOT_FOUND', `no agent "${id}"`, 404);
+      const record = { ...current };
+      if (paused) record.paused = true;
+      else delete record.paused;
+      await layoutState.replace({ ...l, agents: l.agents.map((a) => (a.id === id ? record : a)) });
       emit({ agentId: id, change: 'updated', agent: record, by });
       return view(record);
     },

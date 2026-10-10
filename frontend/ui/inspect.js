@@ -2,13 +2,38 @@
 // harness has emitted this session: no projections, no placeholders for phase 2 features.
 import { el, createWindow, setChildren, fmtUsd } from './windows.js';
 import { grantedTools, toolUses, lastModel, pendingGate, recentGate, judgeVerdicts, workInTransit, workFor } from '../state.js';
-import { LEASH_LEVEL_LABELS, resolveAllLeash } from '../../shared/leash.js';
+import { LEASH_LEVEL_LABELS, LEASH_LEVELS, DOMAINS, resolveAllLeash, resolveLeash } from '../../shared/leash.js';
 
 export function createInspect({ parent, getState, api, x, y, w }) {
   const { body, setTitle } = createWindow({ id: 'inspect', title: 'INSPECT', x, y, w, parent });
   let selection = null;
 
   const row = (k, v, cls = '') => el('div', { class: `kv ${cls}` }, el('span', { class: 'k', text: k }), el('span', { class: 'v' }, v));
+
+  // Ranger actions (phase 2 step 7): brief (start a run), pause / resume, reassign to a zone.
+  const briefText = el('textarea', { class: 'prompt', rows: 2, placeholder: 'Brief this Ranger (starts a run on the worker tier)' });
+  const actionNotice = el('div', { class: 'notice' });
+  async function act(label, req) {
+    actionNotice.textContent = `${label}…`;
+    const r = await req();
+    actionNotice.textContent = r.ok ? `${label}: ok${r.body && r.body.queued ? ' (queued)' : ''}` : `${label}: ${r.body.code || r.status}: ${r.body.error || 'failed'}`;
+    return r;
+  }
+  function agentActions(s, agent) {
+    const busy = s.activeRuns.some((r) => r.agentId === agent.id) || s.queuedRuns.some((r) => r.agentId === agent.id);
+    const zoneSel = el('select', { class: 'sel' }, ...s.layout.rooms.filter((r) => (r.kind === 'mountain_peak') === (agent.role === 'chief_ranger')).map((r) => el('option', { value: r.id, selected: r.id === agent.roomId ? '' : null, text: r.name })));
+    return el('div', { class: 'mission-form' },
+      briefText,
+      el('div', { class: 'row' },
+        el('button', { class: 'btn primary', text: 'Brief', disabled: agent.paused || !briefText.value.trim() && false, onclick: () => { const text = briefText.value.trim(); if (!text) return (actionNotice.textContent = 'Write a brief first.'); act('Brief', () => api.post('/api/run', { agentId: agent.id, prompt: text })); } }),
+        agent.paused
+          ? el('button', { class: 'btn', text: 'Resume', onclick: () => act('Resume', () => api.post(`/api/agents/${encodeURIComponent(agent.id)}/resume`, {})) })
+          : el('button', { class: 'btn', text: busy ? 'Pause (stops its run)' : 'Pause', onclick: () => act('Pause', () => api.post(`/api/agents/${encodeURIComponent(agent.id)}/pause`, {})) }),
+      ),
+      el('div', { class: 'row' }, el('label', { text: 'reassign to' }), zoneSel, el('button', { class: 'btn', text: 'Move', onclick: () => act('Reassign', () => api.send('PATCH', `/api/agents/${encodeURIComponent(agent.id)}`, { zoneId: zoneSel.value })) })),
+      actionNotice,
+    );
+  }
 
   function renderAgent(s, agent) {
     setTitle(`INSPECT · ${agent.name}`);
@@ -21,7 +46,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     const parent = agent.parentAgentId ? (s.layout.agents.find((a) => a.id === agent.parentAgentId) || { name: agent.parentAgentId }).name : null;
     const reports = s.layout.agents.filter((a) => a.parentAgentId === agent.id);
     return [
-      row('state', st),
+      row('state', agent.paused ? `${st} · PAUSED` : st),
       row('role', `${(agent.role || 'ranger').replace('_', ' ')}${agent.specialty ? ` · ${agent.specialty}` : ''}${parent ? ` · reports to ${parent}` : ''}`),
       reports.length ? row('reports', reports.map((a) => `${a.name} (${a.role === 'junior_ranger' ? 'junior' : a.role})`).join(', ')) : null,
       agent.venture ? row('venture', agent.venture) : null,
@@ -34,7 +59,9 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       run ? row('spend', `${fmtUsd(run.spentUsd)} reconciled${run.unreconciledTurns ? ` · ${run.unreconciledTurns} unpriced turn(s)` : ''}`) : null,
       run ? row('judge', judgeVerdicts(run).length ? judgeVerdicts(run).map((v) => `${v.scope} ${v.verdict}${v.notes ? ` (${v.notes})` : v.reason ? ` (${v.reason})` : ''}`).join('; ') : 'not consulted yet') : null,
       row('at the Gate', waiting.length ? waiting.map((it) => `${it.domain}: ${it.summary}`).join('; ') : 'nothing waiting'),
+      row('spend', `${fmtUsd(s.spendByAgent[agent.id] || 0)} since the mission${typeof agent.budgetUsd === 'number' ? ` of $${agent.budgetUsd.toFixed(2)} budget` : ''}`),
       s.queuedRuns.some((r) => r.agentId === agent.id) ? row('queued', `${s.queuedRuns.filter((r) => r.agentId === agent.id).length} run(s) waiting for this Ranger`) : null,
+      agentActions(s, agent),
       ...workFor(s, agent.id).slice(0, 8).map((it) => el('div', { class: `use ${it.status === 'done' ? 'ok' : it.status === 'failed' || it.status === 'cancelled' ? 'failed' : 'running'}`, text: `${it.fromAgentId === agent.id ? '→ ' + it.toAgentId : '← ' + it.fromAgentId} · ${it.status} · ${(it.brief || '').slice(0, 50)}${it.deliverables && it.deliverables.length ? ` · ${it.deliverables.length} file(s)` : ''}` })),
       el('div', { class: 'k', text: 'leash (per domain, enforced by the gate)' }),
       leash.length
@@ -43,18 +70,64 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     ];
   }
 
+  const zoneNotice = el('div', { class: 'notice' });
+  async function setZoneLeash(roomId, domain, level) {
+    const leash = JSON.parse(JSON.stringify(getState().leash || { version: 1, domains: {} }));
+    leash.zones = leash.zones || {};
+    leash.zones[roomId] = leash.zones[roomId] || { domains: {} };
+    if (level === '') delete leash.zones[roomId].domains[domain];
+    else {
+      const prev = leash.zones[roomId].domains[domain] || {};
+      leash.zones[roomId].domains[domain] = { ...prev, level };
+    }
+    if (!Object.keys(leash.zones[roomId].domains).length) delete leash.zones[roomId];
+    const r = await api.send('PUT', '/api/leash', leash);
+    zoneNotice.textContent = r.ok ? `leash for ${domain} ${level ? 'set to ' + (LEASH_LEVEL_LABELS[level] || level) : 'back to the park default'}` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`;
+    if (r.ok) {
+      const snap = await fetch('/api/state');
+      if (snap.ok) selectionRefresh && selectionRefresh();
+    }
+  }
+  let selectionRefresh = null;
+
   function renderZone(s, room) {
     setTitle(`INSPECT · ${room.name}`);
     const roster = s.layout.agents.filter((a) => a.roomId === room.id);
     const fixtures = s.layout.objects.filter((o) => o.roomId === room.id);
+    const spent = roster.reduce((n, a) => n + (s.spendByAgent[a.id] || 0), 0);
+    const budget = roster.reduce((n, a) => n + (typeof a.budgetUsd === 'number' ? a.budgetUsd : 0), 0);
+    const zoneLeash = s.leash ? DOMAINS.map((d) => [d, resolveLeash(s.leash, { roomId: room.id }, d)]) : [];
     return [
+      row('kind', room.kind ? room.kind.replace(/_/g, ' ') : 'zone'),
+      room.venture ? row('venture', room.venture) : null,
       row('size', `${room.w} × ${room.h} tiles`),
+      row('budget burn', `${fmtUsd(spent)} spent by its Rangers${budget ? ` of $${budget.toFixed(2)} in their budgets` : ' (no Ranger budgets set)'}`),
       row('rangers', roster.length ? roster.map((a) => `${a.name} (${s.agentStates[a.id] || 'idle'})`).join(', ') : 'none'),
       row('fixtures', fixtures.length ? fixtures.map((o) => `${(s.objectKinds[o.kind] || {}).label || o.kind} @ ${o.x},${o.y}`).join('; ') : 'none'),
       row('grants', [...new Set(fixtures.flatMap((o) => (s.objectKinds[o.kind] || {}).grants || []))].sort().join(', ') || 'none'),
       row('queue', `${workInTransit(s, room.id).length} work item(s) in transit here · ${s.queuedRuns.filter((r) => roster.some((a) => a.id === r.agentId)).length} run(s) queued`),
       ...workInTransit(s, room.id).slice(0, 6).map((it) => el('div', { class: 'use running', text: `${it.fromAgentId} → ${it.toAgentId} · ${(it.brief || '').slice(0, 60)}` })),
-      el('div', { class: 'muted small', text: 'Budget burn and leash defaults per zone arrive with step 7.' }),
+      el('div', { class: 'k', text: 'leash defaults for this zone (a Ranger override still wins)' }),
+      el('div', { class: 'leash' }, ...zoneLeash.map(([d, v]) => el('div', { class: 'kv' },
+        el('span', { class: 'k', text: d }),
+        el('select', { class: 'sel small', onchange: (e) => setZoneLeash(room.id, d, e.target.value) },
+          el('option', { value: '', selected: v.scope !== 'zone' ? '' : null, text: `park default (${LEASH_LEVEL_LABELS[resolveLeash({ ...s.leash, zones: {} }, {}, d).level]})` }),
+          ...LEASH_LEVELS.map((l) => el('option', { value: l, selected: v.scope === 'zone' && v.level === l ? '' : null, text: LEASH_LEVEL_LABELS[l] })),
+        ),
+      ))),
+      zoneNotice,
+    ];
+  }
+
+  function renderTrail(s, trail) {
+    setTitle('INSPECT · Trail');
+    const name = (id) => ((s.layout.rooms.find((r) => r.id === id) || {}).name || id);
+    const items = s.workOrder.map((id) => s.workItems[id]).filter((it) => it && (it.status === 'queued' || it.status === 'running') && ((it.fromRoomId === trail.from && it.toRoomId === trail.to) || (it.fromRoomId === trail.to && it.toRoomId === trail.from)));
+    return [
+      row('between', `${name(trail.from)} ↔ ${name(trail.to)}`),
+      row('in transit', items.length ? `${items.length} work item(s)` : 'nothing right now'),
+      ...items.map((it) => el('div', { class: 'use running', text: `${it.fromAgentId} → ${it.toAgentId} · ${(it.brief || '').slice(0, 80)}${it.deadline ? ` · by ${it.deadline}` : ''}` })),
+      el('div', { class: 'muted small', text: 'A trail is a handoff lane: work items travel it when a Ranger delegates; the receiver walks it to collect the brief.' }),
     ];
   }
 
@@ -80,7 +153,14 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     return [
       row('zone', room.name),
       row('waiting on you', `${items.length} Gate item(s)${prompts.length ? `, ${prompts.length} file write(s)` : ''}`),
-      ...items.map((it) => el('div', { class: 'use running', text: `${it.kind === 'proposal' ? 'proposal' : it.domain} · ${name(it.agentId)} · ${it.summary}` })),
+      ...items.map((it) => el('div', { class: 'gate-row' },
+        el('div', { class: 'use running', text: `${it.kind === 'proposal' ? 'proposal' : it.domain} · ${name(it.agentId)} · ${it.summary}` }),
+        el('div', { class: 'row' },
+          el('button', { class: 'btn small', text: 'Approve', onclick: () => api.post(`/api/gate/${encodeURIComponent(it.itemId)}`, { decision: 'approve' }) }),
+          it.kind === 'proposal' ? null : el('button', { class: 'btn small', text: 'Revise', onclick: () => { const notes = window.prompt('Notes for the Ranger (revise):', '') || ''; api.post(`/api/gate/${encodeURIComponent(it.itemId)}`, { decision: 'revise', notes }); } }),
+          el('button', { class: 'btn small', text: 'Reject', onclick: () => { const notes = it.kind === 'proposal' ? '' : window.prompt('Notes for the Ranger (reject):', '') || ''; api.post(`/api/gate/${encodeURIComponent(it.itemId)}`, { decision: 'reject', notes }); } }),
+        ),
+      )),
       ...prompts.map((q) => el('div', { class: 'use running', text: `${q.tool} (${q.runId})` })),
       el('div', { class: 'k', text: `recent decisions (${recent.length})` }),
       el('div', { class: 'gate-list' }, ...recent.map((it) => el('div', { class: `use ${['approved', 'allowed'].includes(it.status) ? 'ok' : ['rejected', 'refused', 'expired'].includes(it.status) ? 'failed' : ''}`, text: `${it.status} · ${it.domain} · ${name(it.agentId)} · ${it.summary}${it.notes ? ` — ${it.notes}` : ''}` }))),
@@ -119,7 +199,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       el('div', { class: 'muted small', text: 'The control centre: the Chief Ranger\'s mission and plan, the Gate queue, spend. Connector ledgers and the reflection cycle arrive in later steps.' }),
       row('mission', mission ? `${mission.status}${mission.reason ? ` (${mission.reason})` : ''} · ${(mission.text || '').slice(0, 160)}` : 'none yet: brief the Chief below'),
       plan ? row('plan', `v${plan.version} · ${(plan.summary || '').slice(0, 200)}`) : row('plan', 'no plan submitted yet'),
-      row('ventures', plan && plan.ventures && plan.ventures.length ? plan.ventures.map((v) => `${v.name} ($${(v.budgetUsd || 0).toFixed(2)}, ${v.taskCount ?? (v.tasks ? v.tasks.length : 0)} task(s))`).join('; ') : 'no ventures yet'),
+      row('ventures', plan && plan.ventures && plan.ventures.length ? plan.ventures.map((v) => `${v.name}: ${fmtUsd(s.layout.agents.filter((a) => a.venture === v.id).reduce((n, a) => n + (s.spendByAgent[a.id] || 0), 0))} of $${(v.budgetUsd || 0).toFixed(2)}, ${v.taskCount ?? (v.tasks ? v.tasks.length : 0)} task(s), ${s.layout.agents.filter((a) => a.venture === v.id).length} Ranger(s)`).join('; ') : 'no ventures yet'),
       plan && plan.needsSuperintendent && plan.needsSuperintendent.length ? row('needs you', plan.needsSuperintendent.join('; ')) : null,
       missionForm,
       row('reflection', latest ? `${latest.status}${latest.skipReason ? ` (${latest.skipReason})` : ''} · ${new Date(latest.at).toLocaleString()} · ${latest.reason}` : 'none yet'),
@@ -140,13 +220,14 @@ export function createInspect({ parent, getState, api, x, y, w }) {
   return {
     select(info) {
       selection = info;
+      selectionRefresh = () => this.render();
       this.render();
     },
     render() {
       const s = getState();
       if (!selection) {
         setTitle('INSPECT');
-        setChildren(body, el('div', { class: 'muted', text: 'Click a Ranger, a fixture, the Entrance Gate, the Mountain Peak or a zone.' }));
+        setChildren(body, el('div', { class: 'muted', text: 'Click a Ranger, a fixture, a trail, the Entrance Gate, the Mountain Peak or a zone.' }));
         return;
       }
       if (selection.type === 'agent') {
@@ -160,6 +241,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
         return setChildren(body, ...renderObject(s, obj));
       }
       if (selection.type === 'peak') return setChildren(body, ...renderPeak(s));
+      if (selection.type === 'trail') return setChildren(body, ...renderTrail(s, selection.trail));
       if (selection.type === 'zone' || selection.type === 'gate') {
         const room = s.layout.rooms.find((r) => r.id === selection.room.id);
         if (!room) return this.select(null);

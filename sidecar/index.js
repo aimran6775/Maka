@@ -70,6 +70,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const judge = createJudge({ router: createRouter(policy), ledger, bus, env, keystorePath, log });
   const agents = createAgents({ layoutState, leashState, bus, activeRunFor: (id) => (runs ? runs.activeFor(id) : null) });
   await agents.ensureChief(); // the Chief Ranger is a singleton at the Mountain Peak (D45)
+  await agents.ensureZone('visitor_center'); // the front door: deliverables walk here (D56)
   const toolContext = {};
   const registry = { ...TOOLS, ...CREW_TOOLS }; // chief tools join below; the gate reads it at call time
   const router = createRouter(policy);

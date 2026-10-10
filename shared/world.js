@@ -123,7 +123,9 @@ export const LAYOUT_SCHEMA = deepFreeze({
         type: 'object',
         required: ['id', 'name', 'x', 'y', 'w', 'h'],
         additionalProperties: false,
-        properties: { id, name: { type: 'string' }, x: int0, y: int0, w: int1, h: int1, kind: { type: 'string', enum: ZONE_KINDS } },
+        // `venture` (phase 2 step 7, optional): a trailhead room names the venture whose
+        // trails run to the camps that serve it.
+        properties: { id, name: { type: 'string' }, x: int0, y: int0, w: int1, h: int1, kind: { type: 'string', enum: ZONE_KINDS }, venture: { type: 'string' } },
       },
     },
     objects: {
@@ -157,6 +159,8 @@ export const LAYOUT_SCHEMA = deepFreeze({
           createdBy: { type: 'string' },
           createdAt: int0,
           budgetUsd: { type: 'number', minimum: 0 },
+          // Phase 2 step 7: a paused agent gets no new runs until resumed.
+          paused: { type: 'boolean' },
         },
       },
     },

@@ -42,6 +42,8 @@ export function initialState() {
     gateOrder: [], // itemIds, oldest first
     ledger: null, // today's per-domain totals from the sidecar's leash ledger
     handoffs: {}, // agentId -> { fromZone, toZone, workItemId, startedAt } (latest work.handoff per walker)
+    deliveries: {}, // agentId -> { fromZone, workItemId, deliverables, startedAt } (latest work.done with files; the walk to the Visitor Center)
+    spendByAgent: {}, // agentId -> reconciled USD since the last mission (from the snapshot)
     workspace: null, // { root, online, known, since, reason } from the sidecar's watcher
     spend: { totalUsd: 0, reconciledTurns: 0, unreconciledTurns: 0 },
     invalidEvents: 0,
@@ -81,6 +83,7 @@ export function applySnapshot(state, snap) {
   next.agents = snap.agents || [];
   next.mission = snap.mission || null;
   next.reflection = snap.reflection || null;
+  next.spendByAgent = (snap.reflection && snap.reflection.spentByAgent) || {};
   next.leash = snap.leash || null;
   next.workspace = snap.workspace || null;
   next.keystore = snap.keystore || { path: '', problem: null };
@@ -230,6 +233,10 @@ export function applyEvent(state, event) {
       break;
     }
     case 'cost.estimate': {
+      if (!alreadyCounted && p.reconciled && typeof p.usd === 'number' && next.runs[p.runId]) {
+        const agentId = next.runs[p.runId].agentId;
+        next.spendByAgent = { ...next.spendByAgent, [agentId]: (next.spendByAgent[agentId] || 0) + p.usd };
+      }
       next = updateRun(next, p.runId, (run) => ({
         ...run,
         spentUsd: p.reconciled && typeof p.usd === 'number' ? run.spentUsd + p.usd : run.spentUsd,
@@ -359,6 +366,10 @@ export function applyEvent(state, event) {
         const handoffs = { ...next.handoffs };
         delete handoffs[p.toAgentId];
         next.handoffs = handoffs;
+      }
+      if (p.status === 'done' && p.deliverables && p.deliverables.length) {
+        const agent = next.layout.agents.find((a) => a.id === p.toAgentId);
+        if (agent) next.deliveries = { ...next.deliveries, [p.toAgentId]: { fromZone: agent.roomId, workItemId: p.workItemId, deliverables: p.deliverables, startedAt: event.ts } };
       }
       break;
     }

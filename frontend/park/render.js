@@ -14,10 +14,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { buildParkModel } from './placement.js';
 import { TERRAIN } from './terrain.js';
 import { pointAtFraction } from './spline.js';
-import { clipFor, placeFor, badgeFor } from './clips.js';
+import { clipFor, placeFor, badgeFor, lookFor } from './clips.js';
 import { sunFor } from './sun.js';
 
 export const CAMERA_MODES = Object.freeze(['orbit', 'fly', 'follow']);
@@ -25,7 +26,7 @@ export const CAMERA_MODES = Object.freeze(['orbit', 'fly', 'follow']);
 const ASSETS = {
   tree: ['nature-kit/tree_pineTallA.glb', 'nature-kit/tree_pineRoundA.glb', 'nature-kit/tree_oak.glb', 'nature-kit/tree_default.glb'],
   rock: ['nature-kit/rock_largeA.glb', 'nature-kit/rock_largeB.glb', 'nature-kit/rock_smallA.glb'],
-  station: { structure: 'survival-kit/structure.glb', tent: 'survival-kit/tent.glb', campfire: 'survival-kit/campfire-pit.glb', signpost: 'survival-kit/signpost.glb' },
+  station: { structure: 'survival-kit/structure.glb', tent: 'survival-kit/tent.glb', campfire: 'survival-kit/campfire-pit.glb', signpost: 'survival-kit/signpost.glb', tentOpen: 'nature-kit/tent_detailedOpen.glb', crate: 'survival-kit/box.glb', logs: 'nature-kit/campfire_logs.glb', fenceGate: 'nature-kit/fence_gate.glb', fenceSimple: 'nature-kit/fence_simple.glb' },
   gate: { doorway: 'survival-kit/fence-doorway.glb', fence: 'survival-kit/fence.glb', signpost: 'survival-kit/signpost.glb' },
   fixtures: { trailhead_sign: 'nature-kit/sign.glb', supply_cache: 'survival-kit/chest.glb' },
   ranger: { body: 'characters/characterMedium.fbx', skin: 'characters/skaterMaleA.png', clips: { idle: 'characters/idle.fbx', run: 'characters/run.fbx' } },
@@ -57,6 +58,17 @@ const WATER_FRAG = `
     float f = smoothstep(uFogNear, uFogFar, depth);
     gl_FragColor = vec4(mix(c, uFogColor, f), 0.78);
   }`;
+
+// How each zone kind is dressed (data; kit pieces by key from ASSETS.station). The Ranger
+// Station keeps its phase 1 look; camps are tents around a fire; the Visitor Center is a
+// building with a counter crate; a trailhead is a signpost and a gate.
+const ZONE_DRESS = {
+  ranger_station: [['structure', -0.45, -0.45, Math.PI / 6, 4.2], ['tent', 0.5, -0.4, -Math.PI / 3, 3.6], ['campfire', 0.1, 0.1, 0, 2.8], ['signpost', -0.6, 0.55, Math.PI / 2, 3]],
+  visitor_center: [['structure', 0, -0.4, 0, 4.6], ['crate', -0.45, 0.35, 0.3, 3], ['crate', -0.25, 0.4, -0.2, 3], ['signpost', 0.55, 0.45, Math.PI, 3]],
+  trailhead: [['signpost', 0, 0, Math.PI / 4, 3.4], ['fenceGate', 0, 0.5, 0, 3.2], ['logs', -0.5, -0.3, 0, 2.4]],
+  camp: [['tentOpen', -0.5, -0.4, Math.PI / 5, 3.4], ['tent', 0.5, -0.45, -Math.PI / 4, 3.4], ['campfire', 0, 0.15, 0, 2.6], ['signpost', -0.55, 0.55, Math.PI / 2, 3], ['crate', 0.55, 0.5, 0, 2.6]],
+};
+const DISC_COLORS = { gate: 0xc2ad86, peak: 0x9a948a, visitor_center: 0x8fbf6a, trailhead: 0x7fb15a, zone: 0x6fae52 };
 
 export async function createPark({ container, getState, onPick, onStatus = () => {} }) {
   const status = { renderer: 'webgl2', assets: 'loading', ranger: 'loading', fps: 0, problems: [] };
@@ -147,8 +159,10 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     report();
   }
 
-  // ---- Ranger ----
-  const ranger = { root: null, mixer: null, actions: {}, current: null, badge: null, height: 2.4 };
+  // ---- Rangers: one rigged template, cloned per agent (phase 2 step 7) ----
+  const BODY_HEIGHT = 2.4;
+  const template = { body: null, skin: null, clips: {}, baseScale: 1, baseY: 0 };
+  const bodies = new Map(); // agentId -> { root, mixer, actions, current, badge, agent, look, walk: {...} }
   async function loadRanger() {
     try {
       const body = await loadFbx(ASSETS.ranger.body);
@@ -158,40 +172,104 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       body.traverse((o) => {
         if (o.isMesh) {
           o.castShadow = true;
-          o.material = new THREE.MeshStandardMaterial({ map: skin, roughness: 0.9, metalness: 0 });
           o.frustumCulled = false;
         }
       });
       const box = new THREE.Box3().setFromObject(body);
       const h = box.max.y - box.min.y || 1;
-      const scale = ranger.height / h;
-      body.scale.setScalar(scale);
-      body.position.y = -box.min.y * scale;
-      const root = new THREE.Group();
-      root.add(body);
-      root.userData.pick = { type: 'agent' };
-      ranger.root = root;
-      ranger.mixer = new THREE.AnimationMixer(body);
+      const clips = {};
       for (const [name, p] of Object.entries(ASSETS.ranger.clips)) {
         try {
           const anim = await loadFbx(p);
           const clip = anim.animations && anim.animations[0];
-          if (clip) ranger.actions[name] = ranger.mixer.clipAction(clip);
+          if (clip) clips[name] = clip;
         } catch (err) {
           status.problems.push(err.message);
         }
       }
-      ranger.badge = makeBadge();
-      ranger.badge.position.y = ranger.height + 0.6;
-      root.add(ranger.badge);
-      pickables.push(root);
-      world.add(root);
-      status.ranger = Object.keys(ranger.actions).length ? 'ready' : 'static (no clips loaded)';
+      // The template is published only once its clips are in, so every clone gets actions.
+      template.baseScale = BODY_HEIGHT / h;
+      template.baseY = -box.min.y * template.baseScale;
+      template.skin = skin;
+      template.clips = clips;
+      template.body = body;
+      status.ranger = Object.keys(template.clips).length ? 'ready' : 'static (no clips loaded)';
     } catch (err) {
       status.ranger = 'missing';
       status.problems.push(err.message);
     }
     report();
+  }
+
+  function makeBody(agent) {
+    if (!template.body) return null;
+    const look = lookFor(agent);
+    const body = SkeletonUtils.clone(template.body);
+    body.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.frustumCulled = false;
+        o.material = new THREE.MeshStandardMaterial({ map: template.skin, color: look.tint, roughness: 0.9, metalness: 0 });
+      }
+    });
+    const scale = template.baseScale * look.scale;
+    body.scale.setScalar(scale);
+    body.position.y = template.baseY * look.scale;
+    const root = new THREE.Group();
+    root.add(body);
+    root.userData.pick = { type: 'agent', id: agent.id };
+    const mixer = new THREE.AnimationMixer(body);
+    const actions = {};
+    for (const [name, clip] of Object.entries(template.clips)) actions[name] = mixer.clipAction(clip);
+    const badge = makeBadge();
+    badge.position.y = BODY_HEIGHT * look.scale + 0.6;
+    root.add(badge);
+    const label = makeLabel(agent.name);
+    label.position.y = BODY_HEIGHT * look.scale + 1.5;
+    root.add(label);
+    return { root, mixer, actions, current: null, badge, label, agent, look, walk: { handoffKey: null, handoff: null, deliveryKey: null, delivery: null } };
+  }
+
+  function makeLabel(text) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.font = '600 30px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(10,20,14,0.6)';
+    ctx.fillRect(0, 8, 256, 48);
+    ctx.fillStyle = '#eef5ea';
+    ctx.fillText(String(text).slice(0, 18), 128, 32);
+    const tex = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    sprite.scale.set(3.2, 0.8, 1);
+    return sprite;
+  }
+
+  // Bodies follow the layout's agents: new agents get a body, removed agents lose it, a
+  // changed role, name or pause changes the look.
+  function syncBodies(state) {
+    if (!template.body || !model) return;
+    const wanted = new Map(model.agents.map((a) => [a.id, a]));
+    for (const [id, b] of bodies) {
+      const a = wanted.get(id);
+      if (!a || a.role !== b.agent.role || a.name !== b.agent.name || Boolean(a.paused) !== Boolean(b.agent.paused)) {
+        world.remove(b.root);
+        const i = pickables.indexOf(b.root);
+        if (i >= 0) pickables.splice(i, 1);
+        bodies.delete(id);
+      }
+    }
+    for (const a of model.agents) {
+      if (bodies.has(a.id)) continue;
+      const b = makeBody(a);
+      if (!b) continue;
+      bodies.set(a.id, b);
+      world.add(b.root);
+      pickables.push(b.root);
+    }
   }
 
   function makeBadge() {
@@ -216,7 +294,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       return;
     }
     sprite.visible = true;
-    const colors = { thinking: '#dfe6ff', tool: '#ffd36b', gate: '#ffb347', error: '#ff6b6b', done: '#9ff09a' };
+    const colors = { thinking: '#dfe6ff', tool: '#ffd36b', gate: '#ffb347', error: '#ff6b6b', done: '#9ff09a', paused: '#bbbbbb' };
     ctx.fillStyle = 'rgba(10,20,14,0.75)';
     ctx.beginPath();
     ctx.arc(64, 64, 52, 0, Math.PI * 2);
@@ -262,6 +340,9 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       ctx.moveTo(90, 38);
       ctx.lineTo(38, 90);
       ctx.stroke();
+    } else if (kind === 'paused') {
+      ctx.fillRect(40, 36, 16, 56);
+      ctx.fillRect(72, 36, 16, 56);
     }
     sprite.userData.tex.needsUpdate = true;
   }
@@ -370,7 +451,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
 
   function buildClearing(m, c) {
     const g = new THREE.Group();
-    const discColor = c.kind === 'gate' ? 0xc2ad86 : c.kind === 'peak' ? 0x9a948a : 0x6fae52;
+    const discColor = c.kind === 'gate' ? DISC_COLORS.gate : c.kind === 'peak' ? DISC_COLORS.peak : DISC_COLORS[c.zoneKind] || DISC_COLORS.zone;
     const disc = new THREE.Mesh(new THREE.CircleGeometry(c.radius, 40), new THREE.MeshStandardMaterial({ color: discColor, roughness: 1 }));
     disc.rotation.x = -Math.PI / 2;
     disc.position.set(c.x, c.height + 0.06, c.z);
@@ -380,10 +461,15 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     pickables.push(disc);
     const y = c.height;
     if (c.kind === 'zone') {
-      if (kit.station.structure) g.add(place(kit.station.structure.clone(), c.x - c.radius * 0.45, y, c.z - c.radius * 0.45, { rotation: Math.PI / 6, scale: 4.2 }));
-      if (kit.station.tent) g.add(place(kit.station.tent.clone(), c.x + c.radius * 0.5, y, c.z - c.radius * 0.4, { rotation: -Math.PI / 3, scale: 3.6 }));
-      if (kit.station.campfire) g.add(place(kit.station.campfire.clone(), c.x + c.radius * 0.1, y, c.z + c.radius * 0.1, { scale: 2.8 }));
-      if (kit.station.signpost) g.add(place(kit.station.signpost.clone(), c.x - c.radius * 0.6, y, c.z + c.radius * 0.55, { rotation: Math.PI / 2, scale: 3 }));
+      const dress = ZONE_DRESS[c.zoneKind] || (c.zoneKind ? ZONE_DRESS.camp : ZONE_DRESS.ranger_station);
+      for (const [key, fx, fz, rotation, scale] of dress) {
+        const proto = kit.station[key];
+        if (proto) g.add(place(proto.clone(), c.x + c.radius * fx, y, c.z + c.radius * fz, { rotation, scale }));
+      }
+      const sign = makeLabel(c.name);
+      sign.position.set(c.x, y + 5.5, c.z);
+      sign.scale.set(6, 1.5, 1);
+      g.add(sign);
     } else if (c.kind === 'peak') {
       if (kit.station.structure) g.add(place(kit.station.structure.clone(), c.x, y, c.z - 1.5, { rotation: Math.PI / 5, scale: 3.4 }));
       if (kit.station.signpost) g.add(place(kit.station.signpost.clone(), c.x + 4, y, c.z + 3, { rotation: Math.PI / 3, scale: 3 }));
@@ -441,7 +527,8 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
 
   function rebuild(state) {
     const layout = state.layout;
-    const key = JSON.stringify({ seed: layout.seed, rooms: layout.rooms });
+    // Trails depend on which agents serve which venture, so the key includes that too.
+    const key = JSON.stringify({ seed: layout.seed, rooms: layout.rooms, agents: layout.agents.map((a) => [a.id, a.roomId, a.venture || null, a.x, a.y]) });
     if (key === modelKey && terrain) return;
     modelKey = key;
     for (const old of world.children.filter((o) => o.userData.static)) {
@@ -449,7 +536,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       disposeGroup(old);
     }
     pickables.length = 0;
-    if (ranger.root) pickables.push(ranger.root);
+    for (const b of bodies.values()) pickables.push(b.root);
     dynamic.clearings.clear();
     model = buildParkModel(layout);
     terrain = buildTerrain(model);
@@ -463,6 +550,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       const mesh = buildTrail(model, t);
       mesh.userData.static = true;
       world.add(mesh);
+      pickables.push(mesh);
     }
     for (const c of model.clearings) {
       const g = buildClearing(model, c);
@@ -527,52 +615,72 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     renderer.toneMappingExposure = s.night ? 0.35 : 0.85;
   }
 
-  const walkerState = { lastHandoffKey: null, handoff: null };
-  function updateRanger(state, dt, t) {
-    if (!ranger.root || !model) return;
-    const agent = model.agents[0];
-    if (!agent) return;
+  // The sender's clearing id for a walk: the Superintendent hands work from the Gate.
+  function clearingIdForZone(zoneId) {
+    if (zoneId === 'entrance-gate') {
+      const gate = model.clearings.find((c) => c.kind === 'gate');
+      return gate ? gate.id : null;
+    }
+    return zoneId;
+  }
+
+  function updateBody(b, state, dt, t) {
+    const agent = model.agents.find((a) => a.id === b.agent.id) || b.agent;
     const agentState = state.agentStates[agent.id] || 'idle';
     const gate = model.clearings.find((c) => c.kind === 'gate');
     const h = state.handoffs ? state.handoffs[agent.id] : null;
-    const key = h ? `${h.workItemId}:${h.startedAt}` : null;
-    if (key !== walkerState.lastHandoffKey) {
-      walkerState.lastHandoffKey = key;
-      walkerState.handoff = null;
+    const hKey = h ? `${h.workItemId}:${h.startedAt}` : null;
+    if (hKey !== b.walk.handoffKey) {
+      b.walk.handoffKey = hKey;
+      b.walk.handoff = null;
       if (h) {
-        const trail = model.trails.find((tr) => (tr.from === h.fromZone && tr.to === h.toZone) || (tr.from === h.toZone && tr.to === h.fromZone));
-        if (trail) {
-          const reversed = trail.from !== h.fromZone;
-          const table = reversed ? reverseTable(trail.table) : trail.table;
-          walkerState.handoff = { trail: { ...trail, table }, startedAt: h.startedAt };
-        }
+        const route = model.route(clearingIdForZone(h.fromZone), clearingIdForZone(h.toZone));
+        if (route) b.walk.handoff = { trail: { table: route.table }, startedAt: h.startedAt };
       }
     }
-    const p = placeFor({ agentState, home: agent.home, gate, handoff: walkerState.handoff, now: Date.now(), pointAtFraction });
-    const y = model.heightAt(p.x, p.z);
-    ranger.root.position.set(p.x, y, p.z);
-    ranger.root.rotation.y = p.walking ? p.heading : p.heading;
-    const clip = clipFor(agentState, p.walking);
-    const action = ranger.actions[clip === 'walk' ? 'run' : clip === 'work' ? 'idle' : clip === 'error' ? 'idle' : 'idle'];
-    if (action && ranger.current !== action) {
-      if (ranger.current) ranger.current.fadeOut(0.2);
-      action.reset().fadeIn(0.2).play();
-      ranger.current = action;
+    const d = state.deliveries ? state.deliveries[agent.id] : null;
+    const dKey = d ? `${d.workItemId}:${d.startedAt}` : null;
+    if (dKey !== b.walk.deliveryKey) {
+      b.walk.deliveryKey = dKey;
+      b.walk.delivery = null;
+      if (d && model.visitorCenter) {
+        const route = model.route(clearingIdForZone(d.fromZone), model.visitorCenter.id);
+        if (route) b.walk.delivery = { trail: { table: route.table }, startedAt: d.startedAt };
+      }
     }
-    if (ranger.current) ranger.current.paused = clip === 'error';
-    if (ranger.mixer) ranger.mixer.update(dt);
-    drawBadge(ranger.badge, badgeFor(agentState), t);
+    const p = placeFor({ agentState, home: agent.home, gate, handoff: b.walk.handoff, delivery: b.walk.delivery, now: Date.now(), pointAtFraction });
+    const y = model.heightAt(p.x, p.z);
+    b.root.position.set(p.x, y, p.z);
+    b.root.rotation.y = p.heading;
+    const clip = clipFor(agentState, p.walking);
+    const action = b.actions[clip === 'walk' ? 'run' : 'idle'];
+    if (action && b.current !== action) {
+      if (b.current) b.current.fadeOut(0.2);
+      action.reset().fadeIn(0.2).play();
+      b.current = action;
+    }
+    if (b.current) b.current.paused = clip === 'error' || Boolean(agent.paused);
+    b.mixer.update(dt);
+    drawBadge(b.badge, badgeFor(agentState, { paused: Boolean(agent.paused) }), t);
   }
 
-  function reverseTable(table) {
-    const samples = [...table.samples].reverse().map((s, i, arr) => ({ ...s, dist: table.length - s.dist, t: i / (arr.length - 1) }));
-    return { samples, length: table.length };
+  function updateBodies(state, dt, t) {
+    if (!model) return;
+    for (const b of bodies.values()) updateBody(b, state, dt, t);
+  }
+
+  let followId = null; // the agent the follow camera tracks (the last clicked, else the first)
+  function followTarget() {
+    if (followId && bodies.has(followId)) return bodies.get(followId).root;
+    const first = bodies.values().next();
+    return first.done ? null : first.value.root;
   }
 
   function updateCamera(dt, t) {
-    if (cameraMode === 'follow' && ranger.root) {
-      const target = ranger.root.position.clone();
-      const behind = new THREE.Vector3(Math.sin(ranger.root.rotation.y + Math.PI), 0.55, Math.cos(ranger.root.rotation.y + Math.PI)).multiplyScalar(9);
+    const followed = cameraMode === 'follow' ? followTarget() : null;
+    if (followed) {
+      const target = followed.position.clone();
+      const behind = new THREE.Vector3(Math.sin(followed.rotation.y + Math.PI), 0.55, Math.cos(followed.rotation.y + Math.PI)).multiplyScalar(9);
       camera.position.lerp(target.clone().add(behind).add(new THREE.Vector3(0, 2.5, 0)), Math.min(1, dt * 3));
       controls.target.lerp(target.add(new THREE.Vector3(0, 1.6, 0)), Math.min(1, dt * 5));
       controls.update();
@@ -612,7 +720,14 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       while (o && !o.userData.pick) o = o.parent;
       if (!o) continue;
       const pick = o.userData.pick;
-      if (pick.type === 'agent') return onPick({ type: 'agent', agent: state.layout.agents[0] });
+      if (pick.type === 'agent') {
+        followId = pick.id;
+        return onPick({ type: 'agent', agent: state.layout.agents.find((a) => a.id === pick.id) || state.layout.agents[0] });
+      }
+      if (pick.type === 'trail' && model) {
+        const trail = model.trails.find((tr) => tr.id === pick.id);
+        return onPick({ type: 'trail', trail: trail ? { id: trail.id, from: trail.from, to: trail.to } : { id: pick.id }, point: { x: hit.point.x, z: hit.point.z } });
+      }
       if (pick.type === 'object') return onPick({ type: 'object', object: state.layout.objects.find((ob) => ob.id === pick.id) });
       const point = { x: hit.point.x, z: hit.point.z };
       if (pick.type === 'zone') return onPick({ type: 'zone', room: state.layout.rooms.find((r) => r.id === pick.id), point });
@@ -635,7 +750,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   resize();
   rebuild(getState());
   syncFixtures(getState());
-  loadRanger(); // not awaited: the park renders while the FBX files stream in
+  loadRanger().then(() => syncBodies(getState())); // not awaited: the park renders while the FBX files stream in
 
   function frame() {
     if (destroyed) return;
@@ -646,9 +761,10 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     const state = getState();
     rebuild(state);
     syncFixtures(state);
+    syncBodies(state);
     applySun();
     if (water) water.material.uniforms.uTime.value = t;
-    updateRanger(state, dt, t);
+    updateBodies(state, dt, t);
     updateCamera(dt, t);
     renderer.render(scene, camera);
     frames++;
@@ -672,6 +788,13 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       if (!CAMERA_MODES.includes(mode)) return;
       cameraMode = mode;
       controls.enabled = mode === 'orbit';
+    },
+    follow(agentId) {
+      followId = agentId;
+    },
+    // Diagnostics for the headless check: which bodies exist and where they stand.
+    bodies() {
+      return [...bodies.values()].map((b) => ({ id: b.agent.id, role: b.agent.role || 'ranger', x: Math.round(b.root.position.x * 10) / 10, z: Math.round(b.root.position.z * 10) / 10, clip: b.current ? (b.current === b.actions.run ? 'run' : 'idle') : null }));
     },
     update() {
       /* state is read every frame */

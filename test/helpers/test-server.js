@@ -48,7 +48,10 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, intervalMs: 60000, onOffline: () => runsRef && runsRef.cancel() });
   const judge = judgeProvider ? createJudge({ router: createRouter(policy || defaultPolicy()), makeProvider: judgeProvider, ledger, bus, clock, env, keystorePath, log: { error() {} } }) : null;
   const agents = createAgents({ layoutState, leashState, bus, clock, activeRunFor: (id) => (runsRef ? runsRef.activeFor(id) : null) });
-  if (withChief) await agents.ensureChief();
+  if (withChief) {
+    await agents.ensureChief();
+    await agents.ensureZone('visitor_center');
+  }
   const toolContext = {};
   const registry = { ...TOOLS, ...CREW_TOOLS };
   const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent, fetch: localFetch, workspaceOnline: () => workspace.state().online });

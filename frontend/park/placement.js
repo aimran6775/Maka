@@ -41,7 +41,7 @@ export function clearingsFor(layout) {
   for (const room of layout.rooms) {
     if (room === peakRoom) continue;
     const c = zoneCenter(room);
-    out.push({ id: room.id, kind: 'zone', name: room.name, zoneKind: room.kind || null, x: c.x, z: c.z, radius: zoneRadius(room), height: heightAt(c.x, c.z, seed) });
+    out.push({ id: room.id, kind: 'zone', name: room.name, zoneKind: room.kind || null, venture: room.venture || null, x: c.x, z: c.z, radius: zoneRadius(room), height: heightAt(c.x, c.z, seed) });
   }
   if (layout.rooms.length && out.length) {
     const first = out[0];
@@ -62,27 +62,75 @@ export function clearingsFor(layout) {
   return out;
 }
 
-// Trails: each zone to the Gate (and zone to zone for later phases, in layout order).
-export function trailsFor(clearings) {
+// Trails (phase 2 step 7): hub and spoke through the first zone (the Ranger Station).
+//   station ↔ Gate, station ↔ Peak, station ↔ every other zone,
+//   trailhead ↔ each camp that serves its venture (agents with that venture live there).
+// Any two zones are then at most two legs apart (routeBetween). `layout` is optional; it
+// supplies the agents' ventures for the trailhead trails.
+export function trailsFor(clearings, layout = null) {
   const gate = clearings.find((c) => c.kind === 'gate');
   const peak = clearings.find((c) => c.kind === 'peak');
   const zones = clearings.filter((c) => c.kind === 'zone');
+  const hub = zones[0];
   const trails = [];
-  if (gate) {
-    for (const z of zones) {
-      const points = trailBetween(z, gate, 0.2);
-      trails.push({ id: `trail:${z.id}:${gate.id}`, from: z.id, to: gate.id, points, table: arcLengthTable(points, 48) });
+  const seen = new Set();
+  const add = (a, b, bend, samples = 48) => {
+    const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
+    if (seen.has(key) || a.id === b.id) return;
+    seen.add(key);
+    const points = trailBetween(a, b, bend);
+    trails.push({ id: `trail:${a.id}:${b.id}`, from: a.id, to: b.id, points, table: arcLengthTable(points, samples) });
+  };
+  if (!hub) return trails;
+  if (gate) add(hub, gate, 0.2);
+  if (peak) add(hub, peak, -0.3, 64);
+  for (let i = 1; i < zones.length; i++) add(hub, zones[i], i % 2 ? 0.25 : -0.25);
+  if (layout) {
+    for (const th of zones.filter((z) => z.zoneKind === 'trailhead' && z.venture)) {
+      const camps = new Set(layout.agents.filter((a) => a.venture === th.venture).map((a) => a.roomId));
+      for (const campId of camps) {
+        const camp = zones.find((z) => z.id === campId);
+        if (camp && camp !== hub) add(th, camp, 0.15, 40);
+      }
     }
   }
-  if (peak && zones[0]) {
-    const points = trailBetween(zones[0], peak, -0.3);
-    trails.push({ id: `trail:${zones[0].id}:${peak.id}`, from: zones[0].id, to: peak.id, points, table: arcLengthTable(points, 64) });
-  }
-  for (let i = 1; i < zones.length; i++) {
-    const points = trailBetween(zones[i - 1], zones[i], 0.25);
-    trails.push({ id: `trail:${zones[i - 1].id}:${zones[i].id}`, from: zones[i - 1].id, to: zones[i].id, points, table: arcLengthTable(points, 48) });
-  }
   return trails;
+}
+
+// A walking route from one clearing to another: the direct trail, else two legs through
+// the hub. Returns { table, legs } with a single arc-length table (tables are joined end
+// to end and distances offset), or null when the zones are not connected.
+export function routeBetween(trails, fromId, toId) {
+  if (fromId === toId) return null;
+  const find = (a, b) => {
+    for (const t of trails) {
+      if (t.from === a && t.to === b) return { table: t.table, id: t.id };
+      if (t.from === b && t.to === a) return { table: reverseTable(t.table), id: t.id };
+    }
+    return null;
+  };
+  const direct = find(fromId, toId);
+  if (direct) return { table: direct.table, legs: [direct.id] };
+  const hubs = new Set();
+  for (const t of trails) if (t.from === fromId || t.to === fromId) hubs.add(t.from === fromId ? t.to : t.from);
+  for (const hub of hubs) {
+    const a = find(fromId, hub);
+    const b = find(hub, toId);
+    if (a && b) return { table: joinTables(a.table, b.table), legs: [a.id, b.id] };
+  }
+  return null;
+}
+
+export function reverseTable(table) {
+  const n = table.samples.length;
+  const samples = [...table.samples].reverse().map((s, i) => ({ ...s, dist: table.length - s.dist, t: n > 1 ? i / (n - 1) : 0 }));
+  return { samples, length: table.length };
+}
+
+export function joinTables(a, b) {
+  const length = a.length + b.length;
+  const samples = [...a.samples, ...b.samples.slice(1).map((s) => ({ ...s, dist: s.dist + a.length }))].map((s, i, arr) => ({ ...s, t: arr.length > 1 ? i / (arr.length - 1) : 0 }));
+  return { samples, length };
 }
 
 function nearTrail(trails, x, z, margin) {
@@ -122,7 +170,7 @@ export function scatterFoliage(layout, clearings, trails, { trees = 420, rocks =
 // Everything render.js needs, derived once per layout change.
 export function buildParkModel(layout) {
   const clearings = clearingsFor(layout);
-  const trails = trailsFor(clearings);
+  const trails = trailsFor(clearings, layout);
   const foliage = scatterFoliage(layout, clearings, trails);
   const seed = layout.seed || 1;
   const fixtures = layout.objects.map((o) => {
@@ -132,9 +180,10 @@ export function buildParkModel(layout) {
   const peak = clearings.find((c) => c.kind === 'peak');
   const agents = layout.agents.map((a) => {
     // Agents in the Peak room stand on the Peak clearing, whatever their tile says.
-    if (peak && peak.zoneId && a.roomId === peak.zoneId) return { ...a, home: { x: peak.x, z: peak.z - 2, y: peak.height } };
+    if (peak && peak.zoneId && a.roomId === peak.zoneId) return { ...a, home: { x: peak.x, z: peak.z - 2, y: peak.height }, zoneClearingId: peak.id };
     const p = tileToWorld(a.x, a.y);
-    return { ...a, home: { x: p.x, z: p.z, y: heightAt(p.x, p.z, seed, clearings) } };
+    return { ...a, home: { x: p.x, z: p.z, y: heightAt(p.x, p.z, seed, clearings) }, zoneClearingId: a.roomId };
   });
-  return { seed, clearings, trails, foliage, fixtures, agents, heightAt: (x, z) => heightAt(x, z, seed, clearings) };
+  const visitorCenter = clearings.find((c) => c.zoneKind === 'visitor_center') || null;
+  return { seed, clearings, trails, foliage, fixtures, agents, visitorCenter, heightAt: (x, z) => heightAt(x, z, seed, clearings), route: (fromId, toId) => routeBetween(trails, fromId, toId) };
 }

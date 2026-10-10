@@ -137,7 +137,9 @@ test('a mission runs the Chief on the plan step: plan.submit stores and writes t
 
     // Staffing: camps were created and Rangers hired under the Chief with specialty personas.
     const layout = h.layoutState.get();
-    assert.deepEqual(layout.rooms.map((r) => r.kind), ['ranger_station', 'mountain_peak', 'research', 'product_listings']);
+    assert.deepEqual(layout.rooms.map((r) => r.kind), ['ranger_station', 'mountain_peak', 'trailhead', 'research', 'product_listings']);
+    const trailhead = layout.rooms.find((r) => r.kind === 'trailhead');
+    assert.deepEqual([trailhead.id, trailhead.venture, trailhead.name, trailhead.w], ['trailhead-lantern-co', 'lantern-co', 'Lantern Co Trailhead', 4]);
     const ada = layout.agents.find((a) => a.name === 'Ada');
     const ben = layout.agents.find((a) => a.name === 'Ben');
     assert.equal(ada.roomId, 'research');

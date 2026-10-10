@@ -22,20 +22,56 @@ export function clipFor(agentState, walking) {
   return STATE_CLIPS[agentState] || 'idle';
 }
 
-// Where the Ranger stands: at the Gate while waiting, else at home, else mid-trail while a
-// handoff is in progress. `handoff` = { trail, startedAt } with trail.table from spline.js.
-export function placeFor({ agentState, home, gate, handoff, now, pointAtFraction }) {
+// Where the Ranger stands, in priority order:
+//   1. mid-trail while a handoff walk is in progress (`handoff` = { trail, startedAt }, the
+//      receiver walks the route from the sender's zone to its own; it ends at home);
+//   2. on a delivery walk (`delivery` = { trail, startedAt }): out to the Visitor Center
+//      along the route and back home, after a work.done with deliverables;
+//   3. at the Gate while waiting on the Superintendent;
+//   4. at home.
+// Walk times are real: distance along the route at WALK_SPEED from the event's timestamp.
+export function placeFor({ agentState, home, gate, handoff, delivery, now, pointAtFraction }) {
   if (handoff && handoff.trail) {
     const elapsed = Math.max(0, (now - handoff.startedAt) / 1000);
     const fraction = Math.min(1, (elapsed * WALK_SPEED) / Math.max(1e-6, handoff.trail.table.length));
-    const p = pointAtFraction(handoff.trail.table, fraction);
-    return { x: p.x, z: p.z, heading: p.heading, walking: fraction < 1, fraction };
+    if (fraction < 1) {
+      const p = pointAtFraction(handoff.trail.table, fraction);
+      return { x: p.x, z: p.z, heading: p.heading, walking: true, fraction, leg: 'handoff' };
+    }
   }
-  if (agentState === 'waiting' && gate) return { x: gate.x, z: gate.z, heading: Math.PI, walking: false, fraction: 1 };
-  return { x: home.x, z: home.z, heading: 0, walking: false, fraction: 1 };
+  if (delivery && delivery.trail) {
+    const length = Math.max(1e-6, delivery.trail.table.length);
+    const walked = Math.max(0, (now - delivery.startedAt) / 1000) * WALK_SPEED;
+    if (walked < length) {
+      const p = pointAtFraction(delivery.trail.table, walked / length);
+      return { x: p.x, z: p.z, heading: p.heading, walking: true, fraction: walked / length, leg: 'deliver' };
+    }
+    if (walked < 2 * length) {
+      const back = (2 * length - walked) / length;
+      const p = pointAtFraction(delivery.trail.table, back);
+      return { x: p.x, z: p.z, heading: p.heading + Math.PI, walking: true, fraction: back, leg: 'return' };
+    }
+  }
+  if (agentState === 'waiting' && gate) return { x: gate.x, z: gate.z, heading: Math.PI, walking: false, fraction: 1, leg: 'gate' };
+  return { x: home.x, z: home.z, heading: 0, walking: false, fraction: 1, leg: 'home' };
+}
+
+// Body size and tint per role (data for render.js). Juniors are smaller; the Chief is
+// taller and wears the Peak's gold; a paused agent is greyed.
+export const ROLE_LOOK = Object.freeze({
+  chief_ranger: { scale: 1.12, tint: 0xf2c75c },
+  ranger: { scale: 1, tint: 0xffffff },
+  junior_ranger: { scale: 0.78, tint: 0x9fd0ff },
+  superintendent: { scale: 1, tint: 0xffffff },
+});
+
+export function lookFor(agent) {
+  const base = ROLE_LOOK[(agent && agent.role) || 'ranger'] || ROLE_LOOK.ranger;
+  return agent && agent.paused ? { ...base, tint: 0x8a8a8a } : base;
 }
 
 // Marker above the Ranger for the inspector-free glance: null means no badge.
-export function badgeFor(agentState) {
+export function badgeFor(agentState, { paused = false } = {}) {
+  if (paused) return 'paused';
   return { thinking: 'thinking', 'tool-running': 'tool', waiting: 'gate', error: 'error', done: 'done' }[agentState] || null;
 }

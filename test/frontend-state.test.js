@@ -277,3 +277,25 @@ test('reflection.posted and budget.threshold reach the Peak view', () => {
   assert.equal(s.reflection.latest.status, 'skipped');
   assert.equal(s.reflection.latest.skipReason, 'cap');
 });
+
+test('step 7: a work.done with files starts a delivery walk to the Visitor Center; spend per agent accumulates from cost events', () => {
+  seq = 0;
+  const layout = defaultLayout();
+  layout.rooms.push({ id: 'visitor-center', name: 'Visitor Center', kind: 'visitor_center', x: 21, y: 1, w: 8, h: 6 });
+  let s = applySnapshot(initialState(), snapshot({ layout, reflection: { spentByAgent: { ranger: 0.5 } } }));
+  assert.equal(s.spendByAgent.ranger, 0.5);
+  s = reduce(s, [
+    ev('agent.run.start', { runId: 'r', agentId: 'ranger', provider: 'p', model: 'm', prompt: 'x', maxTurns: 3, budgetUsd: 1, tools: [] }),
+    ev('cost.estimate', { runId: 'r', turn: 1, provider: 'p', model: 'm', inputTokens: 1, outputTokens: 1, usd: 0.25, reconciled: true }),
+    ev('cost.estimate', { runId: 'r', turn: 2, provider: 'p', model: 'm', inputTokens: 1, outputTokens: 1, usd: null, reconciled: false }),
+    ev('agent.run.end', { runId: 'r', reason: 'completed', turns: 2, finalText: 'done', usage: { inputTokens: 2, outputTokens: 2 } }),
+    ev('work.done', { workItemId: 'w1', fromAgentId: 'superintendent', toAgentId: 'ranger', runId: 'r', status: 'done', deliverables: ['outbox/a.md'], summary: 's' }),
+    ev('work.done', { workItemId: 'w2', fromAgentId: 'superintendent', toAgentId: 'ranger', runId: 'r', status: 'done', deliverables: [], summary: 'nothing to deliver' }),
+  ]);
+  assert.equal(s.spendByAgent.ranger, 0.75);
+  assert.equal(s.deliveries.ranger.workItemId, 'w1', 'a work.done without files does not start a walk');
+  assert.equal(s.deliveries.ranger.fromZone, 'ranger-station');
+  assert.deepEqual(s.deliveries.ranger.deliverables, ['outbox/a.md']);
+  s = reduce(s, [ev('crew.agent', { agentId: 'ranger', change: 'updated', agent: { ...layout.agents[0], paused: true } })]);
+  assert.equal(s.layout.agents[0].paused, true);
+});

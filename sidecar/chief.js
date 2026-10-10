@@ -173,6 +173,14 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
           const taskTotal = v.tasks.reduce((n, t) => n + t.budgetUsd, 0);
           if (taskTotal > v.budgetUsd + 1e-9) return { ok: false, error: `tasks of ${v.id} add up to $${taskTotal.toFixed(2)}, over its budget of $${v.budgetUsd.toFixed(2)}` };
         }
+        // Every venture gets a trailhead in the park; its trails run to the camps that serve it.
+        for (const v of input.ventures) {
+          try {
+            await agents.ensureZone('trailhead', { venture: v.id, name: `${v.name} Trailhead` });
+          } catch (err) {
+            return { ok: false, error: `could not place a trailhead for ${v.id}: ${err.message}` };
+          }
+        }
         const version = plan ? plan.version + 1 : 1;
         const history = plan ? [...plan.history, { version: plan.version, submittedAt: plan.submittedAt, runId: plan.runId, summary: plan.summary }] : [];
         plan = { id: plan ? plan.id : `plan-${randomUUID().slice(0, 8)}`, missionId: mission.id, version, submittedAt: clock.now(), by: ctx.agentId, runId: ctx.runId || '', ...input, history };

@@ -46,7 +46,21 @@ async function setup({ maxConcurrent = 2, scripts = {} } = {}) {
   const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, makeProvider, clock, agents, toolContext, maxConcurrent, permissionTimeoutMs: 50 });
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, clock, workspaceRoot }).init();
   toolContext.trails = trails;
-  return { dir, home, workspaceRoot, store, bus, events, clock, runs, trails, agents, layoutState, providers, cleanup: () => fsp.rm(dir, { recursive: true, force: true }) };
+  const cleanup = async () => {
+    runs.cancel();
+    await runs.waitForIdle();
+    await trails.flushed();
+    for (let i = 0; i < 5; i++) {
+      try {
+        await fsp.rm(dir, { recursive: true, force: true });
+        return;
+      } catch (err) {
+        if (err.code !== 'ENOTEMPTY') throw err;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    }
+  };
+  return { dir, home, workspaceRoot, store, bus, events, clock, runs, trails, agents, layoutState, providers, cleanup };
 }
 
 test('run manager: one run per agent, global cap, FIFO start, cancel of queued and active, waitForIdle', async () => {
@@ -121,7 +135,7 @@ test('trails: delegation rules, briefs, work.handoff → run → work.done with 
     assert.equal(item.queued, false);
     const handoff = h.events.find((e) => e.type === 'work.handoff');
     assert.deepEqual(handoff.payload, { fromAgentId: 'chief-ranger', toAgentId: 'mark', fromRoomId: 'mountain-peak', toRoomId: 'camp', trailId: 'trail:mountain-peak:camp', workItemId: item.id, summary: 'Write the launch plan' });
-    const start = h.events.find((e) => e.type === 'agent.run.start' && e.payload.agentId === 'mark');
+    const start = await waitUntil(() => h.events.find((e) => e.type === 'agent.run.start' && e.payload.agentId === 'mark'));
     assert.equal(start.payload.prompt, briefFor({ ...item, budgetUsd: 0.3 }));
     assert.match(start.payload.prompt, /Deadline: Friday/);
     assert.deepEqual(h.trails.inTransit().map((it) => it.id), [item.id]);
@@ -176,6 +190,37 @@ test('trails: delegation rules, briefs, work.handoff → run → work.done with 
     } finally {
       await h2.cleanup();
     }
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('pause: a paused agent gets no new runs, cancelFor stops its active and queued runs, resume restores it', async () => {
+  const holds = [];
+  const h = await setup({ maxConcurrent: 2, scripts: { default: () => [[text('a'), async () => { await new Promise((r) => holds.push(r)); }, text('b'), end()]] } });
+  try {
+    const r1 = await h.runs.start({ agentId: 'mark', prompt: 'one' });
+    const r2 = await h.runs.start({ agentId: 'mark', prompt: 'two' });
+    assert.equal(r2.queued, true);
+    await h.agents.setPaused('mark', true);
+    assert.equal(h.agents.get('mark').paused, true);
+    assert.equal(h.events.at(-1).payload.agent.paused, true, 'crew.agent carries the pause');
+    assert.equal(h.runs.cancelFor('mark'), 2);
+    await h.runs.waitForIdle();
+    assert.deepEqual([(await h.store.loadRun(r1.runId)).reason, (await h.store.loadRun(r2.runId)).reason], ['cancelled', 'cancelled']);
+    await assert.rejects(h.runs.start({ agentId: 'mark', prompt: 'three' }), (e) => e.code === 'AGENT_PAUSED');
+    await assert.rejects(h.trails.delegate({ toAgentId: 'mark', brief: 'x' }, { by: 'chief-ranger' }), (e) => e.code === 'AGENT_PAUSED');
+    assert.equal(h.trails.list()[0].status, 'failed');
+    await h.agents.setPaused('mark', false);
+    assert.equal('paused' in h.layoutState.get().agents.find((a) => a.id === 'mark'), false);
+    holds.splice(0); // the cancelled runs' holds are dead; wait for the new run's own
+    const r3 = await h.runs.start({ agentId: 'mark', prompt: 'three' });
+    await waitUntil(() => holds.length >= 1);
+    holds.splice(0).forEach((r) => r());
+    await h.runs.waitForIdle();
+    assert.equal((await h.store.loadRun(r3.runId)).reason, 'completed');
+    assert.equal(h.runs.cancelFor('nobody'), 0);
+    await assert.rejects(h.agents.setPaused('ghost', true), (e) => e.status === 404);
   } finally {
     await h.cleanup();
   }

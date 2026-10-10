@@ -37,8 +37,8 @@ npm start                             # node sidecar/index.js
 ```
 
 Then open <http://127.0.0.1:8790>. Orbit with the mouse, scroll to zoom, switch to fly or
-follow with the buttons at the bottom, re-roll the terrain seed there too. Click the Ranger,
-a zone, a fixture, the Entrance Gate or the Mountain Peak to inspect it. Routine turns run on the local worker model (Ollama at
+follow with the buttons at the bottom, re-roll the terrain seed there too. Click a Ranger,
+a zone, a trail, a fixture, the Entrance Gate or the Mountain Peak to inspect it. Routine turns run on the local worker model (Ollama at
 `OLLAMA_HOST`, default `http://127.0.0.1:11434`, model `OLLAMA_MODEL` or the first installed).
 Claude via the Anthropic API is the judge tier (see "Phase 2 so far").
 Without Ollama running, a default run answers `400 OLLAMA_UNREACHABLE`; without a key, an
@@ -106,7 +106,13 @@ data per venture (runs, spend, work items, Gate decisions; revenue is "unknown" 
 connector is wired), posts a document at the Peak and in its outbox, writes a briefing to
 each department's notes, and comes back to revise the plan. "Reflect now" on the Peak
 card runs it on demand. Morale notes must cite a number from the data.
-The park still draws one body; the crew walking its trails is step 7.
+Step 7, the crew in the park: every Ranger has a body (the Chief tall and gold on the
+Peak, Juniors small), camps, the Visitor Center and a trailhead per venture are clearings
+joined by trails through the Ranger Station, Rangers walk a trail when work is handed to
+them and carry finished files to the Visitor Center. Click a Ranger to brief, pause or
+reassign it; a zone for its roster, budget burn and leash defaults; a trail for the work on
+it; the Gate to approve, revise or reject; the Peak for the portfolio. `node
+scripts/park-check.mjs` runs the headless check against the fakes.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

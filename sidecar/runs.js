@@ -180,6 +180,7 @@ export function createRunManager({
       const layout = getLayout();
       const agentRecord = agentOf(layout, agentId);
       if (!agentRecord) throw fail('BAD_REQUEST', `unknown agent "${agentId}"`);
+      if (agentRecord.paused) throw fail('AGENT_PAUSED', `${agentId} is paused; resume it from its card first`);
       if (!Number.isInteger(maxTurns) || maxTurns < 1) throw fail('BAD_REQUEST', 'maxTurns must be a positive integer');
       if (typeof budgetUsd !== 'number' || !(budgetUsd >= 0)) throw fail('BAD_REQUEST', 'budgetUsd must be a non-negative number');
 
@@ -367,6 +368,24 @@ export function createRunManager({
         await track(store.saveRun(record));
       }
       return { runId, agentId, provider: provider.name, model: chosenModel, tier, queued: queuedNow, done: settled.then(() => entry.done) };
+    },
+
+    // Cancels every run (active or queued) of one agent. Returns how many.
+    cancelFor(agentId) {
+      let n = 0;
+      for (const q of queue.filter((x) => x.agentId === agentId)) {
+        queue.splice(queue.indexOf(q), 1);
+        cancelQueued(q);
+        n += 1;
+      }
+      for (const r of running.values()) {
+        if (r.agentId === agentId) {
+          r.abort();
+          n += 1;
+        }
+      }
+      pump();
+      return n;
     },
 
     // Cancels one run (active or queued) or, with no id, everything.

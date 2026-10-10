@@ -363,6 +363,18 @@ test('agents over HTTP: CRUD with the hierarchy rules, the Chief at the Peak, pe
     assert.equal((await srv.del('/api/agents/ghost')).status, 404);
     const crew = stream.events.filter((e) => e.type === 'crew.agent').map((e) => e.payload.change);
     assert.deepEqual(crew, ['created', 'created', 'updated', 'created', 'removed', 'removed'], 'the Chief from boot is replayed first');
+    // Pause / resume over HTTP.
+    const paused = await srv.post('/api/agents/ranger/pause', {});
+    assert.equal(paused.status, 200);
+    assert.equal(paused.body.paused, true);
+    assert.equal(paused.body.cancelledRuns, 0);
+    const refused = await srv.post('/api/run', { agentId: 'ranger', prompt: 'x' });
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.code, 'AGENT_PAUSED');
+    const resumed = await srv.post('/api/agents/ranger/resume', {});
+    assert.equal(resumed.body.paused, undefined);
+    assert.equal((await srv.post('/api/agents/ghost/pause', {})).status, 404);
+    assert.ok((await srv.get('/api/state')).body.layout.rooms.some((r) => r.kind === 'visitor_center'), 'the Visitor Center exists from boot');
     stream.close();
   } finally {
     await srv.close();
