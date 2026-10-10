@@ -37,6 +37,8 @@ import { createBrowserControl } from './browser/control.js';
 import { createConnectors } from './connectors/registry.js';
 import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { createResearch } from './research/index.js';
+import { createOllama } from './ollama.js';
+import { createSetup } from './setup.js';
 import { TOOLS } from './capability/tools.js';
 import { CREW_TOOLS } from './capability/crew.js';
 import { createRouter } from './router.js';
@@ -52,7 +54,9 @@ import { readJson } from './store.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, '..');
 
-export async function boot({ env = process.env, port = Number(env.PORT) || 8790, host = env.HOST || '127.0.0.1', log = console } = {}) {
+// `restart` (optional): called when the first-run flow changes the workspace root or
+// POST /api/restart is hit; the entry point below closes and boots again in-process.
+export async function boot({ env = process.env, port = Number(env.PORT) || 8790, host = env.HOST || '127.0.0.1', log = console, restart = null } = {}) {
   const home = path.resolve(env.MAKA_HOME || path.join(process.cwd(), '.maka'));
   const keystorePath = defaultKeystorePath({ MAKA_HOME: home });
   const config = await loadOrDefault(path.join(home, 'config.json'), validateConfig, () => ({}), log, 'config.json');
@@ -113,6 +117,9 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const research = createResearch({ env, keystorePath, judge, workspaceRoot });
   Object.assign(registry, research.tools);
   toolContext.judge = judge;
+  const ollama = createOllama({ env, bus, log });
+  ollama.status().catch(() => {});
+  const setup = await createSetup({ home, configPath: path.join(home, 'config.json'), workspaceRoot, env, keystorePath, bus, ollama, chief, agents, providerStatus: () => providerStatus({ env, keystorePath, probeLocal: false }), restart, log }).init();
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -138,6 +145,9 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     browser,
     connectors,
     research,
+    setup,
+    ollama,
+    restart,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -191,7 +201,10 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await new Promise((resolve) => server.close(resolve));
   }
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, research, close };
+  const setupState = await setup.state();
+  log.info(`  first run: ${setupState.firstRun ? 'yes (the park shows the first-run card)' : `done ${new Date(setupState.completedAt).toISOString()}${setupState.skipped ? ' (skipped)' : ''}`} · worker ${ollama.summary().worker}`);
+
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, research, setup, ollama, close };
 }
 
 function validateConfig(data) {
@@ -216,10 +229,32 @@ async function loadOrDefault(file, validateFn, defaultFn, log, label) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  boot().then(({ close }) => {
+  // The entry point can restart the sidecar in-process (the first-run flow's workspace
+  // change): close everything, boot again on the same port, keep the process and its
+  // environment (the shell's credential broker handle included).
+  let app = null;
+  let restarting = false;
+  const restart = () => {
+    if (restarting || !app) return;
+    restarting = true;
+    setTimeout(async () => {
+      console.info('restarting the sidecar in-process');
+      try {
+        await app.close();
+        app = await boot({ restart });
+      } catch (err) {
+        console.error('restart failed:', err);
+        process.exit(1);
+      } finally {
+        restarting = false;
+      }
+    }, 150);
+  };
+  boot({ restart }).then((booted) => {
+    app = booted;
     const stop = () => {
       console.info('shutting down');
-      close().then(() => process.exit(0));
+      (app ? app.close() : Promise.resolve()).then(() => process.exit(0));
     };
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);

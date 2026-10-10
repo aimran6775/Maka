@@ -114,3 +114,15 @@ body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--sans); ov
 .btn.small { padding: 2px 7px; font-size: 11px; }
 .sel.small { font-size: 11px; padding: 1px 4px; }
 .gate-row { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
+
+/* First run (phase 3 step 3): one card over the park until done or skipped. */
+.firstrun-host { position: fixed; inset: 0 0 26px 0; display: flex; align-items: center; justify-content: center; background: rgba(5, 10, 7, 0.55); z-index: 20; }
+.firstrun-host[hidden] { display: none; }
+.firstrun { width: 640px; max-height: calc(100vh - 80px); overflow: auto; background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.6); }
+.fr-title { font-family: var(--mono); font-size: 13px; letter-spacing: 0.1em; color: var(--accent); }
+.fr-step { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--panel-border); padding-top: 10px; }
+.fr-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.fr-head .fr-num { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: 50%; background: #1d3025; border: 1px solid var(--panel-border); font-family: var(--mono); font-size: 11px; }
+.fr-head.done .fr-num { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.fr-foot { border-top: 1px solid var(--panel-border); padding-top: 10px; }
+.small.warn { color: var(--warn); }

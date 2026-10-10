@@ -20,6 +20,8 @@ import { createMailSystem } from '../../sidecar/mail/system.js';
 import { createBrowserControl } from '../../sidecar/browser/control.js';
 import { createConnectors } from '../../sidecar/connectors/registry.js';
 import { createResearch } from '../../sidecar/research/index.js';
+import { createOllama } from '../../sidecar/ollama.js';
+import { createSetup } from '../../sidecar/setup.js';
 import { TOOLS } from '../../sidecar/capability/tools.js';
 import { CREW_TOOLS } from '../../sidecar/capability/crew.js';
 import { createRouter, defaultPolicy } from '../../sidecar/router.js';
@@ -36,7 +38,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 
 // `judgeProvider`: a (name, opts) => { provider, model, price } factory for the judge tier; when
 // absent no judge is wired, so runs are not reviewed (the phase 1 behaviour).
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, ollama: ollamaUrl = null, setup: setupOpts = null } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -99,6 +101,11 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     Object.assign(registry, research.tools);
     toolContext.judge = judge;
   }
+  // `ollama`: a fake Ollama's URL wires the manager; `setup`: { verifyUrls, restart, platform, fs }
+  // wires the first-run flow (absent → neither exists, as before phase 3).
+  const ollama = ollamaUrl ? createOllama({ env: { ...env, OLLAMA_HOST: ollamaUrl }, bus, clock, log: { error() {} } }) : null;
+  const restartCalls = [];
+  const setup = setupOpts ? await createSetup({ home, workspaceRoot, env, keystorePath, bus, ollama, chief, agents, providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch, probeLocal: false }), restart: setupOpts.restart || (() => restartCalls.push(clock ? clock.now() : Date.now())), fetch: globalThis.fetch, fs: setupOpts.fs, platform: setupOpts.platform, clock, verifyUrls: setupOpts.verifyUrls, log: { error() {} } }).init() : null;
   const app = createApp({
     bus,
     store,
@@ -117,6 +124,9 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     browser: browserControl,
     connectors,
     research,
+    setup,
+    ollama,
+    restart: setup ? (setupOpts.restart || (() => restartCalls.push(clock ? clock.now() : Date.now()))) : null,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -151,6 +161,9 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     browser: browserControl,
     connectors,
     research,
+    setup,
+    ollama,
+    restartCalls,
     workspace,
     keystorePath,
     async get(p) {

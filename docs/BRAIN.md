@@ -40,7 +40,18 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 2 done: the shell
+Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 3 done: the first
+run. A card over the park (`frontend/ui/firstrun.js`, state from `sidecar/setup.js`)
+walks the Superintendent through four steps, each true to what the sidecar found: the
+workspace root (the LaCie at `/Volumes/LaCie/Maka/workspace` is the default when it is
+mounted; a changed root goes into `config.json` and the sidecar restarts itself
+in-process, the page reconnects), the judge key (checked with the provider before it is
+stored; an invalid key is refused, an unreachable provider is said), the worker
+(`sidecar/ollama.js`: Ollama found or not with the install hint and a Start button, the
+models it has, memory as the OS reports it, the largest tool-capable model that fits
+half of it offered as one Pull with Ollama's own byte progress as `ollama.pull` events),
+and the mission (the Chief is already at the Peak; the same `POST /api/mission` as the
+Peak card). Done or Later closes it for good (`setup.json`). Step 2 done: the shell
 owns every secret in the macOS Keychain (`src-tauri/src/credentials.rs`) and hands the
 sidecar a session-scoped handle instead: a Unix socket plus a random token
 (`src-tauri/src/broker.rs`, `MAKA_CREDENTIALS_SOCKET` / `MAKA_CREDENTIALS_TOKEN`) that

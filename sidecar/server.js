@@ -37,6 +37,16 @@
 //   POST /api/mail/send        the Superintendent sends from a station address (policy: ceilings,
 //                              suppression; no leash, the owner is the principal) → the stored copy
 //   POST /api/mail/resend/webhook   Resend webhook (raw body, svix signature)
+//   GET  /api/setup            the first-run flow's state (phase 3 step 3)
+//   POST /api/setup/workspace  { root } → config.json workspaceRoot; a changed root restarts the sidecar in-process
+//   POST /api/setup/key        { provider: anthropic|openrouter, key } → verified against the provider, then stored
+//   POST /api/setup/complete   { skipped? } → the card closes for good
+//   POST /api/setup/reset      show the card again
+//   GET  /api/ollama           the local worker: reachable, version, models with sizes, install, memory, recommendation
+//   POST /api/ollama/pull      { model } → 202; progress streams as ollama.pull events
+//   POST /api/ollama/start     start the installed Ollama (the app or `ollama serve`)
+//   DELETE /api/ollama/models/:name
+//   POST /api/restart          restart the sidecar in-process (202); the page reconnects
 //   GET  /api/research         the Scout kit: search provider, trend sources, judge wired
 //   GET  /api/briefs           venture briefs from every Ranger's outbox, newest first
 //   GET  /api/connectors       one status row per connector (connected, last sync, summary)
@@ -195,7 +205,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, research = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, research = null, workspace = null, setup = null, ollama = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -267,6 +277,8 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         browser: browser ? await browser.status() : null,
         connectors: connectors ? connectors.list() : null,
         research: research ? await research.status() : null,
+        setup: setup ? await setup.state() : null,
+        ollama: ollama ? ollama.summary() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -348,7 +360,9 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
       if (!chief) throw new HttpError(404, 'no Chief Ranger');
       const body = await readJsonBody(req);
       try {
-        return sendJson(res, 202, await chief.mission(body));
+        const started = await chief.mission(body);
+        if (setup) await setup.noteMission();
+        return sendJson(res, 202, started);
       } catch (err) {
         if (err.status) throw new HttpError(err.status, err.message, err.code);
         if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST'].includes(err.code)) throw new HttpError(400, err.message, err.code);
@@ -442,6 +456,57 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         if (['NO_KEY', 'NO_ZONE', 'NETWORK', 'BAD_RESPONSE', 'CLOUDFLARE'].includes(err.code) || /^HTTP_/.test(err.code || '')) throw new HttpError(502, err.message, err.code);
         throw err;
       }
+    }
+    if (p === '/api/setup' && method === 'GET') {
+      if (!setup) throw new HttpError(404, 'no first-run flow');
+      return sendJson(res, 200, await setup.state());
+    }
+    if (p === '/api/setup/workspace' && method === 'POST') {
+      if (!setup) throw new HttpError(404, 'no first-run flow');
+      const body = await readJsonBody(req);
+      return sendJson(res, 200, await rethrow(() => setup.setWorkspace(body.root)));
+    }
+    if (p === '/api/setup/key' && method === 'POST') {
+      if (!setup) throw new HttpError(404, 'no first-run flow');
+      const body = await readJsonBody(req);
+      return sendJson(res, 200, await rethrow(() => setup.setKey(body.provider, body.key)));
+    }
+    if (p === '/api/setup/complete' && method === 'POST') {
+      if (!setup) throw new HttpError(404, 'no first-run flow');
+      const body = await readJsonBody(req);
+      return sendJson(res, 200, await setup.complete({ skipped: Boolean(body.skipped) }));
+    }
+    if (p === '/api/setup/reset' && method === 'POST') {
+      if (!setup) throw new HttpError(404, 'no first-run flow');
+      return sendJson(res, 200, await setup.reset());
+    }
+    if (p === '/api/ollama' && method === 'GET') {
+      if (!ollama) throw new HttpError(404, 'no Ollama manager');
+      return sendJson(res, 200, await ollama.status());
+    }
+    if (p === '/api/ollama/pull' && method === 'POST') {
+      if (!ollama) throw new HttpError(404, 'no Ollama manager');
+      const body = await readJsonBody(req);
+      if (typeof body.model !== 'string' || !body.model.trim()) throw new HttpError(400, 'model is required', 'BAD_REQUEST');
+      if (ollama.summary().pulling) throw new HttpError(409, `already pulling ${ollama.summary().pulling.model}`, 'PULL_ACTIVE');
+      // The pull runs on; its progress and its end (success or error) are ollama.pull events.
+      const running = ollama.pull(body.model.trim());
+      running.catch((err) => console.error('ollama pull failed:', err.message));
+      await new Promise((r) => setImmediate(r));
+      return sendJson(res, 202, { model: body.model.trim(), started: true });
+    }
+    if (p === '/api/ollama/start' && method === 'POST') {
+      if (!ollama) throw new HttpError(404, 'no Ollama manager');
+      return sendJson(res, 200, await rethrow(() => ollama.start()));
+    }
+    if (p.startsWith('/api/ollama/models/') && method === 'DELETE') {
+      if (!ollama) throw new HttpError(404, 'no Ollama manager');
+      return sendJson(res, 200, await rethrow(() => ollama.remove(decodeURIComponent(p.slice('/api/ollama/models/'.length)))));
+    }
+    if (p === '/api/restart' && method === 'POST') {
+      if (typeof restart !== 'function') throw new HttpError(404, 'this sidecar cannot restart itself (run it through sidecar/index.js)');
+      restart();
+      return sendJson(res, 202, { restarting: true });
     }
     if (p === '/api/research' && method === 'GET') {
       if (!research) throw new HttpError(404, 'no research kit');

@@ -6,6 +6,7 @@
 // console errors. Exit code 1 on page errors or a missing renderer.
 //
 //   CHROMIUM=/path/to/chromium node scripts/park-check.mjs
+//   PARK_CHECK_SHOT=/tmp/first-run.png  also saves a screenshot of the first-run card
 //   (default: /opt/pw-browsers/chromium or `chromium` on PATH)
 
 import { spawn } from 'node:child_process';
@@ -15,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startTestServer } from '../test/helpers/test-server.js';
 import { fakeProvider, text, toolCall, end } from '../test/helpers/fake-provider.js';
+import { startFakeOllama } from '../test/helpers/fake-ollama.js';
 
 const CHROMIUM = process.env.CHROMIUM || '/opt/pw-browsers/chromium';
 
@@ -110,7 +112,10 @@ async function main() {
   const makeProvider = async (name, opts) => (name === 'anthropic'
     ? { provider: chiefProvider, model: opts.model, price: { inputPerMTok: 4, outputPerMTok: 20 } }
     : { provider: fakeProvider([[text('Scouting… '), async () => new Promise((r) => setTimeout(r, 4000)), text('five shops found'), end()]], { name }), model: 'worker', price: null });
-  const srv = await startTestServer({ makeProvider, withChief: true, maxConcurrent: 3 });
+  // The first-run card (phase 3 step 3) is wired with a fake Ollama so the page shows it,
+  // and completed through the API below so the rest of the check sees the park.
+  const fakeOllama = await startFakeOllama({ models: [{ name: 'qwen2.5:7b', size: 4 * 1024 ** 3 }] });
+  const srv = await startTestServer({ makeProvider, withChief: true, maxConcurrent: 3, ollama: fakeOllama.url, setup: { platform: 'linux' } });
   const bin = await findChromium();
   const profile = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-chrome-'));
   const chrome = spawn(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--window-size=1280,800', 'about:blank'], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -146,6 +151,18 @@ async function main() {
     await wait(500);
   }
   console.log('status before mission:', await statusText());
+  const firstRunShown = await evaluate("Boolean(document.querySelector('.firstrun')) && !document.querySelector('.firstrun-host').hidden");
+  const firstRunSteps = await evaluate("[...document.querySelectorAll('.firstrun .fr-head')].map((n) => n.textContent)");
+  console.log('first-run card:', firstRunShown ? 'shown' : 'NOT SHOWN', JSON.stringify(firstRunSteps));
+  if (process.env.PARK_CHECK_SHOT) {
+    const shot = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
+    await fsp.writeFile(process.env.PARK_CHECK_SHOT, Buffer.from(shot.data, 'base64'));
+    console.log('screenshot:', process.env.PARK_CHECK_SHOT);
+  }
+  await srv.post('/api/setup/complete', { skipped: true });
+  await wait(800);
+  const firstRunHidden = await evaluate("document.querySelector('.firstrun-host').hidden");
+  console.log('first-run card after skip:', firstRunHidden ? 'hidden' : 'STILL SHOWN');
   // Brief the Chief through the API; the page should show the crew grow and move.
   const r = await srv.post('/api/mission', { text: 'Sell paper lanterns online.', budgetUsd: 3, horizon: '30 days' });
   console.log('mission:', r.status, r.body.mission && r.body.mission.status);
@@ -160,13 +177,14 @@ async function main() {
   console.log('bodies:', JSON.stringify(bodies));
   console.log('console errors:', errors.length ? errors : 'none');
   if (logs.length) console.log('console logs:', logs.slice(0, 10));
-  const ok = errors.length === 0 && /ranger (ready|static)/.test(await statusText()) && bodies.length === summary.agents.length && bodies.some((b) => b.role === 'chief_ranger');
+  const ok = errors.length === 0 && /ranger (ready|static)/.test(await statusText()) && bodies.length === summary.agents.length && bodies.some((b) => b.role === 'chief_ranger') && firstRunShown && firstRunSteps.length === 4 && firstRunHidden;
   // Cleanup never decides the verdict: the check passed or failed above. Chromium keeps
   // writing to its profile for a moment after SIGKILL, so the removal is forced,
   // recursive and retried; a profile that still cannot be removed is reported, not fatal.
   cdp.close();
   await stopChromium(chrome);
   await srv.close();
+  await fakeOllama.close();
   await removeWithRetry(profile);
   console.log(ok ? 'PARK CHECK OK' : 'PARK CHECK FAILED');
   process.exit(ok ? 0 : 1);

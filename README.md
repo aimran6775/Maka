@@ -232,6 +232,14 @@ only, through the same `keys.js` that reads environment variables and, without t
 the 0600 keystore file. A key you give at the Gate or at first run goes straight into the
 Keychain; the status bar says which store is in use.
 
+Step 3, first run: the first time the park opens (also `npm start` on a fresh
+`MAKA_HOME`) a card walks you through the workspace root (the LaCie external drive when
+it is mounted, else `~/Maka/workspace`; the sidecar restarts itself when it changes), the
+judge key (checked with Anthropic before it is stored), the worker (Ollama detected or
+not, with a Start button and the install hint; one model sized to half the machine's
+memory offered as a pull with real progress) and the mission for the Chief, who is
+already at the Peak. Done or Later closes it; `POST /api/setup/reset` brings it back.
+
 The signed, notarized `.dmg` and the download page come with steps 6 and 7
 (`docs/RELEASE_RUNBOOK.md`).
 

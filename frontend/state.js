@@ -31,6 +31,10 @@ export function initialState() {
     connectors: [], // one row per connector from the snapshot; connector.* events patch them
     connectorEvents: [], // connector.sync / connector.error payloads this session, oldest first (bounded)
     research: null, // { search, searchKey, trends, judge } from the snapshot
+    setup: null, // the first-run flow from the snapshot (/api/setup shape); setup.changed asks for a re-read
+    setupChanges: [], // setup.changed payloads this session, oldest first
+    ollama: null, // the local worker summary from the snapshot (/api/ollama shape without a fresh probe)
+    ollamaPull: null, // the latest ollama.pull payload (+ ts), null when nothing is being pulled
     browser: null, // { chromium, wired, headless, sessions, pending } from the snapshot
     browserHandoffs: {}, // handoffId -> latest browser.handoff payload (+ ts)
     browserHandoffOrder: [], // handoffIds, oldest first
@@ -99,6 +103,9 @@ export function applySnapshot(state, snap) {
   next.browser = snap.browser || null;
   next.connectors = Array.isArray(snap.connectors) ? snap.connectors : [];
   next.research = snap.research || null;
+  next.setup = snap.setup || null;
+  next.ollama = snap.ollama || null;
+  if (next.ollama && !next.ollama.pulling && next.ollamaPull && next.ollamaPull.done) next.ollamaPull = null;
   if (snap.browser && Array.isArray(snap.browser.pending)) {
     const handoffs = { ...next.browserHandoffs };
     const order = [...next.browserHandoffOrder];
@@ -402,6 +409,19 @@ export function applyEvent(state, event) {
           next = updateRun(next, p.runId, (r) => ({ ...r, items: [...r.items, { kind: 'note', text: `Browser handoff (${p.kind}) ${p.status}${p.notes ? ` — ${p.notes}` : ''}` }] }));
           if (p.status === 'returned') next = setAgent(next, p.agentId, 'tool-running', p.runId);
         }
+      }
+      break;
+    }
+    case 'ollama.pull': {
+      next.ollamaPull = { ...p, ts: event.ts };
+      if (next.ollama) next.ollama = { ...next.ollama, pulling: p.done ? null : { model: p.model, status: p.status, completed: p.completed || 0, total: p.total || 0 } };
+      break;
+    }
+    case 'setup.changed': {
+      next.setupChanges = [...next.setupChanges.slice(-19), { ...p, ts: event.ts }];
+      if (next.setup) {
+        if (p.change === 'completed' || p.change === 'skipped') next.setup = { ...next.setup, firstRun: false, skipped: p.change === 'skipped', completedAt: event.ts };
+        else if (p.change === 'done') next.setup = { ...next.setup, steps: { ...(next.setup.steps || {}), [p.step]: { doneAt: event.ts, detail: p.detail || '' } } };
       }
       break;
     }

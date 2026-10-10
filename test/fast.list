@@ -33,3 +33,4 @@ test/ads.test.js
 test/research.test.js
 test/shell.test.js
 test/credentials.test.js
+test/setup.test.js

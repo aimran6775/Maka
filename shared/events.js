@@ -421,6 +421,25 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     domain: str,
     tool: str,
   }),
+  // Added v1 (phase 3 step 3): a local worker model being pulled by Ollama. `completed`
+  // and `total` are the bytes Ollama reported for the current layer / the whole pull as
+  // it reports them; `done` is true on success or failure (then `error` says why). The
+  // UI draws only these numbers.
+  'ollama.pull': payload(['model', 'status', 'done'], {
+    model: nonEmpty,
+    status: str,
+    completed: int0,
+    total: int0,
+    done: bool,
+    error: str,
+  }),
+  // Added v1 (phase 3 step 3): the first-run flow changed (a step done, or the whole
+  // setup completed or skipped), so every client re-reads /api/setup.
+  'setup.changed': payload(['step', 'change'], {
+    step: { type: 'string', enum: ['workspace', 'judge', 'worker', 'mission', 'all'] },
+    change: { type: 'string', enum: ['done', 'completed', 'skipped', 'restarting'] },
+    detail: str,
+  }),
 });
 
 export const EVENT_TYPES = deepFreeze(Object.keys(PAYLOAD_SCHEMAS));

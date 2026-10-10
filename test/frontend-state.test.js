@@ -342,3 +342,26 @@ test('mail.message, mail.event and mail.address keep the mail counts current', (
   assert.equal(s.mailMessages.length, 2);
   assert.equal(s.mailEvents[0].event, 'delivered');
 });
+
+test('first run and the local worker: the snapshot carries setup and ollama; ollama.pull keeps the latest progress; setup.changed marks steps and completion', () => {
+  let s = applySnapshot(initialState(), { seq: 0, layout: { version: 1, rooms: [], objects: [], agents: [] }, providers: {}, setup: { firstRun: true, steps: {}, workspace: { root: '/ws', candidates: [] } }, ollama: { host: 'http://127.0.0.1:11434', reachable: true, models: [], pulling: null } });
+  assert.equal(s.setup.firstRun, true);
+  assert.equal(s.ollama.reachable, true);
+  assert.equal(s.ollamaPull, null);
+  s = reduce(s, [ev('ollama.pull', { model: 'qwen2.5:7b', status: 'pulling abc', completed: 10, total: 100, done: false })]);
+  assert.deepEqual(s.ollama.pulling, { model: 'qwen2.5:7b', status: 'pulling abc', completed: 10, total: 100 });
+  assert.equal(s.ollamaPull.completed, 10);
+  s = reduce(s, [ev('ollama.pull', { model: 'qwen2.5:7b', status: 'success', completed: 100, total: 100, done: true })]);
+  assert.equal(s.ollama.pulling, null);
+  assert.equal(s.ollamaPull.done, true);
+  s = reduce(s, [ev('setup.changed', { step: 'workspace', change: 'done', detail: '/Volumes/LaCie/Maka/workspace' })]);
+  assert.equal(s.setup.steps.workspace.detail, '/Volumes/LaCie/Maka/workspace');
+  assert.equal(s.setup.firstRun, true);
+  assert.equal(s.setupChanges.length, 1);
+  s = reduce(s, [ev('setup.changed', { step: 'all', change: 'skipped' })]);
+  assert.equal(s.setup.firstRun, false);
+  assert.equal(s.setup.skipped, true);
+  // A fresh snapshot after a finished pull clears the stale progress line.
+  s = applySnapshot(s, { seq: 5, layout: { version: 1, rooms: [], objects: [], agents: [] }, providers: {}, ollama: { reachable: true, models: [{ name: 'qwen2.5:7b' }], pulling: null } });
+  assert.equal(s.ollamaPull, null);
+});

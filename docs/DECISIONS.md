@@ -799,3 +799,40 @@ shell (development, tests) the file works exactly as before.
 Rather than widen the Rust surface, the store keeps one more item, `maka.index`, with
 the names it holds, updated on every set and delete. The sidecar uses the list only for
 diagnostics (which names exist), never for values, so a stale index costs nothing.
+
+## D96. A changed workspace root restarts the sidecar in-process
+
+Every module takes the workspace root at boot (runs, trails, the mail store, the browser
+profiles, the evidence log), so moving it at runtime would mean threading a mutable root
+through all of them. Instead the first-run flow writes `config.json` and asks the entry
+point to close and boot again in the same process on the same port: the shell's
+credential broker handle, the port and the environment survive, the page's SSE client
+reconnects and re-reads the snapshot. A root pinned by `MAKA_WORKSPACE` is written but
+not applied, and the answer says so, because the variable wins at boot.
+
+## D97. The judge key is verified with a free request, and an invalid key is refused
+
+Pasting a key is the one moment Maka can tell the owner it is wrong. `GET /v1/models`
+(Anthropic) and `GET /api/v1/auth/key` (OpenRouter) cost nothing: 200 stores the key as
+verified, 401 / 403 refuses it, and anything else (offline, a 5xx) stores it as "not
+verified" with the reason, so a first run without network still completes and the Peak
+says what happened. There is no "sign in" for Anthropic API keys; the card says so
+instead of offering a button that would lead nowhere.
+
+## D98. The worker model is sized by total memory, half of it
+
+`os.freemem()` on macOS is small by design (the kernel keeps file caches) and would
+recommend a toy model on a quiet 16 GB machine, so the recommendation uses total memory
+with the kickoff brief's rule: half the machine for the model, the rest for the app, the
+browser and the OS. Free memory is shown next to it as a diagnostic, never as the basis.
+The candidates are tool-capable qwen2.5 sizes with approximate download sizes from
+Ollama's library; the pull shows the exact bytes as they arrive.
+
+## D99. The first-run card is a card, not a wizard
+
+One scrolling card with four steps the Superintendent can take in any order, each
+showing its live state (done is derived from what exists: a configured key, a pulled
+model, a mission), with Done and Later at the bottom. A step-by-step wizard would hide
+the park and block on steps the owner may want to skip (no key yet, Ollama later); the
+card sits over the park and everything on it is also on the Peak card, so skipping
+loses nothing.

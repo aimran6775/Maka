@@ -8,6 +8,7 @@ import { createSpend } from './ui/spend.js';
 import { createBuild } from './ui/build.js';
 import { createPermission } from './ui/permission.js';
 import { createInspect } from './ui/inspect.js';
+import { createFirstRun } from './ui/firstrun.js';
 import { el, setChildren } from './ui/windows.js';
 import { tileToWorld, TILE_WORLD } from './park/placement.js';
 
@@ -80,6 +81,7 @@ const spend = createSpend({ parent: ui, getState, x: window.innerWidth - 300, y:
 const build = createBuild({ parent: ui, getState, world: { setBuild() { render(); } }, x: window.innerWidth - 300, y: 190, w: 270 });
 const permission = createPermission({ parent: ui, getState, api });
 const inspect = createInspect({ parent: ui, getState, api, x: window.innerWidth - 300, y: 420, w: 270 });
+const firstRun = createFirstRun({ parent: ui, getState, api, onRefresh: () => render() });
 
 // Camera and park controls (a small bar under the status line).
 const cameraBar = el('div', { class: 'camera-bar' });
@@ -140,6 +142,7 @@ function render() {
     build.render();
     permission.render();
     inspect.render();
+    firstRun.render();
   });
 }
 
