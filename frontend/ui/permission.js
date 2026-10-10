@@ -2,6 +2,7 @@
 // permission.response; the card disappears only when the sidecar echoes the response
 // (or the run ends), never on click alone.
 import { el } from './windows.js';
+import { LEASH_LEVEL_LABELS } from '../../shared/leash.js';
 
 export function createPermission({ parent, getState, api }) {
   const host = el('div', { class: 'perm-host' });
@@ -24,8 +25,10 @@ export function createPermission({ parent, getState, api }) {
       host.replaceChildren(
         ...s.pendingPrompts.map((q) =>
           el('div', { class: 'perm-card' },
+            el('div', { class: 'perm-gate', text: 'ENTRANCE GATE' }),
             el('div', { class: 'perm-title', text: `Allow ${q.tool}?` }),
             el('div', { class: 'muted small', text: q.reason }),
+            q.leash ? el('div', { class: 'perm-leash', text: `leash: ${q.leash.domain} · ${LEASH_LEVEL_LABELS[q.leash.level] || q.leash.level}` }) : el('div', { class: 'perm-leash muted', text: 'leash: not reported' }),
             el('pre', { class: 'perm-input', text: summarize(q.input) }),
             el('div', { class: 'row' },
               el('button', { class: 'btn primary', text: 'Allow', onclick: () => answer(q, true) }),

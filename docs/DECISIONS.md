@@ -160,3 +160,22 @@ Entrance Gate settings).
   Visitor Center); animation states driven only by real events; sidecar owns layout state.
 - Assets: CC0/CC-BY only, recorded in NOTICE.md. Verified: Kenney Tiny Town, Kenney
   Roguelike/RPG pack, Shade Puny Characters, inkBubi forest sample.
+
+## D22. "Waiting on you" is a frontend-derived state
+
+The Ranger shows a raised-hand badge while a `permission.prompt` for its run has no
+`permission.response`. No new event was needed: both events already exist and the state is
+a pure function of them, so the UI still asserts nothing the harness did not emit.
+
+## D23. The COMMS default is "route by policy"
+
+Sending no provider lets the sidecar's router pick the worker tier, so the normal path is
+the local model and the tier is recorded on every turn. Choosing a provider explicitly is
+still possible (for the judge, or when Ollama is down) and then carries no tier, which the
+transcript says.
+
+## D24. The browser check is a script, not a test
+
+The page was driven end to end in headless Chromium over the DevTools protocol against a
+test sidecar. That script depends on a browser binary and is kept outside the repo for
+now; `test:fast` covers the reducer under Node and the sidecar over real HTTP.

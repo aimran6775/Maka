@@ -15,6 +15,9 @@ Product laws:
 4. **Ask, don't guess.** Agents turn ambiguity into one concrete question.
 5. **Finished work has a front door.** Deliverables land as real files in an outbox.
 6. **No outcome promises.** Maka shows what the agents did and what it cost, never what they will earn.
+7. **Platform-compliant by construction.** Connector actions go through official APIs under each platform's terms.
+8. **Replicate strategies, not property.** Rangers build original listings, copy and creative.
+9. **Money out passes the Entrance Gate.** Always, under the leash model, with a hard daily cap.
 
 Status: pre-alpha. See [docs/KICKOFF_BRIEF.md](docs/KICKOFF_BRIEF.md) for the plan.
 
@@ -44,6 +47,18 @@ Environment: `PORT` (8790), `HOST` (127.0.0.1), `MAKA_HOME` (`./.maka`, data and
 Keystore alternative to env vars: `$MAKA_HOME/keystore.json` containing
 `{ "anthropic": "sk-ant-...", "openrouter": "..." }` with file mode `0600`. The sidecar
 refuses to read a keystore with looser permissions.
+
+## What you can do in phase 1
+
+The park has one zone (the Ranger Station) and one Ranger. In BUILD, place a Supply cache
+(grants `fs.read` and `fs.write` in the Ranger's own workspace) or a Trailhead sign (grants
+`web.fetch`). In COMMS, write a brief and run it; tokens stream in, tool calls show their
+input and result, and each turn says which model ran it and what it cost. A file write stops
+at the Entrance Gate card until you allow or deny it; the Ranger waits with a raised hand.
+Deliverables land in `workspace/<ranger>/outbox/`. SPEND shows reconciled cost only.
+
+Phase 2 (business crew, connectors, leash enforcement, judge step, Lookout Tower) and
+phase 3 (macOS app) are described in the brief and are not in this build.
 
 ```bash
 npm run test:fast   # the merge gate

@@ -2,12 +2,12 @@
 import { initialState, applySnapshot, applyEvent } from './state.js';
 import { connectEvents } from './events.js';
 import { createWorld } from './world.js';
-import { theme } from './theme/workshop.js';
+import { theme } from './theme/park.js';
 import { createComms } from './ui/comms.js';
 import { createSpend } from './ui/spend.js';
 import { createBuild } from './ui/build.js';
 import { createPermission } from './ui/permission.js';
-import { el } from './ui/windows.js';
+import { el, setChildren } from './ui/windows.js';
 
 let state = initialState();
 const getState = () => state;
@@ -33,15 +33,17 @@ const world = createWorld({
   canvas,
   theme,
   getState,
-  onPlace: (roomId, x, y) => build.isActive() && api.post('/api/layout/place', { kind: currentBuildKind(), roomId, x, y }).then(showError),
+  // Keep the park clear of the windows that sit on the left and right edges.
+  insets: () => ({ left: window.innerWidth > 900 ? 470 : 0, right: window.innerWidth > 900 ? 300 : 0, top: 0, bottom: 0 }),
+  onPlace: (roomId, x, y) => build.activeKind() && api.post('/api/layout/place', { kind: build.activeKind(), roomId, x, y }).then(showError),
   onReclaim: (objectId) => api.post('/api/layout/reclaim', { objectId }).then(showError),
   onPick: (info) => {
     if (!info) return;
     if (info.type === 'object') {
       const def = state.objectKinds[info.object.kind];
-      flash(`${def ? def.label : info.object.kind}: grants ${def ? def.grants : '?'} to agents in this room`);
+      flash(`${def ? def.label : info.object.kind}: grants ${def ? def.grants.join(', ') : '?'} to Rangers in this zone`);
     } else if (info.type === 'agent') {
-      flash(`${info.agent.name}: ${state.agentStates[info.agent.id] || 'idle'}`);
+      flash(`${info.agent.name}: ${describeState(state.agentStates[info.agent.id] || 'idle')}`);
     }
   },
 });
@@ -51,9 +53,8 @@ const spend = createSpend({ parent: ui, getState, x: window.innerWidth - 300, y:
 const build = createBuild({ parent: ui, getState, world, x: window.innerWidth - 300, y: 190, w: 270 });
 const permission = createPermission({ parent: ui, getState, api });
 
-function currentBuildKind() {
-  const active = ui.querySelector('#build .kind.active');
-  return active ? active.title && Object.keys(state.objectKinds).find((k) => state.objectKinds[k].hint === active.title) : null;
+function describeState(st) {
+  return { idle: 'idle', thinking: 'thinking (model turn in progress)', 'tool-running': 'running a tool', waiting: 'waiting on you at the Entrance Gate', done: 'done', error: 'stopped on an error' }[st] || st;
 }
 
 function showError(res) {
@@ -70,13 +71,13 @@ function flash(text, kind = '') {
 
 function renderStatus() {
   const wired = Object.entries(state.providers).filter(([, p]) => p.configured).map(([n]) => n);
-  status.replaceChildren(
+  setChildren(status,
     el('span', { class: `dot ${state.connected ? 'on' : 'off'}` }),
     el('span', { text: state.connected ? 'events: connected' : 'events: reconnecting' }),
     el('span', { class: 'sep' }),
     el('span', { text: `seq ${state.lastSeq}` }),
     el('span', { class: 'sep' }),
-    el('span', { text: wired.length ? `providers wired: ${wired.join(', ')}` : 'no provider wired (set ANTHROPIC_API_KEY or OPENROUTER_API_KEY and restart)' }),
+    el('span', { text: wired.length ? `providers: ${wired.join(', ')}` : 'no provider wired (start Ollama, or set ANTHROPIC_API_KEY / OPENROUTER_API_KEY, then restart)' }),
     state.keystore.problem ? el('span', { class: 'warn', text: ` · keystore: ${state.keystore.problem}` }) : null,
     state.invalidEvents ? el('span', { class: 'warn', text: ` · ${state.invalidEvents} invalid event(s) rejected` }) : null,
   );

@@ -57,25 +57,26 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 | `sidecar/capability/gate.js` | `createToolGate(...)` turns the current layout into the `tools` object the loop uses: `definitions()` lists only granted tools; `execute()` re-checks the grant at call time, validates input, asks the user for confirmation when the tool needs it, and runs it. |
 
 
-## `frontend/`
-
-Step 7 is **in progress and on hold**. `index.html` is still the placeholder; the modules
-below are written but not yet loaded by any page, not yet styled, and not yet verified in a
-browser. Only `state.js` has been exercised (it loads under Node).
+## `frontend/` — static vanilla JS, served by the sidecar, imports only from `/shared/`
 
 | Path | What it is |
 | --- | --- |
-| `frontend/index.html` | Placeholder page stating that the canvas UI is not wired yet. |
-| `frontend/state.js` | Pure reducer: `/api/state` snapshot + validated events → layout, agent states (idle / thinking / tool-running / done / error), run transcripts, pending prompts, reconciled spend (never double-counted across snapshot and replay). WIP, untested. |
-| `frontend/events.js` | SSE client with reconnect and Last-Event-ID resume. WIP, untested. |
-| `frontend/world.js` | Canvas renderer: rooms, props, agent bodies, build-mode ghost and tile picking; theme-agnostic. WIP, untested. |
-| `frontend/theme/workshop.js` | Workshop theme data, superseded by the park decision; step 7 replaces it with `theme/park.js`. WIP. |
-| `frontend/ui/windows.js` | Draggable window helper and tiny DOM builder. WIP. |
-| `frontend/ui/comms.js` | COMMS window: provider/model selection ("not wired" shown verbatim), prompt, run/cancel, streaming transcript. WIP, untested. |
-| `frontend/ui/spend.js` | SPEND window fed only by reconciled cost. WIP. |
-| `frontend/ui/build.js` | BUILD window: object palette, placed list. WIP. |
-| `frontend/ui/permission.js` | Permission cards for pending prompts. WIP. |
-| `frontend/app.js` | Entry that wires the above; expects `#world`, `#status`, `#ui`, `#flash` elements that `index.html` does not yet provide. WIP. |
+| `frontend/index.html` | The page: full-bleed canvas, window layer, flash line, status bar. Loads `app.js` as an ES module. |
+| `frontend/style.css` | Dark-first styles for the windows, transcript, Entrance Gate card and status bar. |
+| `frontend/app.js` | Entry: loads `/api/state`, subscribes to `/api/events`, owns the state object, renders world + windows on each change, resyncs the snapshot after a reconnect. |
+| `frontend/state.js` | Pure reducer (tested under Node): snapshot + validated events → layout, per-Ranger state (idle / thinking / tool-running / waiting / done / error), run transcripts with per-turn cost lines, pending prompts, reconciled spend (never double-counted across snapshot and replay). Invalid events are counted and ignored. |
+| `frontend/events.js` | SSE client with reconnect and Last-Event-ID resume. |
+| `frontend/world.js` | Canvas renderer: zones, fixtures, Ranger bodies, build-mode ghost and tile picking, cosmetic day/night tint from the real clock; theme-agnostic; keeps the park clear of the window insets. |
+| `frontend/theme/park.js` | National park theme data: grass tiles, gravel zone border, fixture drawings (`trailhead_sign`, `supply_cache`), the Ranger body with one badge per harness state. Swap this file to re-skin. |
+| `frontend/ui/windows.js` | Draggable window helper and tiny DOM builder. |
+| `frontend/ui/comms.js` | COMMS window: "route by policy" (worker tier) or an explicit provider, each labelled wired / not wired / reachable / not reachable; brief, run, cancel; streaming transcript with tool calls, Gate decisions and per-turn model + cost lines. |
+| `frontend/ui/spend.js` | SPEND window fed only by reconciled cost; unpriced turns are counted, never estimated. |
+| `frontend/ui/build.js` | BUILD window: fixture palette from the sidecar's `objectKinds`, click a tile to place, click a fixture to reclaim; lists what is placed and what it grants. |
+| `frontend/ui/permission.js` | Entrance Gate cards for pending prompts with the tool, its input, and the leash domain and level; Allow / Deny post `permission.response` and the card leaves only when the sidecar echoes the answer. |
+
+Verified end to end in headless Chromium against a test sidecar with a scripted provider
+(place by clicking, run from COMMS, Gate card, allow, run end, spend); the script lives
+outside the repo for now, so this check is manual, not part of `test:fast`.
 
 ## `test/`
 
@@ -92,6 +93,7 @@ browser. Only `state.js` has been exercised (it loads under Node).
 | `test/helpers/test-server.js` | Boots the full sidecar stack in a temp dir with an injectable provider factory; SSE client for tests. |
 | `test/router.test.js` | Policy validation and routing; tier stamped on cost events; the loop's review hook (approve / revise / reject / throw / unknown verdict). |
 | `test/leash.test.js` | Leash levels, defaults, tool → domain coverage, validation; contract enum agrees with the model. |
+| `test/frontend-state.test.js` | The frontend reducer: state transitions through a run, waiting at the Gate, errors, spend double-count guard, layout events, invalid events. |
 | `test/capability.test.js` | Layout → grants, sandbox escapes (dotdot, absolute, symlinks), read/write/fetch behaviour, gate refusal and confirmation flow, gate driving the real loop. |
 | `test/helpers/fake-provider.js` | Scripted provider, fake clock, event recorder, fake tool set. Test-only. |
 | `test/helpers/fake-fetch.js` | `fetch` stand-in that streams SSE text in small chunks. Test-only. |

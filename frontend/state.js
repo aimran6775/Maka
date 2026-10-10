@@ -8,7 +8,7 @@
 
 import { validateEvent } from '../shared/events.js';
 
-export const AGENT_STATES = Object.freeze(['idle', 'thinking', 'tool-running', 'done', 'error']);
+export const AGENT_STATES = Object.freeze(['idle', 'thinking', 'tool-running', 'waiting', 'done', 'error']);
 
 export function initialState() {
   return {
@@ -16,6 +16,7 @@ export function initialState() {
     snapshotSeq: 0,
     lastSeq: 0,
     providers: {},
+    policy: null, // router policy from the snapshot (worker / judge tiers)
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
     objectKinds: {},
@@ -43,7 +44,7 @@ function newRunView(payload) {
     status: 'running', // running | ended | error
     reason: null,
     turns: 0,
-    items: [], // ordered transcript items: {kind:'text', text} | {kind:'tool', callId, name, input, result?} | {kind:'note', text}
+    items: [], // ordered transcript items: {kind:'text', text} | {kind:'tool', callId, name, input, result?} | {kind:'note', text} | {kind:'cost', ...}
     usage: { inputTokens: 0, outputTokens: 0 },
     spentUsd: 0,
     unreconciledTurns: 0,
@@ -58,6 +59,7 @@ export function applySnapshot(state, snap) {
   next.snapshotSeq = snap.seq || 0;
   next.lastSeq = Math.max(state.lastSeq, next.snapshotSeq);
   next.providers = snap.providers || {};
+  next.policy = snap.policy || null;
   next.keystore = snap.keystore || { path: '', problem: null };
   next.layout = snap.layout;
   next.objectKinds = snap.objectKinds || {};
@@ -166,6 +168,7 @@ export function applyEvent(state, event) {
         ...run,
         spentUsd: p.reconciled && typeof p.usd === 'number' ? run.spentUsd + p.usd : run.spentUsd,
         unreconciledTurns: p.reconciled ? run.unreconciledTurns : run.unreconciledTurns + 1,
+        items: [...run.items, { kind: 'cost', turn: p.turn, tier: p.tier || null, provider: p.provider, model: p.model, inputTokens: p.inputTokens, outputTokens: p.outputTokens, usd: p.usd, reconciled: p.reconciled }],
       }));
       if (!alreadyCounted) {
         next.spend = p.reconciled && typeof p.usd === 'number'
@@ -178,14 +181,20 @@ export function applyEvent(state, event) {
       if (!next.pendingPrompts.some((q) => q.promptId === p.promptId)) {
         next.pendingPrompts = [...next.pendingPrompts, { ...p }];
       }
+      const run = next.runs[p.runId];
+      if (run && run.status === 'running') next = setAgent(next, run.agentId, 'waiting', p.runId);
       break;
     }
     case 'permission.response': {
       next.pendingPrompts = next.pendingPrompts.filter((q) => q.promptId !== p.promptId);
       next = updateRun(next, p.runId, (run) => ({
         ...run,
-        items: [...run.items, { kind: 'note', text: `${p.allow ? 'Allowed' : 'Denied'} ${p.promptId}` }],
+        items: [...run.items, { kind: 'note', text: `${p.allow ? 'Allowed' : 'Denied'} at the Entrance Gate` }],
       }));
+      const run = next.runs[p.runId];
+      if (run && run.status === 'running' && !next.pendingPrompts.some((q) => q.runId === p.runId)) {
+        next = setAgent(next, run.agentId, 'tool-running', p.runId);
+      }
       break;
     }
     case 'object.place': {

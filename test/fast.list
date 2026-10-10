@@ -9,3 +9,4 @@ test/store.test.js
 test/server.test.js
 test/router.test.js
 test/leash.test.js
+test/frontend-state.test.js

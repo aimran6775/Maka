@@ -42,6 +42,11 @@ export function createWindow({ id, title, x, y, w, parent = document.body, colla
   return { win, body, setTitle: (t) => (bar.firstChild.textContent = t) };
 }
 
+// replaceChildren that ignores null / undefined / false (replaceChildren(null) renders "null").
+export function setChildren(node, ...children) {
+  node.replaceChildren(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+}
+
 export function fmtUsd(n) {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
   return n < 0.01 ? `$${n.toFixed(5)}` : `$${n.toFixed(3)}`;

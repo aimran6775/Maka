@@ -29,11 +29,12 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 1, step 6b done (after the owner's 2026-10-10 scoping decisions; see
-`docs/KICKOFF_BRIEF.md`). The sidecar runs end to end (`npm start`): loop, three providers,
-router, capability gate with leash data, HTTP + SSE and atomic persistence, all tested over
-real HTTP. The served page is still a placeholder; the frontend modules in `frontend/` are
-unwired work in progress that step 7 finishes with the park theme.
+Phase 1, step 7 done (after the owner's 2026-10-10 scoping decisions; see
+`docs/KICKOFF_BRIEF.md`). `npm start` serves the park: one zone (Ranger Station), one
+Ranger, build mode for the two phase 1 fixtures, COMMS, SPEND and the Entrance Gate card,
+all driven by the sidecar's events. Loop, three providers, router, capability gate with
+leash data, HTTP + SSE and atomic persistence are tested over real HTTP; the frontend
+reducer is tested under Node and the page was exercised in headless Chromium.
 
 ### The event contract (`shared/events.js`)
 

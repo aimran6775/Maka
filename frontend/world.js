@@ -1,10 +1,12 @@
 // Canvas world renderer. Draws rooms, placed objects and agent bodies from the frontend
 // state, using a theme for all visuals. Handles build-mode hover/click on tiles.
 //
-//   createWorld({ canvas, theme, getState, onPlace(roomId, x, y), onReclaim(objectId), onPick(info) })
+//   createWorld({ canvas, theme, getState, insets?, onPlace(roomId, x, y), onReclaim(objectId), onPick(info) })
 //     -> { render(), setBuild(kind|null), destroy() }
+//
+// insets() returns { left, right, top, bottom } pixels to keep clear (windows sit there).
 
-export function createWorld({ canvas, theme, getState, onPlace, onReclaim, onPick }) {
+export function createWorld({ canvas, theme, getState, insets = () => ({ left: 0, right: 0, top: 0, bottom: 0 }), onPlace, onReclaim, onPick }) {
   const ctx = canvas.getContext('2d');
   let buildKind = null; // object kind being placed, or null
   let hover = null; // { x, y } tile under the cursor
@@ -29,8 +31,11 @@ export function createWorld({ canvas, theme, getState, onPlace, onReclaim, onPic
     }
     const worldW = Math.max(1, maxX) * s;
     const worldH = Math.max(1, maxY) * s;
-    scale = Math.min(1.5, Math.max(0.5, Math.min(rect.width / worldW, rect.height / worldH)));
-    offset = { x: Math.max(0, (rect.width - worldW * scale) / 2), y: Math.max(0, (rect.height - worldH * scale) / 2) };
+    const inset = insets();
+    const availW = Math.max(200, rect.width - inset.left - inset.right);
+    const availH = Math.max(200, rect.height - inset.top - inset.bottom);
+    scale = Math.min(1.5, Math.max(0.5, Math.min(availW / worldW, availH / worldH)));
+    offset = { x: inset.left + Math.max(0, (availW - worldW * scale) / 2), y: inset.top + Math.max(0, (availH - worldH * scale) / 2) };
   }
 
   function tileAt(clientX, clientY) {
@@ -61,17 +66,16 @@ export function createWorld({ canvas, theme, getState, onPlace, onReclaim, onPic
     ctx.scale(scale, scale);
 
     for (const room of state.layout.rooms) {
-      // walls
-      ctx.fillStyle = theme.colors.wall;
-      ctx.fillRect((room.x - 0.25) * s, (room.y - 0.5) * s, (room.w + 0.5) * s, (room.h + 0.75) * s);
-      ctx.fillStyle = theme.colors.wallTop;
-      ctx.fillRect((room.x - 0.25) * s, (room.y - 0.5) * s, (room.w + 0.5) * s, s * 0.5);
+      theme.drawZoneBorder(ctx, room, s);
       for (let ty = room.y; ty < room.y + room.h; ty++) {
         for (let tx = room.x; tx < room.x + room.w; tx++) theme.drawFloor(ctx, tx * s, ty * s, s, tx, ty);
       }
       ctx.font = `${Math.round(s * 0.3)}px system-ui, sans-serif`;
-      ctx.fillStyle = theme.colors.roomLabel;
-      ctx.fillText(room.name, room.x * s + 6, (room.y - 0.5) * s + s * 0.34);
+      const labelW = ctx.measureText(room.name).width + 12;
+      ctx.fillStyle = theme.colors.labelBg;
+      ctx.fillRect(room.x * s, (room.y - 0.3) * s - s * 0.42, labelW, s * 0.42);
+      ctx.fillStyle = theme.colors.zoneLabel;
+      ctx.fillText(room.name, room.x * s + 6, (room.y - 0.3) * s - s * 0.12);
       if (buildKind) {
         ctx.strokeStyle = theme.colors.grid;
         for (let ty = room.y; ty <= room.y + room.h; ty++) {
@@ -91,7 +95,7 @@ export function createWorld({ canvas, theme, getState, onPlace, onReclaim, onPic
 
     // objects and agents, painter's order by y
     const drawables = [
-      ...state.layout.objects.map((o) => ({ y: o.y, draw: () => (theme.props[o.kind] || theme.props.bookshelf).draw(ctx, o.x * s, o.y * s, s) })),
+      ...state.layout.objects.map((o) => ({ y: o.y, draw: () => drawProp(o.kind, o.x * s, o.y * s, s) })),
       ...state.layout.agents.map((a) => ({
         y: a.y,
         draw: () => theme.drawAgent(ctx, a.x * s, a.y * s, s, { name: a.name, state: state.agentStates[a.id] || 'idle', t }),
@@ -119,8 +123,29 @@ export function createWorld({ canvas, theme, getState, onPlace, onReclaim, onPic
       }
     }
 
-    const animating = Object.values(state.agentStates).some((st) => st === 'thinking' || st === 'tool-running' || st === 'idle');
+    // Cosmetic day/night tint from the real clock. Never encodes state.
+    const tint = theme.skyTint ? theme.skyTint(new Date()) : null;
+    if (tint && tint.alpha > 0) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.globalAlpha = tint.alpha;
+      ctx.fillStyle = tint.color;
+      ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+      ctx.globalAlpha = 1;
+    }
+
+    const animating = Object.values(state.agentStates).some((st) => st === 'thinking' || st === 'tool-running' || st === 'idle' || st === 'waiting');
     raf = animating ? requestAnimationFrame(draw) : null;
+  }
+
+  // Unknown kinds (a newer sidecar than this page) draw as a labelled placeholder.
+  function drawProp(kind, px, py, s) {
+    const prop = theme.props[kind];
+    if (prop) return prop.draw(ctx, px, py, s);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(px + 4, py + 4, s - 8, s - 8);
+    ctx.fillStyle = '#fff';
+    ctx.font = `${Math.round(s * 0.2)}px system-ui, sans-serif`;
+    ctx.fillText(kind.slice(0, 8), px + 6, py + s / 2);
   }
 
   function render() {

@@ -12,7 +12,7 @@ export function createComms({ parent, getState, api, x, y, w }) {
   const modelInput = el('input', { class: 'inp', placeholder: 'model (default per provider)' });
   const turns = el('input', { class: 'inp num', type: 'number', min: 1, max: 50, value: 8, title: 'max turns' });
   const budget = el('input', { class: 'inp num', type: 'number', min: 0, step: 0.05, value: 1, title: 'budget USD' });
-  const prompt = el('textarea', { class: 'prompt', rows: 3, placeholder: 'What should the agent do? (Ctrl+Enter to run)' });
+  const prompt = el('textarea', { class: 'prompt', rows: 3, placeholder: 'Brief for the Ranger (Ctrl+Enter to run)' });
   const runBtn = el('button', { class: 'btn primary', text: 'Run', onclick: () => start() });
   const cancelBtn = el('button', { class: 'btn', text: 'Cancel', disabled: true, onclick: () => cancel() });
   const grants = el('div', { class: 'grants' });
@@ -41,13 +41,13 @@ export function createComms({ parent, getState, api, x, y, w }) {
     const text = prompt.value.trim();
     if (!text) return setNotice('Type a prompt first.', 'warn');
     const agent = state.layout.agents[0];
-    if (!agent) return setNotice('No agent in the layout.', 'warn');
+    if (!agent) return setNotice('No Ranger in the park layout.', 'warn');
     runBtn.disabled = true;
     setNotice('Starting…');
     const res = await api.post('/api/run', {
       agentId: agent.id,
       prompt: text,
-      provider: providerSel.value,
+      provider: providerSel.value || undefined,
       model: modelInput.value.trim() || undefined,
       maxTurns: Number(turns.value) || 8,
       budgetUsd: Number(budget.value) || 0,
@@ -57,7 +57,7 @@ export function createComms({ parent, getState, api, x, y, w }) {
       runBtn.disabled = false;
       return;
     }
-    setNotice(`Run ${res.body.runId} started on ${res.body.provider} / ${res.body.model}.`);
+    setNotice(`Run ${res.body.runId} started on ${res.body.provider} / ${res.body.model}${res.body.tier ? ` (${res.body.tier} tier)` : ' (explicit provider, no tier)'}.`);
   }
 
   async function cancel() {
@@ -76,21 +76,33 @@ export function createComms({ parent, getState, api, x, y, w }) {
   function renderProviders(state) {
     const names = Object.keys(state.providers);
     const current = providerSel.value;
+    const worker = state.policy && state.policy.tiers ? state.policy.tiers.worker : null;
+    const workerLabel = worker ? `${worker.provider}${worker.model ? '/' + worker.model : ''}` : '?';
     providerSel.replaceChildren(
+      el('option', { value: '', text: `route by policy (worker tier: ${workerLabel})` }),
       ...names.map((name) => {
         const p = state.providers[name];
-        return el('option', { value: name, text: p.configured ? name : `${name} (not wired: set ${p.envVar})` });
+        let label = name;
+        if (p.local) label = p.reachable ? `${name} (local, ${p.models.length} model${p.models.length === 1 ? '' : 's'})` : `${name} (not reachable at ${p.host})`;
+        else if (!p.configured) label = `${name} (not wired: set ${p.envVar})`;
+        if (p.tierHint) label += ` · ${p.tierHint}`;
+        return el('option', { value: name, text: label });
       }),
     );
-    const firstWired = names.find((n) => state.providers[n].configured);
-    providerSel.value = names.includes(current) ? current : firstWired || names[0] || '';
+    providerSel.value = names.includes(current) ? current : '';
     const sel = state.providers[providerSel.value];
-    modelInput.placeholder = sel ? `model (default ${sel.defaultModel})` : 'model';
+    if (!providerSel.value) modelInput.placeholder = worker && worker.model ? `model (policy: ${worker.model})` : 'model (policy default)';
+    else modelInput.placeholder = sel ? (sel.defaultModel ? `model (default ${sel.defaultModel})` : 'model (none installed)') : 'model';
   }
 
   function renderItem(it) {
     if (it.kind === 'text') return el('div', { class: 'item text' }, it.text);
     if (it.kind === 'note') return el('div', { class: 'item note', text: it.text });
+    if (it.kind === 'cost') {
+      const who = `${it.tier ? it.tier + ' · ' : ''}${it.provider}/${it.model}`;
+      const cost = it.reconciled ? fmtUsd(it.usd) : 'unpriced';
+      return el('div', { class: 'item cost', text: `turn ${it.turn} · ${who} · ${it.inputTokens} in / ${it.outputTokens} out · ${cost}` });
+    }
     const res = it.result;
     const status = !res ? 'running' : res.ok ? 'ok' : 'failed';
     const details = el('details', { class: `item tool ${status}` },
@@ -108,8 +120,8 @@ export function createComms({ parent, getState, api, x, y, w }) {
     const agent = state.layout.agents[0];
     const granted = agent ? grantedTools(state, agent.id) : [];
     grants.replaceChildren(
-      el('span', { class: 'muted', text: agent ? `${agent.name} can use: ` : 'no agent' }),
-      granted.length ? el('span', { text: granted.join(', ') }) : el('span', { class: 'muted', text: 'nothing (place objects in build mode)' }),
+      el('span', { class: 'muted', text: agent ? `${agent.name} can use: ` : 'no Ranger' }),
+      granted.length ? el('span', { text: granted.join(', ') }) : el('span', { class: 'muted', text: 'nothing (place fixtures in BUILD)' }),
     );
     const active = Boolean(state.activeRun);
     runBtn.disabled = active || !state.connected;
