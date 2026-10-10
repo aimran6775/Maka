@@ -5,12 +5,16 @@
 
 import { deepFreeze } from './schema.js';
 
-// A placed object of kind K in room R grants tool OBJECT_KINDS[K].grants to every agent
-// whose roomId is R. `label` and `hint` are shown in the build palette.
+// A placed fixture of kind K in zone R grants every tool in OBJECT_KINDS[K].grants to every
+// Ranger whose roomId is R. `label` and `hint` are shown in the build palette. Internally a
+// zone is still a "room" and a fixture an "object" (event and field names are frozen).
+//
+// Only fixtures whose tools exist in phase 1 are listed. The brief's other fixtures (radio
+// tower, park store, notice board, fee booth, ledger desk) arrive with their connectors in
+// phase 2 and are documented in CODE_MAP.md, not faked here.
 export const OBJECT_KINDS = deepFreeze({
-  bookshelf: { label: 'Bookshelf', grants: 'fs.read', hint: 'Lets agents in this room read files in their workspace.' },
-  workbench: { label: 'Workbench', grants: 'fs.write', hint: 'Lets agents in this room write files in their workspace (asks you first).' },
-  window: { label: 'Window', grants: 'web.fetch', hint: 'Lets agents in this room fetch public web pages.' },
+  trailhead_sign: { label: 'Trailhead sign', grants: ['web.fetch'], hint: 'Rangers in this zone can fetch public web pages.' },
+  supply_cache: { label: 'Supply cache', grants: ['fs.read', 'fs.write'], hint: 'Rangers in this zone can read and write files in their own workspace (writes ask you first at the Entrance Gate).' },
 });
 
 export const OBJECT_KIND_NAMES = deepFreeze(Object.keys(OBJECT_KINDS));
@@ -59,9 +63,9 @@ export const LAYOUT_SCHEMA = deepFreeze({
 export function defaultLayout() {
   return {
     version: 1,
-    rooms: [{ id: 'atelier', name: 'Atelier', x: 1, y: 1, w: 12, h: 8 }],
+    rooms: [{ id: 'ranger-station', name: 'Ranger Station', x: 1, y: 1, w: 12, h: 8 }],
     objects: [],
-    agents: [{ id: 'hero', name: 'Hero', roomId: 'atelier', x: 3, y: 4 }],
+    agents: [{ id: 'ranger', name: 'Ranger', roomId: 'ranger-station', x: 3, y: 4 }],
   };
 }
 
@@ -86,7 +90,7 @@ export function grantsFor(layout, agentId) {
   for (const o of layout.objects) {
     if (o.roomId !== agent.roomId) continue;
     const kind = OBJECT_KINDS[o.kind];
-    if (kind) tools.add(kind.grants);
+    if (kind) for (const t of kind.grants) tools.add(t);
   }
   return [...tools].sort();
 }

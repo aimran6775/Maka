@@ -14,9 +14,12 @@
 // When no `ask` is provided, tools that need confirmation are denied.
 
 import { grantsFor } from '../../shared/world.js';
+import { leashFor, defaultLeash } from '../../shared/leash.js';
 import { TOOLS, inputProblem } from './tools.js';
 
-export function createToolGate({ getLayout, agentId, registry = TOOLS, workspaceDir, fetch: fetchImpl, ask, fetchTimeoutMs } = {}) {
+// `leash` is the agent's leash policy (shared/leash.js). Phase 1 only reports the domain
+// and level on the permission prompt; phase 2 enforces it here.
+export function createToolGate({ getLayout, agentId, registry = TOOLS, workspaceDir, fetch: fetchImpl, ask, fetchTimeoutMs, leash = defaultLeash() } = {}) {
   if (typeof getLayout !== 'function') throw new TypeError('createToolGate needs getLayout()');
   if (!agentId) throw new TypeError('createToolGate needs agentId');
   if (!workspaceDir) throw new TypeError('createToolGate needs workspaceDir');
@@ -43,7 +46,8 @@ export function createToolGate({ getLayout, agentId, registry = TOOLS, workspace
         if (typeof ask !== 'function') return { ok: false, error: `${call.name} needs user confirmation and no prompt channel is available` };
         let allowed = false;
         try {
-          allowed = await ask({ runId: ctx.runId, callId: call.id, tool: call.name, reason: tool.description, input: call.input });
+          const l = leashFor(leash, call.name);
+          allowed = await ask({ runId: ctx.runId, callId: call.id, tool: call.name, reason: tool.description, input: call.input, leash: l ? { domain: l.domain, level: l.level } : undefined });
         } catch (err) {
           return { ok: false, error: `confirmation failed: ${err && err.message ? err.message : err}` };
         }

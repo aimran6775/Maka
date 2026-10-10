@@ -17,21 +17,21 @@ async function tmpWorkspace() {
 
 function layoutWith(kinds) {
   const layout = defaultLayout();
-  layout.objects = kinds.map((kind, i) => ({ id: `o${i}`, kind, roomId: 'atelier', x: 2 + i, y: 2 }));
+  layout.objects = kinds.map((kind, i) => ({ id: `o${i}`, kind, roomId: 'ranger-station', x: 2 + i, y: 2 }));
   return layout;
 }
 
 test('world: default layout validates; grants derive from objects in the agent room only', () => {
   const layout = defaultLayout();
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, true);
-  assert.deepEqual(grantsFor(layout, 'hero'), []);
-  assert.deepEqual(grantsFor(layoutWith(['bookshelf', 'window', 'bookshelf']), 'hero'), ['fs.read', 'web.fetch']);
-  const other = layoutWith(['workbench']);
+  assert.deepEqual(grantsFor(layout, 'ranger'), []);
+  assert.deepEqual(grantsFor(layoutWith(['trailhead_sign', 'supply_cache', 'trailhead_sign']), 'ranger'), ['fs.read', 'fs.write', 'web.fetch']);
+  const other = layoutWith(['supply_cache']);
   other.rooms.push({ id: 'annex', name: 'Annex', x: 20, y: 1, w: 4, h: 4 });
   other.objects[0].roomId = 'annex';
-  assert.deepEqual(grantsFor(other, 'hero'), []);
+  assert.deepEqual(grantsFor(other, 'ranger'), []);
   assert.deepEqual(grantsFor(other, 'nobody'), []);
-  for (const kind of Object.values(OBJECT_KINDS)) assert.ok(TOOL_NAMES.includes(kind.grants), `${kind.grants} exists`);
+  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t), `${t} exists`);
   assert.equal(tileInRoom(layout.rooms[0], 1, 1), true);
   assert.equal(tileInRoom(layout.rooms[0], 13, 1), false);
   const bad = layoutWith(['piano']);
@@ -133,23 +133,23 @@ test('web.fetch: scheme check, html to text, truncation, timeout, non-2xx, cance
 test('gate: definitions follow the layout, ungranted tools are refused at call time, confirm flow', async () => {
   const { dir, cleanup } = await tmpWorkspace();
   try {
-    let layout = layoutWith(['bookshelf']);
+    let layout = layoutWith(['trailhead_sign']);
     const asks = [];
     let answer = true;
-    const gate = createToolGate({ getLayout: () => layout, agentId: 'hero', workspaceDir: dir, ask: async (q) => { asks.push(q); return answer; } });
-    assert.deepEqual(gate.definitions().map((d) => d.name), ['fs.read']);
-    assert.ok(gate.definitions()[0].inputSchema.properties.path);
+    const gate = createToolGate({ getLayout: () => layout, agentId: 'ranger', workspaceDir: dir, ask: async (q) => { asks.push(q); return answer; } });
+    assert.deepEqual(gate.definitions().map((d) => d.name), ['web.fetch']);
+    assert.ok(gate.definitions()[0].inputSchema.properties.url);
 
     const denied = await gate.execute({ id: 'c1', name: 'fs.write', input: { path: 'a.txt', content: 'x' } }, { runId: 'r' });
     assert.equal(denied.ok, false);
     assert.match(denied.error, /not granted/);
     assert.equal(asks.length, 0, 'no prompt for an ungranted tool');
 
-    layout = layoutWith(['bookshelf', 'workbench']);
-    assert.deepEqual(gate.definitions().map((d) => d.name), ['fs.read', 'fs.write']);
+    layout = layoutWith(['trailhead_sign', 'supply_cache']);
+    assert.deepEqual(gate.definitions().map((d) => d.name), ['fs.read', 'fs.write', 'web.fetch']);
     const written = await gate.execute({ id: 'c2', name: 'fs.write', input: { path: 'a.txt', content: 'x' } }, { runId: 'r' });
     assert.equal(written.ok, true);
-    assert.deepEqual(asks[0], { runId: 'r', callId: 'c2', tool: 'fs.write', reason: TOOLS['fs.write'].description, input: { path: 'a.txt', content: 'x' } });
+    assert.deepEqual(asks[0], { runId: 'r', callId: 'c2', tool: 'fs.write', reason: TOOLS['fs.write'].description, input: { path: 'a.txt', content: 'x' }, leash: { domain: 'workspace', level: 'draft' } });
 
     answer = false;
     const refused = await gate.execute({ id: 'c3', name: 'fs.write', input: { path: 'b.txt', content: 'y' } }, { runId: 'r' });
@@ -169,7 +169,7 @@ test('gate: definitions follow the layout, ungranted tools are refused at call t
     assert.equal(escape.ok, false);
     assert.match(escape.error, /escapes/);
 
-    const noAsk = createToolGate({ getLayout: () => layout, agentId: 'hero', workspaceDir: dir });
+    const noAsk = createToolGate({ getLayout: () => layout, agentId: 'ranger', workspaceDir: dir });
     const noChannel = await noAsk.execute({ id: 'c8', name: 'fs.write', input: { path: 'c.txt', content: 'z' } }, {});
     assert.match(noChannel.error, /no prompt channel/);
     assert.throws(() => createToolGate({ agentId: 'x', workspaceDir: dir }), TypeError);
@@ -182,17 +182,17 @@ test('gate through the loop: the model only sees granted tools and an ungranted 
   const { dir, cleanup } = await tmpWorkspace();
   try {
     await fsp.writeFile(path.join(dir, 'notes.txt'), 'remember the milk');
-    const layout = layoutWith(['bookshelf']);
-    const gate = createToolGate({ getLayout: () => layout, agentId: 'hero', workspaceDir: dir });
+    const layout = layoutWith(['supply_cache']);
+    const gate = createToolGate({ getLayout: () => layout, agentId: 'ranger', workspaceDir: dir });
     const provider = fakeProvider([
-      [...toolCall('c1', 'fs.read', { path: 'notes.txt' }, 0), ...toolCall('c2', 'fs.write', { path: 'out.txt', content: 'x' }, 1), end('tool_use')],
+      [...toolCall('c1', 'fs.read', { path: 'notes.txt' }, 0), ...toolCall('c2', 'web.fetch', { url: 'https://example.test/' }, 1), end('tool_use')],
       [text('done'), end()],
     ]);
     const rec = recorder();
-    const out = await runLoop({ runId: 'r', agentId: 'hero', provider, model: 'm', prompt: 'go', tools: gate, emit: rec.emit, clock: fakeClock() });
+    const out = await runLoop({ runId: 'r', agentId: 'ranger', provider, model: 'm', prompt: 'go', tools: gate, emit: rec.emit, clock: fakeClock() });
     assert.equal(out.reason, 'completed');
-    assert.deepEqual(rec.ofType('agent.run.start')[0].payload.tools, ['fs.read']);
-    assert.deepEqual(provider.requests[0].tools.map((t) => t.name), ['fs.read']);
+    assert.deepEqual(rec.ofType('agent.run.start')[0].payload.tools, ['fs.read', 'fs.write']);
+    assert.deepEqual(provider.requests[0].tools.map((t) => t.name), ['fs.read', 'fs.write']);
     const results = rec.ofType('agent.tool_result').map((e) => e.payload);
     assert.equal(results[0].ok, true);
     assert.equal(results[0].output, 'remember the milk');

@@ -15,7 +15,7 @@ const SAMPLES = {
   'cost.estimate': { runId: 'r1', turn: 1, provider: 'fake', model: 'm', inputTokens: 1, outputTokens: 2, usd: 0.001, reconciled: true },
   'permission.prompt': { promptId: 'p1', runId: 'r1', callId: 'c1', tool: 'fs.write', reason: 'writes a file', input: { path: 'a' } },
   'permission.response': { promptId: 'p1', runId: 'r1', allow: true },
-  'object.place': { objectId: 'o1', kind: 'bookshelf', roomId: 'room-1', x: 2, y: 3 },
+  'object.place': { objectId: 'o1', kind: 'trailhead_sign', roomId: 'room-1', x: 2, y: 3 },
   'object.reclaim': { objectId: 'o1', roomId: 'room-1' },
 };
 

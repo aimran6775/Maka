@@ -94,14 +94,12 @@ disk. Token events are flushed on a short debounce; everything else flushes imme
 Phase 1 is a local tool for one user. `HOST` can widen the bind, but nothing on the API
 is protected, so it should not be. Auth is a prerequisite for channels (not phase 1).
 
-## D16 (pending). World theme changes from workshop to park
+## D16. World theme is a national park (superseded the workshop default)
 
-An owner decision relayed mid-session: the world is a park. A room is a park zone (lawn,
-greenhouse, shed, kiosk, pond, bandstand), a hallway is a path, a placed object is a park
-fixture granting a capability (notice board → web fetch, toolshed → filesystem, kiosk →
-outbox), the hero agent is a groundskeeper. Internal event and module names do not change;
-this is copy plus the default prop/tile data set. Not yet applied: work was halted before
-the change could be made, pending the owner's answers to scoping questions.
+Applied from step 6b on. Zones are `rooms` and fixtures are `objects` on the wire; those
+names are frozen in the event contract and the layout schema, so only copy, default data
+and the theme file change. The default zone is the Ranger Station and the default agent is
+the Ranger. See the table in `docs/KICKOFF_BRIEF.md`.
 
 ## 2026-10-10 — owner scoping decisions
 - Platform: macOS app, local-first, Tauri 2 shell over the Node sidecar. Apple Silicon first.
@@ -122,3 +120,35 @@ the change could be made, pending the owner's answers to scoping questions.
   autonomous opportunity discovery). Phase 2 Ranger roles: Scout, Storefront, Ads, Marketing,
   Support, Books. Product laws 7-9 (platform compliance, originality, money-out through the
   Gate) added.
+
+## D17. A fixture can grant more than one tool
+
+The brief maps "Supply cache" to the filesystem as a whole, so `OBJECT_KINDS[kind].grants`
+became an array (`['fs.read', 'fs.write']`). Only fixtures whose tools exist are listed;
+phase 2 connector fixtures are documented in CODE_MAP.md and not shown in the palette.
+
+## D18. Local (Ollama) turns are reconciled at $0
+
+There is no bill for local inference, so $0 is a fact, not an estimate. The cost event is
+therefore `reconciled: true, usd: 0` and the spend readout counts the turn. Token counts
+still come from the server's usage report.
+
+## D19. The default route is the local worker, and a missing local server is a plain error
+
+`defaultPolicy()` sends routine turns to `ollama`. If Ollama is not running, `/api/run`
+answers `400 OLLAMA_UNREACHABLE` before any event is emitted; the UI shows the provider as
+not reachable. Nothing falls back silently to a paid provider. An explicit `provider` in
+the run request bypasses the router (and then carries no tier).
+
+## D20. The review hook answers tool calls instead of rewriting output
+
+`runLoop({ review })` is the phase 2 judge's hook point. A revise/reject verdict does not
+alter the worker's message; every tool call of that turn gets an error tool result carrying
+the verdict and notes, so the worker sees the judgement as its next turn, matching the
+brief's "the judge never silently rewrites a worker's output". Phase 1 passes no hook.
+
+## D21. `policy.json` and `leash.json` are operator files with no UI
+
+Both live in `MAKA_HOME`, are validated at boot, and fall back to defaults with a logged
+warning when invalid. Editing them from the park is phase 2 (the Lookout Tower and the
+Entrance Gate settings).

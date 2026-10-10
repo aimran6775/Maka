@@ -12,7 +12,10 @@ import { keystoreStatus } from '../../sidecar/providers/keys.js';
 import { defaultLayout } from '../../shared/world.js';
 import { REPO_ROOT } from '../../sidecar/index.js';
 
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock } = {}) {
+// `localFetch` stands in for the Ollama probe/requests so tests never touch a real server.
+const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
+
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -22,13 +25,14 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const bus = createEventBus();
   const layoutState = createLayoutState({ initial: layout, store, bus, clock });
   await store.saveLayout(layout);
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leash, fetch: localFetch });
   const app = createApp({
     bus,
     store,
     runs,
     layoutState,
-    providerStatus: () => providerStatus({ env, keystorePath }),
+    leashState: { get: () => runs.leash || null },
+    providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
     staticRoot: path.join(REPO_ROOT, 'frontend'),
     sharedRoot: path.join(REPO_ROOT, 'shared'),

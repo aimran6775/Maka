@@ -14,7 +14,10 @@ import { createApp, createHttpServer, createLayoutState } from './server.js';
 import { providerStatus } from './providers/provider.js';
 import { keystoreStatus, defaultKeystorePath } from './providers/keys.js';
 import { defaultLayout, LAYOUT_SCHEMA } from '../shared/world.js';
+import { defaultLeash, validateLeash } from '../shared/leash.js';
+import { defaultPolicy, validatePolicy } from './router.js';
 import { validate } from '../shared/schema.js';
+import { readJson } from './store.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, '..');
@@ -35,13 +38,20 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   }
   const layoutState = createLayoutState({ initial: layout, store, bus });
 
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath });
+  // Optional operator files in MAKA_HOME. Invalid files are reported and ignored, never
+  // silently "fixed". There is no UI to edit them in phase 1.
+  const policy = await loadOrDefault(path.join(home, 'policy.json'), validatePolicy, defaultPolicy, log, 'policy.json');
+  const leash = await loadOrDefault(path.join(home, 'leash.json'), validateLeash, defaultLeash, log, 'leash.json');
+  const leashState = { get: () => leash };
+
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leash });
 
   const app = createApp({
     bus,
     store,
     runs,
     layoutState,
+    leashState,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
     staticRoot: path.join(REPO_ROOT, 'frontend'),
@@ -65,8 +75,10 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   log.info(`  workspaces: ${workspaceRoot}`);
   const providers = await providerStatus({ env, keystorePath });
   for (const [name, s] of Object.entries(providers)) {
-    log.info(`  provider ${name}: ${s.configured ? 'key configured' : `not wired (set ${s.envVar} or add to ${keystorePath})`}`);
+    if (s.local) log.info(`  provider ${name}: ${s.reachable ? `reachable at ${s.host}, models: ${s.models.join(', ') || '(none installed)'}` : `not reachable at ${s.host} (start Ollama or set OLLAMA_HOST)`}`);
+    else log.info(`  provider ${name}: ${s.configured ? 'key configured' : `not wired (set ${s.envVar} or add to ${keystorePath})`}`);
   }
+  log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${policy.tiers.judge.provider}${policy.tiers.judge.model ? '/' + policy.tiers.judge.model : ''}`);
 
   async function close() {
     runs.cancel();
@@ -76,6 +88,23 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   }
 
   return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, close };
+}
+
+async function loadOrDefault(file, validateFn, defaultFn, log, label) {
+  let data = null;
+  try {
+    data = await readJson(file, null);
+  } catch (err) {
+    log.warn(`${label} could not be read (${err.message}); using defaults`);
+    return defaultFn();
+  }
+  if (data === null) return defaultFn();
+  const r = validateFn(data);
+  if (!r.ok) {
+    log.warn(`${label} is invalid (${r.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}); using defaults`);
+    return defaultFn();
+  }
+  return data;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -20,23 +20,26 @@ test('state, layout placement rules, events replay, static files', async () => {
     assert.equal(state.body.providers.anthropic.configured, false);
     assert.equal(state.body.activeRun, null);
     assert.deepEqual(state.body.layout.objects, []);
-    assert.ok(state.body.objectKinds.bookshelf);
+    assert.ok(state.body.objectKinds.trailhead_sign);
+    assert.equal(state.body.providers.ollama.reachable, false);
+    assert.equal(state.body.policy.tiers.worker.provider, 'ollama');
+    assert.equal(state.body.leash.domains.research.level, 'act_free');
 
-    const bad = await srv.post('/api/layout/place', { kind: 'piano', roomId: 'atelier', x: 2, y: 2 });
+    const bad = await srv.post('/api/layout/place', { kind: 'piano', roomId: 'ranger-station', x: 2, y: 2 });
     assert.equal(bad.status, 400);
-    const outside = await srv.post('/api/layout/place', { kind: 'bookshelf', roomId: 'atelier', x: 99, y: 2 });
+    const outside = await srv.post('/api/layout/place', { kind: 'trailhead_sign', roomId: 'ranger-station', x: 99, y: 2 });
     assert.equal(outside.status, 400);
-    const onAgent = await srv.post('/api/layout/place', { kind: 'bookshelf', roomId: 'atelier', x: 3, y: 4 });
+    const onAgent = await srv.post('/api/layout/place', { kind: 'trailhead_sign', roomId: 'ranger-station', x: 3, y: 4 });
     assert.equal(onAgent.status, 409);
-    const placed = await srv.post('/api/layout/place', { kind: 'bookshelf', roomId: 'atelier', x: 2, y: 2 });
+    const placed = await srv.post('/api/layout/place', { kind: 'trailhead_sign', roomId: 'ranger-station', x: 2, y: 2 });
     assert.equal(placed.status, 201);
-    assert.equal(placed.body.kind, 'bookshelf');
-    const dup = await srv.post('/api/layout/place', { kind: 'window', roomId: 'atelier', x: 2, y: 2 });
+    assert.equal(placed.body.kind, 'trailhead_sign');
+    const dup = await srv.post('/api/layout/place', { kind: 'supply_cache', roomId: 'ranger-station', x: 2, y: 2 });
     assert.equal(dup.status, 409);
-    const withId = await srv.post('/api/layout/place', { kind: 'window', roomId: 'atelier', x: 5, y: 5, objectId: 'win-1' });
+    const withId = await srv.post('/api/layout/place', { kind: 'supply_cache', roomId: 'ranger-station', x: 5, y: 5, objectId: 'win-1' });
     assert.equal(withId.status, 201);
-    assert.equal((await srv.post('/api/layout/place', { kind: 'window', roomId: 'atelier', x: 6, y: 5, objectId: 'win-1' })).status, 409);
-    assert.equal((await srv.post('/api/layout/place', { kind: 'window', roomId: 'atelier', x: 6, y: 5, objectId: '' })).status, 201, 'empty id falls back to generated');
+    assert.equal((await srv.post('/api/layout/place', { kind: 'supply_cache', roomId: 'ranger-station', x: 6, y: 5, objectId: 'win-1' })).status, 409);
+    assert.equal((await srv.post('/api/layout/place', { kind: 'supply_cache', roomId: 'ranger-station', x: 6, y: 5, objectId: '' })).status, 201, 'empty id falls back to generated');
 
     const layout = await srv.get('/api/layout');
     assert.equal(layout.body.objects.length, 3);
@@ -126,7 +129,7 @@ test('run lifecycle over HTTP: events stream, persistence, spend, 409 while acti
     assert.equal(rec.body.spentUsd, cost.usd);
     assert.equal(rec.body.messages.length, 2);
     assert.equal((await srv.get('/api/runs/nope')).status, 404);
-    assert.ok((await fsp.stat(path.join(srv.workspaceRoot, 'hero', 'outbox'))).isDirectory());
+    assert.ok((await fsp.stat(path.join(srv.workspaceRoot, 'ranger', 'outbox'))).isDirectory());
     stream.close();
 
     // Cancel a second run mid-stream.
@@ -151,7 +154,7 @@ test('run lifecycle over HTTP: events stream, persistence, spend, 409 while acti
 
 test('permission round trip over HTTP: fs.write prompts, the answer gates the write; timeout denies', async () => {
   const layout = (await import('../shared/world.js')).defaultLayout();
-  layout.objects.push({ id: 'wb', kind: 'workbench', roomId: 'atelier', x: 2, y: 2 });
+  layout.objects.push({ id: 'wb', kind: 'supply_cache', roomId: 'ranger-station', x: 2, y: 2 });
   const turns = [
     [...toolCall('c1', 'fs.write', { path: 'outbox/hello.txt', content: 'hi' }), end('tool_use')],
     [...toolCall('c2', 'fs.write', { path: 'outbox/denied.txt', content: 'no' }), end('tool_use')],
@@ -171,14 +174,14 @@ test('permission round trip over HTTP: fs.write prompts, the answer gates the wr
     assert.equal((await srv.post('/api/permission', { promptId: p1.payload.promptId, runId, allow: true })).status, 200);
     const r1 = await stream.waitFor((e) => e.type === 'agent.tool_result' && e.payload.callId === 'c1');
     assert.equal(r1.payload.ok, true);
-    assert.equal(await fsp.readFile(path.join(srv.workspaceRoot, 'hero', 'outbox', 'hello.txt'), 'utf8'), 'hi');
+    assert.equal(await fsp.readFile(path.join(srv.workspaceRoot, 'ranger', 'outbox', 'hello.txt'), 'utf8'), 'hi');
 
     const p2 = await stream.waitFor((e) => e.type === 'permission.prompt' && e.payload.callId === 'c2');
     await srv.post('/api/permission', { promptId: p2.payload.promptId, runId, allow: false });
     const r2 = await stream.waitFor((e) => e.type === 'agent.tool_result' && e.payload.callId === 'c2');
     assert.equal(r2.payload.ok, false);
     assert.match(r2.payload.error, /denied/);
-    await assert.rejects(fsp.stat(path.join(srv.workspaceRoot, 'hero', 'outbox', 'denied.txt')));
+    await assert.rejects(fsp.stat(path.join(srv.workspaceRoot, 'ranger', 'outbox', 'denied.txt')));
 
     const r3 = await stream.waitFor((e) => e.type === 'agent.tool_result' && e.payload.callId === 'c3');
     assert.equal(r3.payload.ok, false, 'unanswered prompt times out as a denial');
@@ -212,7 +215,9 @@ test('provider failure becomes agent.run.error and the run record says so; NO_KE
   try {
     const r = await real.post('/api/run', { prompt: 'x' });
     assert.equal(r.status, 400);
-    assert.equal(r.body.code, 'NO_KEY');
+    assert.equal(r.body.code, 'OLLAMA_UNREACHABLE', 'the default route is the local worker');
+    const r2 = await real.post('/api/run', { prompt: 'x', provider: 'anthropic' });
+    assert.equal(r2.body.code, 'NO_KEY');
     assert.equal((await real.post('/api/run', { prompt: 'x', provider: 'bogus' })).body.code, 'UNKNOWN_PROVIDER');
     assert.equal(real.bus.seq, 0);
   } finally {
@@ -228,12 +233,49 @@ test('boot() starts the real entry point on an ephemeral port with its own data 
   try {
     const res = await fetch(`${app.url}/api/state`);
     const state = await res.json();
-    assert.equal(state.layout.rooms[0].id, 'atelier');
+    assert.equal(state.layout.rooms[0].id, 'ranger-station');
     assert.equal(state.home, path.join(tmp, 'home'));
     assert.ok(logs.some((l) => /not wired/.test(l)));
     assert.ok((await fsp.stat(path.join(tmp, 'home', 'runs'))).isDirectory());
   } finally {
     await app.close();
     await fsp.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('routing over HTTP: default run uses the worker tier and records it; explicit provider has no tier; leash rides the prompt', async () => {
+  const seen = [];
+  const makeProvider = async (name, opts) => {
+    seen.push({ name, model: opts.model });
+    return { provider: fakeProvider([[...toolCall('c1', 'fs.write', { path: 'outbox/a.txt', content: 'x' }), end('tool_use')], [text('ok'), end()]], { name }), model: opts.model || 'picked', price: null };
+  };
+  const layout = (await import('../shared/world.js')).defaultLayout();
+  layout.objects.push({ id: 'sc', kind: 'supply_cache', roomId: 'ranger-station', x: 2, y: 2 });
+  const policy = { version: 1, tiers: { worker: { provider: 'ollama', model: 'qwen2.5:7b' }, judge: { provider: 'anthropic' } }, steps: { turn: 'worker' } };
+  const srv = await startTestServer({ makeProvider, layout, policy, permissionTimeoutMs: 100 });
+  try {
+    const stream = await srv.sse();
+    const r = await srv.post('/api/run', { prompt: 'write a' });
+    assert.equal(r.status, 202);
+    assert.deepEqual(seen[0], { name: 'ollama', model: 'qwen2.5:7b' });
+    assert.equal(r.body.tier, 'worker');
+    const prompt = await stream.waitFor((e) => e.type === 'permission.prompt');
+    assert.deepEqual(prompt.payload.leash, { domain: 'workspace', level: 'draft' });
+    await srv.post('/api/permission', { promptId: prompt.payload.promptId, runId: r.body.runId, allow: true });
+    await stream.waitFor((e) => e.type === 'agent.run.end');
+    const tiers = stream.events.filter((e) => e.type === 'cost.estimate').map((e) => e.payload.tier);
+    assert.deepEqual(tiers, ['worker', 'worker']);
+    await srv.runs.waitForIdle();
+    const rec = await srv.get(`/api/runs/${r.body.runId}`);
+    assert.equal(rec.body.tier, 'worker');
+    assert.equal(rec.body.provider, 'ollama');
+
+    const r2 = await srv.post('/api/run', { prompt: 'again', provider: 'anthropic', model: 'claude-opus-5-5' });
+    assert.equal(r2.body.tier, null);
+    assert.deepEqual(seen[1], { name: 'anthropic', model: 'claude-opus-5-5' });
+    await srv.runs.waitForIdle();
+    stream.close();
+  } finally {
+    await srv.close();
   }
 });

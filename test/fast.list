@@ -7,3 +7,5 @@ test/providers.test.js
 test/capability.test.js
 test/store.test.js
 test/server.test.js
+test/router.test.js
+test/leash.test.js

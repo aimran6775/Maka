@@ -29,11 +29,11 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 1, step 6 done; step 7 (frontend) started and then put on hold pending owner
-answers to scoping questions. The sidecar runs end to end (`npm start`): loop, providers,
-capability gate, HTTP + SSE and atomic persistence are in place and tested over real HTTP.
-The served page is still a placeholder; the frontend modules in `frontend/` are unwired
-work in progress (see `CODE_MAP.md`).
+Phase 1, step 6b done (after the owner's 2026-10-10 scoping decisions; see
+`docs/KICKOFF_BRIEF.md`). The sidecar runs end to end (`npm start`): loop, three providers,
+router, capability gate with leash data, HTTP + SSE and atomic persistence, all tested over
+real HTTP. The served page is still a placeholder; the frontend modules in `frontend/` are
+unwired work in progress that step 7 finishes with the park theme.
 
 ### The event contract (`shared/events.js`)
 
@@ -57,6 +57,7 @@ an unpriced model cannot be budget-capped (the UI shows its tokens as unreconcil
 
 1. `shared/events.js` — the vocabulary.
 2. `sidecar/loop.js` — the behaviour.
-3. `sidecar/capability/` — the permission model.
-4. `sidecar/index.js` — how it is served and persisted.
-5. `frontend/app.js` — how it is shown.
+3. `sidecar/capability/` and `shared/leash.js` — the permission model.
+4. `sidecar/router.js` and `sidecar/providers/` — which model runs and what it costs.
+5. `sidecar/index.js` — how it is served and persisted.
+6. `frontend/app.js` — how it is shown.

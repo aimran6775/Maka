@@ -1,8 +1,15 @@
 // The agentic loop. Pure given its injected edges: provider, tools, emit, clock, signal.
 //
-//   runLoop({ runId, agentId, provider, model, system, prompt, messages, tools,
-//             emit, clock, signal, maxTurns, budgetUsd, price, ids })
+//   runLoop({ runId, agentId, provider, model, tier, system, prompt, messages, tools,
+//             emit, clock, signal, maxTurns, budgetUsd, price, ids, review })
 //     -> { reason, turns, finalText, usage, spentUsd, messages }
+//
+// `tier` ('worker' | 'judge') is recorded on every cost.estimate so a run shows which model
+// did which turn. `review` is the pre-Gate hook point for the phase 2 judge step:
+//   review({ runId, turn, content, toolUses }) -> { verdict: 'approve'|'revise'|'reject', notes }
+// When it returns revise/reject, the turn's tool calls are NOT executed; each gets an error
+// tool_result carrying the notes, so the worker sees the verdict as a new turn. Phase 1
+// passes no review, which means approve.
 //
 // Invariants (each one is tested in test/loop.test.js):
 //   - every transition is an event validated against shared/events.js before emit();
@@ -84,6 +91,8 @@ export async function runLoop(options) {
     budgetUsd = DEFAULT_BUDGET_USD,
     price = null,
     ids = sequentialIds(runId),
+    tier = null,
+    review = null,
   } = options;
 
   if (!runId || !agentId || !provider || !model || !tools || typeof emit !== 'function') {
@@ -177,7 +186,7 @@ export async function runLoop(options) {
     }
     // A provider-reported cost (OpenRouter's usage.cost) beats the local price table.
     const usd = usage && typeof usage.costUsd === 'number' && usage.costUsd >= 0 ? usage.costUsd : costOf(turnUsage, price);
-    send('cost.estimate', {
+    const costPayload = {
       runId,
       turn,
       provider: provider.name,
@@ -186,7 +195,9 @@ export async function runLoop(options) {
       outputTokens: turnUsage ? turnUsage.outputTokens : 0,
       usd,
       reconciled: usd !== null,
-    });
+    };
+    if (tier) costPayload.tier = tier;
+    send('cost.estimate', costPayload);
     if (usd !== null) spentUsd += usd;
 
     const toolUses = content.filter((b) => b.type === 'tool_use');
@@ -198,11 +209,27 @@ export async function runLoop(options) {
     // tool_use block gets an answer so the transcript stays well-formed.
     void stopReason;
 
+    // Pre-Gate review hook (phase 2 judge). Absent hook = approve.
+    let verdict = null;
+    if (typeof review === 'function') {
+      try {
+        verdict = (await review({ runId, turn, content, toolUses })) || null;
+      } catch (err) {
+        verdict = { verdict: 'reject', notes: `review failed: ${err && err.message ? err.message : err}` };
+      }
+      if (verdict && verdict.verdict !== 'approve' && verdict.verdict !== 'revise' && verdict.verdict !== 'reject') {
+        verdict = { verdict: 'reject', notes: `review returned an unknown verdict "${verdict.verdict}"` };
+      }
+    }
+    const blocked = verdict && verdict.verdict !== 'approve' ? verdict : null;
+
     const results = [];
     for (const call of toolUses) {
       send('agent.tool_call', { runId, turn, callId: call.id, name: call.name, input: call.input });
       let result;
-      if (signal && signal.aborted) {
+      if (blocked) {
+        result = { ok: false, error: `${blocked.verdict === 'reject' ? 'rejected' : 'sent back for revision'} by review${blocked.notes ? `: ${blocked.notes}` : ''}` };
+      } else if (signal && signal.aborted) {
         result = { ok: false, error: 'cancelled before the tool ran' };
       } else if (badInputs.has(call.id)) {
         result = { ok: false, error: 'tool input was not valid JSON' };

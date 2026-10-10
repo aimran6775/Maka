@@ -213,7 +213,7 @@ export function grantedTools(state, agentId) {
   for (const o of state.layout.objects) {
     if (o.roomId !== agent.roomId) continue;
     const kind = state.objectKinds[o.kind];
-    if (kind) out.add(kind.grants);
+    if (kind) for (const t of kind.grants || []) out.add(t);
   }
   return [...out].sort();
 }

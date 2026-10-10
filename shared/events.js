@@ -94,8 +94,10 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     code: str,
   }),
   // Token usage and cost for one turn. `reconciled` is true only when the token counts
-  // came from the provider's own usage report AND a price is known for the model. The
-  // spend readout sums reconciled events only.
+  // came from the provider's own usage report AND a price is known for the model (or the
+  // provider reported the cost itself; a local model's cost is a known $0). The spend
+  // readout sums reconciled events only. `tier` (added v1, optional) says whether the
+  // worker or the judge model ran the turn.
   'cost.estimate': payload(
     ['runId', 'turn', 'provider', 'model', 'inputTokens', 'outputTokens', 'usd', 'reconciled'],
     {
@@ -107,9 +109,11 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
       outputTokens: int0,
       usd: { type: ['number', 'null'], minimum: 0 },
       reconciled: bool,
+      tier: { type: 'string', enum: ['worker', 'judge'] },
     },
   ),
-  // The harness needs the user's yes/no before a tool call proceeds.
+  // The harness needs the user's yes/no before a tool call proceeds. `leash` (added v1,
+  // optional) carries the domain and current leash level the tool falls under.
   'permission.prompt': payload(['promptId', 'runId', 'callId', 'tool', 'reason', 'input'], {
     promptId: nonEmpty,
     runId: nonEmpty,
@@ -117,6 +121,12 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     tool: nonEmpty,
     reason: str,
     input: obj,
+    leash: {
+      type: 'object',
+      required: ['domain', 'level'],
+      additionalProperties: false,
+      properties: { domain: nonEmpty, level: { type: 'string', enum: ['observe', 'draft', 'act_capped', 'act_free'] } },
+    },
   }),
   // The user's answer to a permission.prompt. Also accepted from the client via the API.
   'permission.response': payload(['promptId', 'runId', 'allow'], {

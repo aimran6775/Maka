@@ -267,7 +267,7 @@ test('pricing: known models priced, unknown null, table frozen', () => {
 test('registry: createProvider resolves keys and prices; NO_KEY and UNKNOWN_PROVIDER; status hides keys', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-reg-'));
   const keystorePath = path.join(dir, 'keystore.json');
-  assert.deepEqual(PROVIDER_NAMES, ['anthropic', 'openrouter']);
+  assert.deepEqual(PROVIDER_NAMES, ['anthropic', 'openrouter', 'ollama']);
   await assert.rejects(createProvider('anthropic', { env: {}, keystorePath }), (e) => e.code === 'NO_KEY');
   await assert.rejects(createProvider('bogus', { env: {}, keystorePath }), (e) => e.code === 'UNKNOWN_PROVIDER');
   const { provider, model, price } = await createProvider('anthropic', { env: { ANTHROPIC_API_KEY: 'k' }, keystorePath, fetch: async () => {} });
@@ -277,10 +277,92 @@ test('registry: createProvider resolves keys and prices; NO_KEY and UNKNOWN_PROV
   assert.deepEqual(price, { inputPerMTok: 4, outputPerMTok: 20 });
   const or = await createProvider('openrouter', { model: 'x/y', env: { OPENROUTER_API_KEY: 'k' }, keystorePath, fetch: async () => {} });
   assert.equal(or.price, null);
-  const status = await providerStatus({ env: { OPENROUTER_API_KEY: 'secret' }, keystorePath });
+  const down = async () => { throw new Error('ECONNREFUSED'); };
+  const status = await providerStatus({ env: { OPENROUTER_API_KEY: 'secret' }, keystorePath, fetch: down });
   assert.equal(status.anthropic.configured, false);
   assert.equal(status.openrouter.configured, true);
+  assert.equal(status.ollama.reachable, false);
+  assert.equal(status.ollama.configured, false);
+  assert.match(status.ollama.problem, /not reachable/);
+  assert.equal(status.ollama.host, 'http://127.0.0.1:11434');
   assert.equal(JSON.stringify(status).includes('secret'), false);
   assert.throws(() => assertProvider({}), TypeError);
   await fsp.rm(dir, { recursive: true, force: true });
+});
+
+const OLLAMA_STREAM = sse([
+  [null, { id: 'chatcmpl-1', choices: [{ index: 0, delta: { role: 'assistant', content: 'Sure' }, finish_reason: null }] }],
+  [null, { id: 'chatcmpl-1', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'call_x', type: 'function', function: { name: 'fs.read', arguments: '{"path":"a.txt"}' } }] }, finish_reason: null }] }],
+  [null, { id: 'chatcmpl-1', choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }],
+  [null, { id: 'chatcmpl-1', choices: [], usage: { prompt_tokens: 120, completion_tokens: 30 } }],
+  [null, '[DONE]'],
+]);
+
+test('ollama adapter: no key, local base URL, stream_options usage, zero-cost reconciled usage', async () => {
+  const { createOllamaProvider, listModels, probe, ollamaHost } = await import('../sidecar/providers/ollama.js');
+  const fetch = fakeFetch(() => sseResponse(OLLAMA_STREAM));
+  const provider = createOllamaProvider({ fetch });
+  const chunks = await collect(provider.stream({ model: 'qwen2.5:7b', messages: [{ role: 'user', content: [{ type: 'text', text: 'go' }] }], tools: [{ name: 'fs.read' }] }));
+  const call = fetch.calls[0];
+  assert.equal(call.url, 'http://127.0.0.1:11434/v1/chat/completions');
+  assert.equal('authorization' in call.init.headers, false);
+  assert.deepEqual(call.body.stream_options, { include_usage: true });
+  assert.equal(call.body.model, 'qwen2.5:7b');
+  assert.deepEqual(chunks.at(-1), { type: 'message_end', stopReason: 'tool_use', usage: { inputTokens: 120, outputTokens: 30, costUsd: 0 } });
+  assert.deepEqual(chunks[1], { type: 'tool_use_start', index: 1, id: 'call_x', name: 'fs.read' });
+
+  const tags = fakeFetch(() => new Response(JSON.stringify({ models: [{ name: 'qwen2.5:7b' }, { name: 'llama3.1:8b' }] })));
+  assert.deepEqual(await listModels({ fetch: tags }), ['qwen2.5:7b', 'llama3.1:8b']);
+  assert.deepEqual(await probe({ fetch: tags }), { reachable: true, models: ['qwen2.5:7b', 'llama3.1:8b'] });
+  const down = async () => { throw new Error('ECONNREFUSED'); };
+  await assert.rejects(listModels({ fetch: down }), (e) => e.code === 'OLLAMA_UNREACHABLE');
+  const p = await probe({ fetch: down });
+  assert.equal(p.reachable, false);
+  assert.match(p.problem, /not reachable at http:\/\/127.0.0.1:11434/);
+  assert.equal(ollamaHost({}), 'http://127.0.0.1:11434');
+  assert.equal(ollamaHost({ OLLAMA_HOST: '0.0.0.0:11434' }), 'http://0.0.0.0:11434');
+  assert.equal(ollamaHost({ OLLAMA_HOST: 'https://gpu.local/' }), 'https://gpu.local');
+});
+
+test('ollama through the loop: every turn is a reconciled $0 and the transcript still pairs tool results', async () => {
+  const { createOllamaProvider } = await import('../sidecar/providers/ollama.js');
+  const fetch = fakeFetch((n) => sseResponse(n === 0 ? OLLAMA_STREAM : sse([
+    [null, { choices: [{ index: 0, delta: { content: 'It says hi' }, finish_reason: 'stop' }] }],
+    [null, { choices: [], usage: { prompt_tokens: 200, completion_tokens: 5 } }],
+    [null, '[DONE]'],
+  ])));
+  const provider = createOllamaProvider({ fetch });
+  const rec = recorder();
+  const out = await runLoop({
+    runId: 'r', agentId: 'a', provider, model: 'qwen2.5:7b', tier: 'worker', prompt: 'read a.txt',
+    tools: fakeTools({ 'fs.read': async () => ({ ok: true, output: 'hi' }) }), emit: rec.emit, clock: fakeClock(), price: null,
+  });
+  assert.equal(out.reason, 'completed');
+  assert.equal(out.finalText, 'It says hi');
+  const costs = rec.ofType('cost.estimate').map((e) => e.payload);
+  assert.deepEqual(costs.map((c) => [c.usd, c.reconciled, c.tier, c.provider]), [[0, true, 'worker', 'ollama'], [0, true, 'worker', 'ollama']]);
+  assert.equal(out.spentUsd, 0);
+  assert.deepEqual(fetch.calls[1].body.messages[2], { role: 'tool', tool_call_id: 'call_x', content: 'hi' });
+});
+
+test('registry: ollama needs no key; model from arg, OLLAMA_MODEL, or the first installed; NO_MODEL and OLLAMA_UNREACHABLE', async () => {
+  const tags = fakeFetch(() => new Response(JSON.stringify({ models: [{ name: 'qwen2.5:7b' }] })));
+  const a = await createProvider('ollama', { env: {}, fetch: tags });
+  assert.equal(a.provider.name, 'ollama');
+  assert.equal(a.model, 'qwen2.5:7b');
+  assert.equal(a.price, null);
+  const b = await createProvider('ollama', { model: 'llama3.1:8b', env: {}, fetch: async () => { throw new Error('never called'); } });
+  assert.equal(b.model, 'llama3.1:8b');
+  const c = await createProvider('ollama', { env: { OLLAMA_MODEL: 'phi4' }, fetch: async () => { throw new Error('never called'); } });
+  assert.equal(c.model, 'phi4');
+  const empty = fakeFetch(() => new Response(JSON.stringify({ models: [] })));
+  await assert.rejects(createProvider('ollama', { env: {}, fetch: empty }), (e) => e.code === 'NO_MODEL');
+  await assert.rejects(createProvider('ollama', { env: {}, fetch: async () => { throw new Error('ECONNREFUSED'); } }), (e) => e.code === 'OLLAMA_UNREACHABLE');
+  const status = await providerStatus({ env: { OLLAMA_MODEL: 'phi4' }, keystorePath: '/nonexistent/keystore.json', fetch: tags });
+  assert.deepEqual(status.ollama.models, ['qwen2.5:7b']);
+  assert.equal(status.ollama.reachable, true);
+  assert.equal(status.ollama.configured, true);
+  assert.equal(status.ollama.defaultModel, 'phi4');
+  assert.equal(status.ollama.tierHint, 'worker');
+  assert.equal(status.anthropic.tierHint, 'judge');
 });

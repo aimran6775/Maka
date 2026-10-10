@@ -2,19 +2,23 @@
 // reconciled spend, and persists the run record through the store.
 //
 //   createRunManager({ bus, store, getLayout, workspaceRoot, env, keystorePath, fetch,
-//                      clock, makeProvider })
-//     -> { start(opts), cancel(runId), answer(permissionResponse), active(), pending() }
+//                      clock, makeProvider, policy, leash })
+//     -> { start(opts), cancel(runId), answer(permissionResponse), active(), pending(), policy }
 //
-// One run at a time in phase 1 (docs/DECISIONS.md D3).
+// Model choice: an explicit { provider, model } in start() wins; otherwise the router picks
+// the worker tier from the policy (phase 1 runs are routine 'turn' steps). The tier is
+// recorded on every cost event. One run at a time in phase 1 (docs/DECISIONS.md D3).
 
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { runLoop, DEFAULT_MAX_TURNS, DEFAULT_BUDGET_USD } from './loop.js';
 import { createToolGate } from './capability/gate.js';
-import { createProvider as defaultMakeProvider, DEFAULT_PROVIDER } from './providers/provider.js';
+import { createProvider as defaultMakeProvider } from './providers/provider.js';
+import { createRouter, defaultPolicy } from './router.js';
 import { makeEvent } from '../shared/events.js';
 import { agentOf } from '../shared/world.js';
+import { defaultLeash } from '../shared/leash.js';
 
 export const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
 const FLUSH_DEBOUNCE_MS = 400;
@@ -39,11 +43,14 @@ export function createRunManager({
   makeProvider = defaultMakeProvider,
   permissionTimeoutMs = PERMISSION_TIMEOUT_MS,
   systemPrompt = DEFAULT_SYSTEM_PROMPT,
+  policy = defaultPolicy(),
+  leash = defaultLeash(),
 } = {}) {
   if (!bus || !store || typeof getLayout !== 'function' || !workspaceRoot) {
     throw new TypeError('createRunManager needs bus, store, getLayout and workspaceRoot');
   }
 
+  const router = createRouter(policy); // throws POLICY_INVALID
   let active = null; // { runId, agentId, abort, record, flush }
   let lastDone = Promise.resolve(); // completion (including final flush) of the latest run
   const pendingPrompts = new Map(); // promptId -> { resolve, timer, runId }
@@ -73,7 +80,11 @@ export function createRunManager({
     active: () => (active ? { runId: active.runId, agentId: active.agentId, startedAt: active.record.startedAt } : null),
     pending: () => [...pendingPrompts.entries()].map(([promptId, p]) => ({ promptId, runId: p.runId })),
 
-    async start({ agentId = 'hero', prompt, provider: providerName = DEFAULT_PROVIDER, model, maxTurns = DEFAULT_MAX_TURNS, budgetUsd = DEFAULT_BUDGET_USD } = {}) {
+    policy: router.policy,
+    leash,
+    route: (step) => router.route(step),
+
+    async start({ agentId = 'ranger', prompt, provider: providerName, model, maxTurns = DEFAULT_MAX_TURNS, budgetUsd = DEFAULT_BUDGET_USD } = {}) {
       if (active) {
         const err = new Error(`run ${active.runId} is still active`);
         err.code = 'RUN_ACTIVE';
@@ -90,8 +101,14 @@ export function createRunManager({
         err.code = 'BAD_REQUEST';
         throw err;
       }
-      // Throws NO_KEY / UNKNOWN_PROVIDER before anything is persisted or emitted.
-      const { provider, model: chosenModel, price } = await makeProvider(providerName, { model, env, keystorePath, fetch: fetchImpl });
+      // Explicit provider/model wins; otherwise the router's worker tier runs the turns.
+      const routed = router.route({ kind: 'turn' });
+      const tier = providerName ? null : routed.tier;
+      const wantProvider = providerName || routed.provider;
+      const wantModel = model || (providerName ? undefined : routed.model || undefined);
+      // Throws NO_KEY / NO_MODEL / OLLAMA_UNREACHABLE / UNKNOWN_PROVIDER before anything is
+      // persisted or emitted.
+      const { provider, model: chosenModel, price } = await makeProvider(wantProvider, { model: wantModel, env, keystorePath, fetch: fetchImpl });
 
       const runId = `run-${new Date(clock.now()).toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`;
       const workspaceDir = workspaceFor(agentId);
@@ -104,6 +121,7 @@ export function createRunManager({
         agentId,
         provider: provider.name,
         model: chosenModel,
+        tier,
         prompt,
         maxTurns,
         budgetUsd,
@@ -143,17 +161,19 @@ export function createRunManager({
         else flush();
       });
 
-      const ask = ({ callId, tool, reason, input }) =>
+      const ask = ({ callId, tool, reason, input, leash: leashInfo }) =>
         new Promise((resolve) => {
           const promptId = `perm-${randomUUID().slice(0, 8)}`;
           const timer = setTimeout(() => {
             if (pendingPrompts.delete(promptId)) resolve(false);
           }, permissionTimeoutMs);
           pendingPrompts.set(promptId, { resolve, timer, runId });
-          emit('permission.prompt', { promptId, runId, callId, tool, reason, input });
+          const payload = { promptId, runId, callId, tool, reason, input };
+          if (leashInfo) payload.leash = leashInfo;
+          emit('permission.prompt', payload);
         });
 
-      const gate = createToolGate({ getLayout, agentId, workspaceDir, fetch: fetchImpl, ask });
+      const gate = createToolGate({ getLayout, agentId, workspaceDir, fetch: fetchImpl, ask, leash });
 
       active = { runId, agentId, abort: () => ac.abort(), record, flush };
       await flush();
@@ -191,6 +211,7 @@ export function createRunManager({
             agentId,
             provider,
             model: chosenModel,
+            tier,
             system: systemPrompt,
             prompt,
             tools: gate,
@@ -217,7 +238,7 @@ export function createRunManager({
       active.done = done;
       lastDone = done.catch(() => {});
 
-      return { runId, agentId, provider: provider.name, model: chosenModel, done };
+      return { runId, agentId, provider: provider.name, model: chosenModel, tier, done };
     },
 
     cancel(runId) {

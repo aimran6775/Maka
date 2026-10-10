@@ -125,7 +125,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -172,6 +172,8 @@ export function createApp({ bus, store, runs, layoutState, providerStatus, keyst
         objectKinds: OBJECT_KINDS,
         activeRun: runs.active(),
         pendingPrompts: runs.pending(),
+        policy: runs.policy,
+        leash: leashState ? leashState.get() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -179,11 +181,11 @@ export function createApp({ bus, store, runs, layoutState, providerStatus, keyst
     if (p === '/api/run' && method === 'POST') {
       const body = await readJsonBody(req);
       try {
-        const { runId, agentId, provider, model } = await runs.start(body);
-        return sendJson(res, 202, { runId, agentId, provider, model });
+        const { runId, agentId, provider, model, tier } = await runs.start(body);
+        return sendJson(res, 202, { runId, agentId, provider, model, tier });
       } catch (err) {
         if (err.code === 'RUN_ACTIVE') throw new HttpError(409, err.message, err.code);
-        if (err.code === 'NO_KEY' || err.code === 'UNKNOWN_PROVIDER' || err.code === 'BAD_REQUEST') throw new HttpError(400, err.message, err.code);
+        if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST'].includes(err.code)) throw new HttpError(400, err.message, err.code);
         throw err;
       }
     }
