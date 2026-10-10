@@ -29,13 +29,13 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 1, steps 1 to 6b done. Step 7 exists as a working 2D pixel-art park (one zone, the
-Entrance Gate, one Ranger from the vendored CC0 sheets, build mode, COMMS, SPEND, Gate
-card, inspector, camera) but is **on hold and superseded**: on 2026-10-10 the owner changed
-the visual direction to 3D and a new step 7 spec is pending. The 2D work is committed as
-WIP so the event-driven UI logic (reducer, SSE client, inspector) can be reused. Loop, three providers, router, capability gate with
-leash data, HTTP + SSE and atomic persistence are tested over real HTTP; the frontend
-reducer is tested under Node and the page was exercised in headless Chromium.
+Phase 1, step 7 done: the first slice of the 3D park. `npm run assets` vendors Three.js
+and the CC0 kits (hash-verified), `npm start` serves the park: seeded terrain with a river,
+sky and sun from the real clock, instanced forest, the Ranger Station clearing with its
+building, the Entrance Gate clearing with its gate, a trail between them, one animated
+Ranger whose clip and place follow real run state, orbit / fly / follow cameras, click to
+inspect, build mode by clicking inside a clearing, and the DOM panels (COMMS, SPEND, BUILD,
+INSPECT, Gate cards). Everything shown comes from sidecar events and GET endpoints.
 
 ### The event contract (`shared/events.js`)
 

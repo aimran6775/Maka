@@ -61,6 +61,14 @@ test('state, layout placement rules, events replay, static files', async () => {
     assert.equal(partial.events.length, 1);
     partial.close();
 
+    const rerolled = await srv.post('/api/layout/reroll', {});
+    assert.equal(rerolled.status, 200);
+    assert.ok(rerolled.body.seed >= 1);
+    assert.equal((await srv.get('/api/layout')).body.seed, rerolled.body.seed);
+    assert.deepEqual((await srv.post('/api/layout/reroll', { seed: 7 })).body, { seed: 7 });
+    const seedStream = await srv.sse(0);
+    await seedStream.waitFor((e) => e.type === 'layout.seed' && e.payload.seed === 7);
+    seedStream.close();
     const put = await srv.put('/api/layout', { version: 1, rooms: [], objects: [], agents: [] });
     assert.equal(put.status, 200);
     assert.equal((await srv.put('/api/layout', { version: 2 })).status, 400);
@@ -234,6 +242,7 @@ test('boot() starts the real entry point on an ephemeral port with its own data 
     const res = await fetch(`${app.url}/api/state`);
     const state = await res.json();
     assert.equal(state.layout.rooms[0].id, 'ranger-station');
+    assert.equal(state.layout.seed, 20261010);
     assert.equal(state.home, path.join(tmp, 'home'));
     assert.ok(logs.some((l) => /not wired/.test(l)));
     assert.ok((await fsp.stat(path.join(tmp, 'home', 'runs'))).isDirectory());

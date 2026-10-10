@@ -1,73 +1,127 @@
 #!/usr/bin/env node
-// Downloads the licensed art packs, verifies each archive against its pinned SHA-256, and
-// extracts only the sheets Maka uses into frontend/assets/. Node core modules only.
+// Downloads the third-party files the park needs (Three.js and the licensed 3D kits),
+// verifies each archive against its pinned SHA-256, and extracts only the files Maka uses:
+//   frontend/vendor/three/   the Three.js ES-module build and the addons the park imports
+//   frontend/assets/<pack>/  the GLB/FBX/texture files the park loads
+// Node core modules only (zip and tar.gz readers are inline).
 //
-//   node scripts/fetch-assets.mjs            download, verify, extract, write manifest
+//   node scripts/fetch-assets.mjs            download, verify, extract, write the manifest
 //   node scripts/fetch-assets.mjs --check    verify the vendored files match the manifest
 //
 // The extracted files are committed so the app works offline and inside the Tauri bundle;
-// this script is how they are (re)produced and how their provenance is proven. Licenses
-// are recorded in NOTICE.md and in frontend/assets/manifest.json.
+// this script is how they are reproduced and how their provenance is proven. Licenses are
+// recorded in NOTICE.md and in frontend/assets/manifest.json.
 
 import { createHash } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inflateRawSync } from 'node:zlib';
+import { inflateRawSync, gunzipSync } from 'node:zlib';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = path.join(ROOT, 'frontend', 'assets');
-const MANIFEST = path.join(OUT, 'manifest.json');
+const MANIFEST = path.join(ROOT, 'frontend', 'assets', 'manifest.json');
+
+const THREE_VERSION = '0.186.1';
+const THREE_ADDONS = [
+  'controls/OrbitControls.js',
+  'loaders/GLTFLoader.js',
+  'loaders/FBXLoader.js',
+  'curves/NURBSCurve.js',
+  'curves/NURBSUtils.js',
+  'utils/BufferGeometryUtils.js',
+  'utils/SkeletonUtils.js',
+  'objects/Sky.js',
+  'libs/fflate.module.js',
+];
 
 // Pinned sources. URLs and hashes were verified on 2026-10-10; a changed hash means the
-// upstream archive changed and must be re-reviewed before the pin is updated.
+// upstream archive changed and must be re-reviewed before the pin is updated. `root` is
+// where the files land; `files` maps archive paths to published paths under it.
 export const SOURCES = [
   {
-    id: 'kenney-tiny-town',
-    title: 'Tiny Town (1.1)',
-    author: 'Kenney',
-    license: 'CC0-1.0',
-    page: 'https://kenney.nl/assets/tiny-town',
-    url: 'https://kenney.nl/media/pages/assets/tiny-town/a415fbeb49-1735736916/kenney_tiny-town.zip',
-    sha256: '9768692dccff1d706408a5aedd6ca4f6cd1409506cbc84cb2f862919764be977',
-    licenseEvidence: 'License.txt inside the archive: "License: (Creative Commons Zero, CC0)"',
-    files: [{ from: 'Tilemap/tilemap_packed.png', to: 'tiny-town.png', note: '16x16 tiles, 12 columns, no spacing' }],
+    id: 'three',
+    title: `Three.js ${THREE_VERSION}`,
+    author: 'Three.js Authors',
+    license: 'MIT',
+    page: 'https://threejs.org/',
+    url: `https://registry.npmjs.org/three/-/three-${THREE_VERSION}.tgz`,
+    sha256: '8cd068708ea44f2c73c944b1cead2ba2f0d5c15c8fc194e5700f4e4f4a033fe7',
+    licenseEvidence: 'LICENSE in the npm tarball (MIT); fflate.module.js carries its own MIT header',
+    kind: 'tgz',
+    root: 'frontend/vendor/three',
+    files: [
+      { from: 'package/LICENSE', to: 'LICENSE' },
+      { from: 'package/build/three.core.js', to: 'three.core.js' },
+      { from: 'package/build/three.module.js', to: 'three.module.js', note: 'WebGL2 build; imports ./three.core.js' },
+      ...THREE_ADDONS.map((f) => ({ from: `package/examples/jsm/${f}`, to: `addons/${f}` })),
+    ],
   },
   {
-    id: 'kenney-roguelike-rpg',
-    title: 'Roguelike/RPG pack',
+    id: 'kenney-nature-kit',
+    title: 'Nature Kit',
     author: 'Kenney',
     license: 'CC0-1.0',
-    page: 'https://kenney.nl/assets/roguelike-rpg-pack',
-    url: 'https://kenney.nl/media/pages/assets/roguelike-rpg-pack/12c03cd78b-1677697420/kenney_roguelike-rpg-pack.zip',
-    sha256: '8e7d2378f8f794245645f6d7dc7aeeb246791410a7e512293c594b46a5a9524b',
+    page: 'https://kenney.nl/assets/nature-kit',
+    url: 'https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip',
+    sha256: 'fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d',
     licenseEvidence: 'License.txt inside the archive: "License (Creative Commons Zero, CC0)"',
-    // Pinned and verified; no sheet from it is drawn yet, so nothing is extracted.
-    files: [],
+    kind: 'zip',
+    root: 'frontend/assets/nature-kit',
+    files: ['tree_pineTallA', 'tree_pineRoundA', 'tree_oak', 'tree_default', 'rock_largeA', 'rock_largeB', 'rock_smallA', 'sign', 'campfire_logs', 'fence_simple', 'fence_gate', 'tent_detailedOpen'].map((n) => ({ from: `Models/GLTF format/${n}.glb`, to: `${n}.glb` })),
   },
   {
-    id: 'shade-puny-characters',
-    title: 'Puny Characters',
-    author: 'Shade',
+    id: 'kenney-survival-kit',
+    title: 'Survival Kit',
+    author: 'Kenney',
     license: 'CC0-1.0',
-    page: 'https://opengameart.org/content/puny-characters',
-    url: 'https://opengameart.org/sites/default/files/puny-characters.zip',
-    sha256: '971d7b07eea18fb2cce475cd6554a176ebf783bb064dec5a637ba33c7829320e',
-    licenseEvidence: 'OpenGameArt listing shows license CC0; the archive carries no license file',
-    files: [{ from: 'Puny-Characters/Soldier-Yellow.png', to: 'ranger.png', note: '32x32 frames, 24 columns, 8 direction rows; row 0 faces down' }],
+    page: 'https://kenney.nl/assets/survival-kit',
+    url: 'https://kenney.nl/media/pages/assets/survival-kit/4065a8185b-1712149243/kenney_survival-kit.zip',
+    sha256: 'c3586341b5932c87eb43d75d915434f47daed168b17ed36a03e8ca9977c7443e',
+    licenseEvidence: 'License.txt inside the archive: "License (Creative Commons Zero, CC0)"',
+    kind: 'zip',
+    root: 'frontend/assets/survival-kit',
+    files: [
+      ...['structure', 'tent', 'campfire-pit', 'signpost', 'chest', 'box', 'fence', 'fence-doorway'].map((n) => ({ from: `Models/GLB format/${n}.glb`, to: `${n}.glb` })),
+      { from: 'Models/GLB format/Textures/colormap.png', to: 'Textures/colormap.png', note: 'referenced by the GLBs as Textures/colormap.png' },
+    ],
   },
   {
-    id: 'inkbubi-forest-free',
-    title: '16x16 Pixel Forest Tileset, Top-down (free sample, v1.1)',
-    author: 'inkBubi',
+    id: 'kenney-animated-characters-protagonists',
+    title: 'Animated Characters Protagonists',
+    author: 'Kenney',
     license: 'CC0-1.0',
-    page: 'https://opengameart.org/node/180257',
-    url: 'https://opengameart.org/sites/default/files/seasons_of_forest_free_v1_1.zip',
-    sha256: 'e37d01e005fe31577d4f501f33bda98cb77db815e21862e162269889cc07f777',
-    licenseEvidence: 'license.txt inside the archive: "License: CC0 (Creative Commons Zero)"',
-    // Pinned and verified; no sheet from it is drawn yet, so nothing is extracted.
-    files: [],
+    page: 'https://kenney.nl/assets/animated-characters-protagonists',
+    url: 'https://kenney.nl/media/pages/assets/animated-characters-protagonists/608191acc4-1774773108/kenney_animated-characters-protagonists.zip',
+    sha256: 'ec3787de70fa2200256848d74201b10f6b6c3126594e9857bf989753312c2b84',
+    licenseEvidence: 'License.txt inside the archive: "License: (Creative Commons Zero, CC0)"',
+    kind: 'zip',
+    root: 'frontend/assets/characters',
+    files: [
+      { from: 'Model/characterMedium.fbx', to: 'characterMedium.fbx', note: 'rigged body (binary FBX; the pack ships no glTF)' },
+      { from: 'Animations/idle.fbx', to: 'idle.fbx' },
+      { from: 'Animations/run.fbx', to: 'run.fbx' },
+      { from: 'Skins/skaterMaleA.png', to: 'skaterMaleA.png', note: 'the Ranger skin' },
+    ],
   },
+  {
+    id: 'kenney-animated-characters-survivors',
+    title: 'Animated Characters Survivors',
+    author: 'Kenney',
+    license: 'CC0-1.0',
+    page: 'https://kenney.nl/assets/animated-characters-survivors',
+    url: 'https://kenney.nl/media/pages/assets/animated-characters-survivors/27b16052a7-1774772958/kenney_animated-characters-survivors.zip',
+    sha256: 'fdadced07a0454c9b7f0b46507be6144a072b4d03b4ffa37f225893c76c62845',
+    licenseEvidence: 'License.txt inside the archive: "License: (Creative Commons Zero, CC0)"',
+    kind: 'zip',
+    root: 'frontend/assets/characters-survivors',
+    files: [], // pinned and verified; same rig as Protagonists, nothing drawn from it yet
+  },
+];
+
+// Named in the brief as a fallback rig. itch.io serves downloads through a per-session
+// token, not a stable URL, so it cannot be pinned here. Recorded so the manifest says so.
+export const UNPINNED = [
+  { id: 'quaternius-ultimate-platformer-pack', title: 'Ultimate Platformer Pack', author: 'Quaternius', license: 'CC0-1.0', page: 'https://quaternius.itch.io/ultimate-platformer-pack', status: 'not fetched: itch.io has no stable direct download URL to pin' },
 ];
 
 function sha256(buf) {
@@ -121,6 +175,33 @@ export function readZip(buf) {
   };
 }
 
+// Minimal tar.gz reader (ustar, as npm publishes): 512-byte headers, size in octal.
+export function readTgz(buf) {
+  const tar = gunzipSync(buf);
+  const entries = new Map();
+  let p = 0;
+  while (p + 512 <= tar.length) {
+    const header = tar.subarray(p, p + 512);
+    if (header.every((b) => b === 0)) break;
+    let name = header.subarray(0, 100).toString('utf8').replace(/\0.*$/, '');
+    const prefix = header.subarray(345, 500).toString('utf8').replace(/\0.*$/, '');
+    if (prefix) name = `${prefix}/${name}`;
+    const size = parseInt(header.subarray(124, 136).toString('utf8').replace(/\0.*$/, '').trim() || '0', 8);
+    const type = String.fromCharCode(header[156]);
+    const start = p + 512;
+    if (type === '0' || type === '\0') entries.set(name, { start, size });
+    p = start + Math.ceil(size / 512) * 512;
+  }
+  return {
+    names: () => [...entries.keys()],
+    read(name) {
+      const e = entries.get(name);
+      if (!e) throw new Error(`${name} is not in the archive`);
+      return Buffer.from(tar.subarray(e.start, e.start + e.size));
+    },
+  };
+}
+
 async function download(url) {
   const res = await fetch(url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
@@ -128,25 +209,34 @@ async function download(url) {
 }
 
 export async function fetchAll({ log = console, fetchImpl = download } = {}) {
-  await fsp.mkdir(OUT, { recursive: true });
-  const manifest = { generatedBy: 'scripts/fetch-assets.mjs', note: 'Every file below was extracted from an archive whose SHA-256 matched the pin. Licenses: see NOTICE.md.', sources: [] };
+  const manifest = {
+    generatedBy: 'scripts/fetch-assets.mjs',
+    note: 'Every file below was extracted from an archive whose SHA-256 matched the pin. Licenses: see NOTICE.md.',
+    sources: [],
+    unpinned: UNPINNED,
+  };
+  let total = 0;
   for (const src of SOURCES) {
     log.info(`fetching ${src.title} …`);
     const buf = await fetchImpl(src.url);
     const got = sha256(buf);
     if (got !== src.sha256) throw new Error(`${src.id}: archive hash ${got} does not match the pinned ${src.sha256}; refusing to extract`);
-    const zip = readZip(buf);
+    const archive = src.kind === 'tgz' ? readTgz(buf) : readZip(buf);
     const files = [];
     for (const f of src.files) {
-      const data = zip.read(f.from);
-      await fsp.writeFile(path.join(OUT, f.to), data);
-      files.push({ from: f.from, to: f.to, sha256: sha256(data), bytes: data.length, note: f.note });
-      log.info(`  ${f.from} → frontend/assets/${f.to} (${data.length} bytes)`);
+      const data = archive.read(f.from);
+      const dest = path.join(ROOT, src.root, f.to);
+      await fsp.mkdir(path.dirname(dest), { recursive: true });
+      await fsp.writeFile(dest, data);
+      total += data.length;
+      files.push({ from: f.from, to: f.to, sha256: sha256(data), bytes: data.length, ...(f.note ? { note: f.note } : {}) });
+      log.info(`  ${f.from} → ${src.root}/${f.to} (${data.length} bytes)`);
     }
-    manifest.sources.push({ id: src.id, title: src.title, author: src.author, license: src.license, page: src.page, url: src.url, archiveSha256: src.sha256, licenseEvidence: src.licenseEvidence, files });
+    manifest.sources.push({ id: src.id, title: src.title, author: src.author, license: src.license, page: src.page, url: src.url, archiveSha256: src.sha256, licenseEvidence: src.licenseEvidence, root: src.root, files });
   }
+  await fsp.mkdir(path.dirname(MANIFEST), { recursive: true });
   await fsp.writeFile(MANIFEST, JSON.stringify(manifest, null, 2) + '\n');
-  log.info(`wrote ${path.relative(ROOT, MANIFEST)}`);
+  log.info(`wrote ${path.relative(ROOT, MANIFEST)} (${(total / 1024 / 1024).toFixed(2)} MB of vendored files)`);
   return manifest;
 }
 
@@ -160,20 +250,23 @@ export async function checkVendored() {
   } catch (err) {
     return [`manifest unreadable: ${err.message}`];
   }
+  let total = 0;
   for (const s of manifest.sources) {
     const pinned = SOURCES.find((p) => p.id === s.id);
     if (!pinned) problems.push(`${s.id}: not a pinned source`);
     else if (pinned.sha256 !== s.archiveSha256) problems.push(`${s.id}: manifest archive hash differs from the pin`);
-    if (!/^CC0-1\.0$|^CC-BY-4\.0$/.test(s.license)) problems.push(`${s.id}: license ${s.license} is not CC0 or CC-BY`);
+    if (!/^CC0-1\.0$|^CC-BY-4\.0$|^MIT$/.test(s.license)) problems.push(`${s.id}: license ${s.license} is not CC0, CC-BY or MIT`);
     for (const f of s.files) {
       try {
-        const data = await fsp.readFile(path.join(OUT, f.to));
-        if (sha256(data) !== f.sha256) problems.push(`${f.to}: hash differs from the manifest`);
+        const data = await fsp.readFile(path.join(ROOT, s.root, f.to));
+        total += data.length;
+        if (sha256(data) !== f.sha256) problems.push(`${s.root}/${f.to}: hash differs from the manifest`);
       } catch {
-        problems.push(`${f.to}: missing`);
+        problems.push(`${s.root}/${f.to}: missing`);
       }
     }
   }
+  if (total > 25 * 1024 * 1024) problems.push(`vendored files total ${(total / 1024 / 1024).toFixed(1)} MB, over the 25 MB limit`);
   return problems;
 }
 

@@ -23,12 +23,21 @@ const id = { type: 'string', minLength: 1 };
 const int0 = { type: 'integer', minimum: 0 };
 const int1 = { type: 'integer', minimum: 1 };
 
+// Hierarchy (docs/KICKOFF_BRIEF.md, "Hierarchy and decision model"). Data only in phase 1:
+// the Superintendent is the user, a Chief Ranger is judge-tier, Rangers run work, Junior
+// Rangers are one trail hop below a Ranger. `parentAgentId` on an agent names who it
+// reports to; it is optional so existing layouts stay valid.
+export const AGENT_ROLES = deepFreeze(['superintendent', 'chief_ranger', 'ranger', 'junior_ranger']);
+
 export const LAYOUT_SCHEMA = deepFreeze({
   type: 'object',
   required: ['version', 'rooms', 'objects', 'agents'],
   additionalProperties: false,
   properties: {
     version: { const: 1 },
+    // Park seed: the 3D terrain and foliage are a pure function of it. Re-rolled by the
+    // Superintendent through POST /api/layout/reroll (emits layout.seed).
+    seed: { type: 'integer', minimum: 1 },
     rooms: {
       type: 'array',
       items: {
@@ -53,19 +62,22 @@ export const LAYOUT_SCHEMA = deepFreeze({
         type: 'object',
         required: ['id', 'name', 'roomId', 'x', 'y'],
         additionalProperties: false,
-        properties: { id, name: { type: 'string' }, roomId: id, x: int0, y: int0 },
+        properties: { id, name: { type: 'string' }, roomId: id, x: int0, y: int0, role: { type: 'string', enum: AGENT_ROLES }, parentAgentId: id },
       },
     },
   },
 });
 
 // Tile coordinates are integers; the room rectangle is in tiles.
+export const DEFAULT_SEED = 20261010;
+
 export function defaultLayout() {
   return {
     version: 1,
+    seed: DEFAULT_SEED,
     rooms: [{ id: 'ranger-station', name: 'Ranger Station', x: 1, y: 1, w: 12, h: 8 }],
     objects: [],
-    agents: [{ id: 'ranger', name: 'Ranger', roomId: 'ranger-station', x: 3, y: 4 }],
+    agents: [{ id: 'ranger', name: 'Ranger', roomId: 'ranger-station', x: 3, y: 4, role: 'ranger' }],
   };
 }
 

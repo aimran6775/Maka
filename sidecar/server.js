@@ -8,6 +8,7 @@
 //   PUT  /api/layout           replace the layout (validated)
 //   POST /api/layout/place     { kind, roomId, x, y, objectId? } → emits object.place
 //   POST /api/layout/reclaim   { objectId } → emits object.reclaim
+//   POST /api/layout/reroll    { seed? } → new park seed, emits layout.seed
 //   POST /api/permission       { promptId, runId, allow } → emits permission.response
 //   GET  /api/runs             run summaries, newest first
 //   GET  /api/runs/:id         one run record (events + messages)
@@ -112,6 +113,14 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
       bus.emit(event);
       return layout.objects.at(-1);
     },
+    async reroll({ seed } = {}) {
+      const next = Number.isInteger(seed) && seed >= 1 ? seed : (Math.floor(Math.random() * 0xfffffffe) + 1) >>> 0;
+      const event = makeEvent('layout.seed', { seed: next }, { ts: clock.now() });
+      layout = { ...layout, seed: next };
+      await store.saveLayout(layout);
+      bus.emit(event);
+      return { seed: next };
+    },
     async reclaim({ objectId }) {
       const obj = layout.objects.find((o) => o.id === objectId);
       if (!obj) throw new HttpError(404, `no object "${objectId}"`);
@@ -197,6 +206,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, pr
     if (p === '/api/layout' && method === 'PUT') return sendJson(res, 200, await layoutState.replace(await readJsonBody(req)));
     if (p === '/api/layout/place' && method === 'POST') return sendJson(res, 201, await layoutState.place(await readJsonBody(req)));
     if (p === '/api/layout/reclaim' && method === 'POST') return sendJson(res, 200, await layoutState.reclaim(await readJsonBody(req)));
+    if (p === '/api/layout/reroll' && method === 'POST') return sendJson(res, 200, await layoutState.reroll(await readJsonBody(req)));
     if (p === '/api/permission' && method === 'POST') {
       const body = await readJsonBody(req);
       const r = validate(PAYLOAD_SCHEMAS['permission.response'], body);

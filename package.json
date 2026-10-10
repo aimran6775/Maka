@@ -10,6 +10,8 @@
   },
   "scripts": {
     "start": "node sidecar/index.js",
+    "assets": "node scripts/fetch-assets.mjs",
+    "assets:check": "node scripts/fetch-assets.mjs --check",
     "test": "node --test test/",
     "test:fast": "node test/run-fast.js"
   },

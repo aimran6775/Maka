@@ -16,7 +16,11 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--sans); overflow: hidden; }
-#world { position: fixed; inset: 0 0 26px 0; width: 100%; height: calc(100% - 26px); display: block; }
+#park { position: fixed; inset: 0 0 26px 0; width: 100%; height: calc(100% - 26px); display: block; background: var(--bg); }
+#park canvas { width: 100% !important; height: 100% !important; display: block; }
+.park-missing { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--warn); font-family: var(--mono); padding: 24px; text-align: center; }
+.camera-bar { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); display: flex; gap: 6px; }
+.camera-bar .btn.active { outline: 2px solid var(--accent); }
 #ui { position: fixed; inset: 0 0 26px 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
 #status { position: fixed; left: 0; right: 0; bottom: 0; height: 26px; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--panel); border-top: 1px solid var(--panel-border); color: var(--muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; overflow: hidden; }

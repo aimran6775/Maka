@@ -194,7 +194,7 @@ the renderer draws, and writes a manifest with per-file hashes; `test/assets.tes
 checks the vendored files against it on every run. Packs that are pinned but not drawn
 extract nothing. A hash mismatch refuses to extract rather than "updating" the pin.
 
-## D26 (pending). The 2D pixel-art park is superseded by a 3D direction
+## D26. The 2D pixel-art park is superseded by a 3D direction
 
 Relayed on 2026-10-10 after the 2D park was working end to end: the owner wants a 3D park.
 Work stopped on a hold; the 2D slice is committed as WIP. What carries over regardless of
@@ -223,3 +223,34 @@ model, and the rule that every visual state maps to a real event. Awaiting the n
 - Every station has its own mailbox (peak@, rangers@, visitors@, sales@, marketing@, finance@,
   support@, research@, listings@, gate@ on makapark.com), zone-owned and shared by its Rangers;
   Ranger venture aliases route into the owning station mailbox.
+model, and the rule that every visual state maps to a real event. The 3D spec arrived the
+same day and the 2D canvas files were deleted as it asked.
+
+## D27. WebGL2 build only; the WebGPU build is not vendored
+
+Three.js's WebGPU renderer needs its separate 2.2 MB build and node-based (TSL) materials;
+the park's custom water shader is GLSL. Phase 1 vendors the WebGL2 module build and runs on
+it everywhere (the Tauri webview included). Switching to the WebGPU path later means
+vendoring `three.webgpu.js`, choosing the import map at load time, and porting the water
+material. The status line names the renderer in use so nothing is implied.
+
+## D28. Kenney characters are FBX, loaded with FBXLoader
+
+The animated character packs the brief names ship binary FBX plus separate animation FBX
+files and no glTF. Rather than convert offline (which would vendor a file nobody can trace
+to the pack), the page loads the FBX as published with Three's FBXLoader, which comes from
+the same pinned tarball. Clip mapping: idle and run are real clips; "work" reuses idle with
+the tool badge, and "error" freezes the idle clip with the error badge.
+
+## D29. The park seed lives in the layout and only the sidecar changes it
+
+`layout.seed` is persisted with the layout; `POST /api/layout/reroll` picks a new one and
+emits `layout.seed`. Terrain, river, foliage and clearings are pure functions of the seed and
+the rooms, so every client draws the same park and nothing about it is stored in the page.
+
+## D30. LOD by distance is not implemented in phase 1
+
+Foliage is instanced per model variant with Three's frustum culling; there is no distance
+LOD yet. On SwiftShader in headless Chromium the scene renders at a few frames per second,
+which is a software rasteriser, not a target. The 60 fps on M1 target is unverified here
+and is listed as such in CODE_MAP.

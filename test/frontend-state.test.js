@@ -126,3 +126,13 @@ test('an active run in the snapshot shows the Ranger thinking until the replay s
   assert.equal(s.agentStates.ranger, 'thinking');
   assert.equal(s.agentRuns.ranger, 'r');
 });
+
+test('layout.seed and work.handoff update the park inputs', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot());
+  s = reduce(s, [ev('layout.seed', { seed: 99 })]);
+  assert.equal(s.layout.seed, 99);
+  s = reduce(s, [ev('work.handoff', { fromAgentId: 'chief', toAgentId: 'ranger', fromRoomId: 'ranger-station', toRoomId: 'camp', workItemId: 'w1', summary: 'go' })]);
+  assert.equal(s.handoffs.ranger.toZone, 'camp');
+  assert.equal(typeof s.handoffs.ranger.startedAt, 'number');
+});

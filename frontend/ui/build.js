@@ -6,7 +6,7 @@ import { el, createWindow, setChildren } from './windows.js';
 export function createBuild({ parent, getState, world, x, y, w }) {
   const { body } = createWindow({ id: 'build', title: 'BUILD', x, y, w, parent });
   const palette = el('div', { class: 'palette' });
-  const hint = el('div', { class: 'muted small', text: 'Pick a fixture, then click a free tile in a zone. Click a placed fixture to reclaim it. A placed fixture is a real tool grant for every Ranger in that zone.' });
+  const hint = el('div', { class: 'muted small', text: 'Pick a fixture, then click a spot inside a zone clearing in the park. Click a placed fixture to reclaim it. A placed fixture is a real tool grant for every Ranger in that zone.' });
   const placed = el('div', { class: 'placed' });
   body.append(palette, hint, placed);
   let active = null;

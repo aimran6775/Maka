@@ -144,6 +144,19 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
   }),
   // An object was removed from a room. The matching grant ends.
   'object.reclaim': payload(['objectId', 'roomId'], { objectId: nonEmpty, roomId: nonEmpty }),
+  // Added v1 (additive): a work item was handed from one agent to another along a trail.
+  // Phase 1 emits none of these; the park animates the walk between zones from it in phase 2.
+  'work.handoff': payload(['fromAgentId', 'toAgentId', 'fromRoomId', 'toRoomId', 'workItemId', 'summary'], {
+    fromAgentId: nonEmpty,
+    toAgentId: nonEmpty,
+    fromRoomId: nonEmpty,
+    toRoomId: nonEmpty,
+    trailId: str,
+    workItemId: nonEmpty,
+    summary: str,
+  }),
+  // Added v1 (additive): the Superintendent re-rolled the park seed.
+  'layout.seed': payload(['seed'], { seed: int1 }),
 });
 
 export const EVENT_TYPES = deepFreeze(Object.keys(PAYLOAD_SCHEMAS));

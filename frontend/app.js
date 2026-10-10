@@ -1,14 +1,15 @@
-// Frontend entry: load the snapshot, subscribe to events, render world + windows.
+// Frontend entry: load the snapshot, subscribe to events, render the 3D park and the DOM
+// panels. The park renderer is imported dynamically so a missing vendor build shows a plain
+// "renderer not vendored" state instead of a broken page.
 import { initialState, applySnapshot, applyEvent } from './state.js';
 import { connectEvents } from './events.js';
-import { createWorld } from './world.js';
-import { theme } from './theme/park.js';
 import { createComms } from './ui/comms.js';
 import { createSpend } from './ui/spend.js';
 import { createBuild } from './ui/build.js';
 import { createPermission } from './ui/permission.js';
 import { createInspect } from './ui/inspect.js';
 import { el, setChildren } from './ui/windows.js';
+import { tileToWorld, TILE_WORLD } from './park/placement.js';
 
 let state = initialState();
 const getState = () => state;
@@ -26,27 +27,59 @@ const api = {
   },
 };
 
-const canvas = document.getElementById('world');
+const parkEl = document.getElementById('park');
 const status = document.getElementById('status');
 const ui = document.getElementById('ui');
 
-const world = createWorld({
-  canvas,
-  theme,
-  getState,
-  // Keep the park clear of the windows that sit on the left and right edges.
-  insets: () => ({ left: window.innerWidth > 900 ? 470 : 0, right: window.innerWidth > 900 ? 300 : 0, top: 0, bottom: 0 }),
-  onPlace: (roomId, x, y) => build.activeKind() && api.post('/api/layout/place', { kind: build.activeKind(), roomId, x, y }).then(showError),
-  onReclaim: (objectId) => api.post('/api/layout/reclaim', { objectId }).then(showError),
-  onPick: (info) => inspect.select(info),
-});
+let park = null; // the renderer handle, once loaded
+let parkStatus = { renderer: 'not loaded', assets: '—', ranger: '—', fps: 0, problems: [] };
+let parkError = null;
+
+// Build mode: placing at a clicked point inside a zone clearing → nearest free tile.
+function tileFromPoint(room, point) {
+  let best = null;
+  for (let ty = room.y; ty < room.y + room.h; ty++) {
+    for (let tx = room.x; tx < room.x + room.w; tx++) {
+      const w = tileToWorld(tx, ty);
+      const d = Math.hypot(w.x - point.x, w.z - point.z);
+      if (d < TILE_WORLD * 0.75 && (!best || d < best.d)) best = { tx, ty, d };
+    }
+  }
+  return best;
+}
+
+async function onPick(info) {
+  if (info && build.activeKind() && (info.type === 'zone' || info.type === 'ground') && info.point) {
+    const room = info.room || null;
+    if (!room) return flash('Place fixtures inside a zone clearing.', 'warn');
+    const tile = tileFromPoint(room, info.point);
+    if (!tile) return flash('No tile under that point. Click closer to the clearing centre.', 'warn');
+    const r = await api.post('/api/layout/place', { kind: build.activeKind(), roomId: room.id, x: tile.tx, y: tile.ty });
+    return showError(r);
+  }
+  if (info && info.type === 'object' && build.activeKind()) {
+    return showError(await api.post('/api/layout/reclaim', { objectId: info.object.id }));
+  }
+  if (info && info.type === 'ground') return inspect.select(null);
+  inspect.select(info);
+}
 
 const comms = createComms({ parent: ui, getState, api, x: 16, y: 16, w: 440 });
 const spend = createSpend({ parent: ui, getState, x: window.innerWidth - 300, y: 16, w: 270 });
-const build = createBuild({ parent: ui, getState, world, x: window.innerWidth - 300, y: 190, w: 270 });
+const build = createBuild({ parent: ui, getState, world: { setBuild() { render(); } }, x: window.innerWidth - 300, y: 190, w: 270 });
 const permission = createPermission({ parent: ui, getState, api });
 const inspect = createInspect({ parent: ui, getState, x: window.innerWidth - 300, y: 420, w: 270 });
 
+// Camera and park controls (a small bar under the status line).
+const cameraBar = el('div', { class: 'camera-bar' });
+ui.append(cameraBar);
+function renderCameraBar() {
+  const mode = park ? park.cameraMode : null;
+  setChildren(cameraBar,
+    ...['orbit', 'fly', 'follow'].map((m) => el('button', { class: `btn ${mode === m ? 'active' : ''}`, text: m, disabled: !park, onclick: () => { park.setCameraMode(m); render(); } })),
+    el('button', { class: 'btn', text: 're-roll park', title: 'New terrain seed (persisted by the sidecar)', onclick: async () => showError(await api.post('/api/layout/reroll', {})) }),
+  );
+}
 
 function showError(res) {
   if (res && !res.ok) flash(`${res.body.code || res.status}: ${res.body.error || 'failed'}`, 'error');
@@ -62,6 +95,9 @@ function flash(text, kind = '') {
 
 function renderStatus() {
   const wired = Object.entries(state.providers).filter(([, p]) => p.configured).map(([n]) => n);
+  const parkText = parkError
+    ? `park: ${parkError}`
+    : `park: ${parkStatus.renderer} · assets ${parkStatus.assets} · ranger ${parkStatus.ranger} · ${parkStatus.fps} fps · seed ${state.layout.seed || '?'}`;
   setChildren(status,
     el('span', { class: `dot ${state.connected ? 'on' : 'off'}` }),
     el('span', { text: state.connected ? 'events: connected' : 'events: reconnecting' }),
@@ -70,7 +106,7 @@ function renderStatus() {
     el('span', { class: 'sep' }),
     el('span', { text: wired.length ? `providers: ${wired.join(', ')}` : 'no provider wired (start Ollama, or set ANTHROPIC_API_KEY / OPENROUTER_API_KEY, then restart)' }),
     el('span', { class: 'sep' }),
-    el('span', { class: theme.assets.status === 'ready' ? '' : 'warn', text: `art: ${theme.assets.status}${theme.assets.error ? ` (${theme.assets.error})` : ''}` }),
+    el('span', { class: parkError || parkStatus.problems.length ? 'warn' : '', text: parkText, title: parkStatus.problems.join('\n') }),
     state.keystore.problem ? el('span', { class: 'warn', text: ` · keystore: ${state.keystore.problem}` }) : null,
     state.invalidEvents ? el('span', { class: 'warn', text: ` · ${state.invalidEvents} invalid event(s) rejected` }) : null,
   );
@@ -83,12 +119,12 @@ function render() {
   requestAnimationFrame(() => {
     renderQueued = false;
     renderStatus();
+    renderCameraBar();
     comms.render();
     spend.render();
     build.render();
     permission.render();
     inspect.render();
-    world.render();
   });
 }
 
@@ -97,8 +133,29 @@ function setState(next) {
   render();
 }
 
+async function loadPark() {
+  try {
+    const { createPark } = await import('./park/render.js');
+    park = await createPark({
+      container: parkEl,
+      getState,
+      onPick,
+      onStatus: (s) => {
+        parkStatus = s;
+        render();
+      },
+    });
+  } catch (err) {
+    parkError = /vendor\/three|Failed to fetch dynamically|resolve module specifier|three\.module/.test(String(err && (err.message || err)))
+      ? 'renderer not vendored: run `npm run assets` and reload'
+      : `renderer failed: ${err && err.message ? err.message : err}`;
+    setChildren(parkEl, el('div', { class: 'park-missing', text: parkError }));
+    console.error(err);
+  }
+  render();
+}
+
 async function main() {
-  theme.load().then(() => render());
   const res = await fetch('/api/state');
   const snap = await res.json();
   setState(applySnapshot(state, snap));
@@ -108,12 +165,12 @@ async function main() {
     onStatus: async (connected) => {
       setState({ ...state, connected });
       if (connected) {
-        // Resync the snapshot after a reconnect: the layout or spend may have moved on.
         const r = await fetch('/api/state');
         if (r.ok) setState(applySnapshot(state, await r.json()));
       }
     },
   });
+  await loadPark();
 }
 
 main().catch((err) => {

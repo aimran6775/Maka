@@ -9,7 +9,14 @@ where the brief was ambiguous.
 - **Sidecar:** Node core modules only (`node:*` and globals such as `fetch`). No runtime
   dependencies, ever. `package.json` `dependencies` stays `{}`.
 - **Frontend:** vanilla JS ES modules served as static files. No build step, no bundler,
-  no framework. It may import from `/shared/` only.
+  no framework. It may import from `/shared/` and from the one approved third-party
+  library, Three.js, which is vendored under `frontend/vendor/three/` by
+  `scripts/fetch-assets.mjs` (pinned version and hashes in `frontend/assets/manifest.json`)
+  and loaded through the import map in `frontend/index.html`. Only `frontend/park/render.js`
+  imports Three.js; the park's math lives in `frontend/park/*.js` with no Three.js imports so
+  it is tested under Node.
+- **Assets:** CC0 or CC-BY only, fetched and hash-verified by `scripts/fetch-assets.mjs`,
+  recorded in `NOTICE.md` and the manifest. Never vendor a file of unknown origin.
 - **Shared contract:** `shared/events.js` is frozen and additive-only. Never rename or
   remove an event type or a required field. New fields are optional; new events are new
   entries.

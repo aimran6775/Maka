@@ -3,64 +3,304 @@
   "note": "Every file below was extracted from an archive whose SHA-256 matched the pin. Licenses: see NOTICE.md.",
   "sources": [
     {
-      "id": "kenney-tiny-town",
-      "title": "Tiny Town (1.1)",
-      "author": "Kenney",
-      "license": "CC0-1.0",
-      "page": "https://kenney.nl/assets/tiny-town",
-      "url": "https://kenney.nl/media/pages/assets/tiny-town/a415fbeb49-1735736916/kenney_tiny-town.zip",
-      "archiveSha256": "9768692dccff1d706408a5aedd6ca4f6cd1409506cbc84cb2f862919764be977",
-      "licenseEvidence": "License.txt inside the archive: \"License: (Creative Commons Zero, CC0)\"",
+      "id": "three",
+      "title": "Three.js 0.186.1",
+      "author": "Three.js Authors",
+      "license": "MIT",
+      "page": "https://threejs.org/",
+      "url": "https://registry.npmjs.org/three/-/three-0.186.1.tgz",
+      "archiveSha256": "8cd068708ea44f2c73c944b1cead2ba2f0d5c15c8fc194e5700f4e4f4a033fe7",
+      "licenseEvidence": "LICENSE in the npm tarball (MIT); fflate.module.js carries its own MIT header",
+      "root": "frontend/vendor/three",
       "files": [
         {
-          "from": "Tilemap/tilemap_packed.png",
-          "to": "tiny-town.png",
-          "sha256": "3a54d99ecde790d4fdea207a3644cf130fc56fa838f1beb1507c185a95b8e902",
-          "bytes": 5042,
-          "note": "16x16 tiles, 12 columns, no spacing"
+          "from": "package/LICENSE",
+          "to": "LICENSE",
+          "sha256": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc",
+          "bytes": 1081
+        },
+        {
+          "from": "package/build/three.core.js",
+          "to": "three.core.js",
+          "sha256": "9edde002b066a9a05676a6127f67735b62baf399bdea529f2f7e31657da769e6",
+          "bytes": 1458113
+        },
+        {
+          "from": "package/build/three.module.js",
+          "to": "three.module.js",
+          "sha256": "9052042d676cb0fdc1ddfefe193053f34b7ac0513a616fdac4535d49987812ea",
+          "bytes": 662772,
+          "note": "WebGL2 build; imports ./three.core.js"
+        },
+        {
+          "from": "package/examples/jsm/controls/OrbitControls.js",
+          "to": "addons/controls/OrbitControls.js",
+          "sha256": "3d79d07ecb686b4e5d93232eedab255331c1beef711e13164eaa1f68655a5f2b",
+          "bytes": 40755
+        },
+        {
+          "from": "package/examples/jsm/loaders/GLTFLoader.js",
+          "to": "addons/loaders/GLTFLoader.js",
+          "sha256": "131c0f78c01d19368ae495caa65b3adaa10487810a36a05bb5901b769a35ac16",
+          "bytes": 117570
+        },
+        {
+          "from": "package/examples/jsm/loaders/FBXLoader.js",
+          "to": "addons/loaders/FBXLoader.js",
+          "sha256": "7fb8586158a2cf98477b2ee40a82ebec10a81040c70369bb177043375c355322",
+          "bytes": 113372
+        },
+        {
+          "from": "package/examples/jsm/curves/NURBSCurve.js",
+          "to": "addons/curves/NURBSCurve.js",
+          "sha256": "bef2607618a7778455e71a1f0bd206951c382d313e2e245808cc7d3533d60fb6",
+          "bytes": 3888
+        },
+        {
+          "from": "package/examples/jsm/curves/NURBSUtils.js",
+          "to": "addons/curves/NURBSUtils.js",
+          "sha256": "c6bd7c4137d585098923f189687898ea3e8762ea3ecbe255d749a56353894379",
+          "bytes": 10802
+        },
+        {
+          "from": "package/examples/jsm/utils/BufferGeometryUtils.js",
+          "to": "addons/utils/BufferGeometryUtils.js",
+          "sha256": "9fb63427ce6641fa14fd0baff9cc4d1b5f9c3d85fd084bf2e90e803c44ec1797",
+          "bytes": 37712
+        },
+        {
+          "from": "package/examples/jsm/utils/SkeletonUtils.js",
+          "to": "addons/utils/SkeletonUtils.js",
+          "sha256": "b1632a703206c3d830de9fcbe515696770d04b71a15ee6b50afa6d2c3298c86f",
+          "bytes": 11535
+        },
+        {
+          "from": "package/examples/jsm/objects/Sky.js",
+          "to": "addons/objects/Sky.js",
+          "sha256": "34121b60a3bd9adc004a5a637f6135e9d2b72757eeb9e476ae1988fe2db6a9fb",
+          "bytes": 11526
+        },
+        {
+          "from": "package/examples/jsm/libs/fflate.module.js",
+          "to": "addons/libs/fflate.module.js",
+          "sha256": "209a4412eb48ce609edb4391992a792ffcc3983d30ee7e2b0b89a8c470f3cd8a",
+          "bytes": 89384
         }
       ]
     },
     {
-      "id": "kenney-roguelike-rpg",
-      "title": "Roguelike/RPG pack",
+      "id": "kenney-nature-kit",
+      "title": "Nature Kit",
       "author": "Kenney",
       "license": "CC0-1.0",
-      "page": "https://kenney.nl/assets/roguelike-rpg-pack",
-      "url": "https://kenney.nl/media/pages/assets/roguelike-rpg-pack/12c03cd78b-1677697420/kenney_roguelike-rpg-pack.zip",
-      "archiveSha256": "8e7d2378f8f794245645f6d7dc7aeeb246791410a7e512293c594b46a5a9524b",
+      "page": "https://kenney.nl/assets/nature-kit",
+      "url": "https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip",
+      "archiveSha256": "fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d",
       "licenseEvidence": "License.txt inside the archive: \"License (Creative Commons Zero, CC0)\"",
-      "files": []
-    },
-    {
-      "id": "shade-puny-characters",
-      "title": "Puny Characters",
-      "author": "Shade",
-      "license": "CC0-1.0",
-      "page": "https://opengameart.org/content/puny-characters",
-      "url": "https://opengameart.org/sites/default/files/puny-characters.zip",
-      "archiveSha256": "971d7b07eea18fb2cce475cd6554a176ebf783bb064dec5a637ba33c7829320e",
-      "licenseEvidence": "OpenGameArt listing shows license CC0; the archive carries no license file",
+      "root": "frontend/assets/nature-kit",
       "files": [
         {
-          "from": "Puny-Characters/Soldier-Yellow.png",
-          "to": "ranger.png",
-          "sha256": "348ab99b4f54d1a22013d24191a0e1622324db7f78926b5bd465a17516187204",
-          "bytes": 25193,
-          "note": "32x32 frames, 24 columns, 8 direction rows; row 0 faces down"
+          "from": "Models/GLTF format/tree_pineTallA.glb",
+          "to": "tree_pineTallA.glb",
+          "sha256": "e0a56eb196d8a64ba86c7304d607136e17e6f9ad748dffcf86bd53b18b91b196",
+          "bytes": 7200
+        },
+        {
+          "from": "Models/GLTF format/tree_pineRoundA.glb",
+          "to": "tree_pineRoundA.glb",
+          "sha256": "7dc9711f31585eafdcb965d0649c30af5e19f2def1955f7a915081d30759ef8e",
+          "bytes": 14488
+        },
+        {
+          "from": "Models/GLTF format/tree_oak.glb",
+          "to": "tree_oak.glb",
+          "sha256": "d7fd8773674928c50c11b66d12c636d49bdcc15a8b1c7fbb98e6f63a3439a3f3",
+          "bytes": 14644
+        },
+        {
+          "from": "Models/GLTF format/tree_default.glb",
+          "to": "tree_default.glb",
+          "sha256": "562d29638c902de3c7bee465d3a53bb77117efbc392ae04ed894faf6b5dc691d",
+          "bytes": 9428
+        },
+        {
+          "from": "Models/GLTF format/rock_largeA.glb",
+          "to": "rock_largeA.glb",
+          "sha256": "6dd15390fd96501dcd1454765a17ba61dbbd8d47705dfe5149c8dd92b353ce25",
+          "bytes": 7552
+        },
+        {
+          "from": "Models/GLTF format/rock_largeB.glb",
+          "to": "rock_largeB.glb",
+          "sha256": "caa8b025833d4dabf6d98fe2e96cf2fbd886693ac990df0db75f9d827194374b",
+          "bytes": 8560
+        },
+        {
+          "from": "Models/GLTF format/rock_smallA.glb",
+          "to": "rock_smallA.glb",
+          "sha256": "df9fff9d711e61370e8df0caa2514c89b8f8a8dc6c6fafaf4eb2ec79c5ae07c1",
+          "bytes": 3044
+        },
+        {
+          "from": "Models/GLTF format/sign.glb",
+          "to": "sign.glb",
+          "sha256": "c658c21672ecd63c5d3e53f06f875d68e6509edb1ab7e3b75374df7c61e7dd0c",
+          "bytes": 5040
+        },
+        {
+          "from": "Models/GLTF format/campfire_logs.glb",
+          "to": "campfire_logs.glb",
+          "sha256": "98d87cdcf9095b94fd348d0946e911dd4ca6c0956bac3318cfd2b0030b86055a",
+          "bytes": 9284
+        },
+        {
+          "from": "Models/GLTF format/fence_simple.glb",
+          "to": "fence_simple.glb",
+          "sha256": "ecaf6c29532aa9fd305a8ef71df769d60748bd797f2eb1c63bdefc4edb8062a7",
+          "bytes": 5712
+        },
+        {
+          "from": "Models/GLTF format/fence_gate.glb",
+          "to": "fence_gate.glb",
+          "sha256": "34d10d5620179b8a211a01eea837caa828c0782422f0b408e1a5838788888436",
+          "bytes": 27652
+        },
+        {
+          "from": "Models/GLTF format/tent_detailedOpen.glb",
+          "to": "tent_detailedOpen.glb",
+          "sha256": "d54d9665d07e0ff9680e56731c9f5338fc25d93788504d63b8375f54e6444193",
+          "bytes": 15324
         }
       ]
     },
     {
-      "id": "inkbubi-forest-free",
-      "title": "16x16 Pixel Forest Tileset, Top-down (free sample, v1.1)",
-      "author": "inkBubi",
+      "id": "kenney-survival-kit",
+      "title": "Survival Kit",
+      "author": "Kenney",
       "license": "CC0-1.0",
-      "page": "https://opengameart.org/node/180257",
-      "url": "https://opengameart.org/sites/default/files/seasons_of_forest_free_v1_1.zip",
-      "archiveSha256": "e37d01e005fe31577d4f501f33bda98cb77db815e21862e162269889cc07f777",
-      "licenseEvidence": "license.txt inside the archive: \"License: CC0 (Creative Commons Zero)\"",
+      "page": "https://kenney.nl/assets/survival-kit",
+      "url": "https://kenney.nl/media/pages/assets/survival-kit/4065a8185b-1712149243/kenney_survival-kit.zip",
+      "archiveSha256": "c3586341b5932c87eb43d75d915434f47daed168b17ed36a03e8ca9977c7443e",
+      "licenseEvidence": "License.txt inside the archive: \"License (Creative Commons Zero, CC0)\"",
+      "root": "frontend/assets/survival-kit",
+      "files": [
+        {
+          "from": "Models/GLB format/structure.glb",
+          "to": "structure.glb",
+          "sha256": "2ff24b6e283bc687c04cd3e0341049e34ce10fe2394a9856af89226a72eebd9d",
+          "bytes": 9672
+        },
+        {
+          "from": "Models/GLB format/tent.glb",
+          "to": "tent.glb",
+          "sha256": "2c1c5fcc213929af0904a84921084361599ffab5077423a44d3d72a81d8c87c6",
+          "bytes": 14020
+        },
+        {
+          "from": "Models/GLB format/campfire-pit.glb",
+          "to": "campfire-pit.glb",
+          "sha256": "a78ce38de408456649146077e1917d70bb39f7c87c3c7370276d809d2409b0ab",
+          "bytes": 26468
+        },
+        {
+          "from": "Models/GLB format/signpost.glb",
+          "to": "signpost.glb",
+          "sha256": "6d33757888c4ec9249610266ca8d60532b1138ae28fd37e93fa843ec4856fd25",
+          "bytes": 5924
+        },
+        {
+          "from": "Models/GLB format/chest.glb",
+          "to": "chest.glb",
+          "sha256": "84b03023e425cc1f96c6d0b0f352608be9e8e01b112790e6b00b8651bf84379b",
+          "bytes": 35172
+        },
+        {
+          "from": "Models/GLB format/box.glb",
+          "to": "box.glb",
+          "sha256": "346eebd23986793b992ca6e05e9f98d6f5db96a9bfa3aa7c8360ac8b7920def8",
+          "bytes": 14056
+        },
+        {
+          "from": "Models/GLB format/fence.glb",
+          "to": "fence.glb",
+          "sha256": "5d8050e39c8b83b5835ea38b9b17429b4a03e289b566a1db771b7e1d9c6e4050",
+          "bytes": 6428
+        },
+        {
+          "from": "Models/GLB format/fence-doorway.glb",
+          "to": "fence-doorway.glb",
+          "sha256": "f52756aa5150704dba49ef4d4d179a20dfd333e4ce9a914a5e9b0088cf2db933",
+          "bytes": 13588
+        },
+        {
+          "from": "Models/GLB format/Textures/colormap.png",
+          "to": "Textures/colormap.png",
+          "sha256": "6ca023be9f12e8c2358fcf94320c8a894b4c05a3dd0bad1f5c268312053caca1",
+          "bytes": 7440,
+          "note": "referenced by the GLBs as Textures/colormap.png"
+        }
+      ]
+    },
+    {
+      "id": "kenney-animated-characters-protagonists",
+      "title": "Animated Characters Protagonists",
+      "author": "Kenney",
+      "license": "CC0-1.0",
+      "page": "https://kenney.nl/assets/animated-characters-protagonists",
+      "url": "https://kenney.nl/media/pages/assets/animated-characters-protagonists/608191acc4-1774773108/kenney_animated-characters-protagonists.zip",
+      "archiveSha256": "ec3787de70fa2200256848d74201b10f6b6c3126594e9857bf989753312c2b84",
+      "licenseEvidence": "License.txt inside the archive: \"License: (Creative Commons Zero, CC0)\"",
+      "root": "frontend/assets/characters",
+      "files": [
+        {
+          "from": "Model/characterMedium.fbx",
+          "to": "characterMedium.fbx",
+          "sha256": "18835fef534eede635b081ee7fe647d01a885550a591d2e6bf071010906167d8",
+          "bytes": 167212,
+          "note": "rigged body (binary FBX; the pack ships no glTF)"
+        },
+        {
+          "from": "Animations/idle.fbx",
+          "to": "idle.fbx",
+          "sha256": "c8a24e0294376ee5a195c56752a13310e1c0b5f8588a4db50e094120e3e4cc74",
+          "bytes": 608188
+        },
+        {
+          "from": "Animations/run.fbx",
+          "to": "run.fbx",
+          "sha256": "e635461fc8dace85ec67a7f7941e949a7c3f108b51ae4d2da1557e6e01749df8",
+          "bytes": 572732
+        },
+        {
+          "from": "Skins/skaterMaleA.png",
+          "to": "skaterMaleA.png",
+          "sha256": "cabeed9d1be58037cc1cf3e29fdb42a0cb6af15bebeed877c41a758a932d14f8",
+          "bytes": 41705,
+          "note": "the Ranger skin"
+        }
+      ]
+    },
+    {
+      "id": "kenney-animated-characters-survivors",
+      "title": "Animated Characters Survivors",
+      "author": "Kenney",
+      "license": "CC0-1.0",
+      "page": "https://kenney.nl/assets/animated-characters-survivors",
+      "url": "https://kenney.nl/media/pages/assets/animated-characters-survivors/27b16052a7-1774772958/kenney_animated-characters-survivors.zip",
+      "archiveSha256": "fdadced07a0454c9b7f0b46507be6144a072b4d03b4ffa37f225893c76c62845",
+      "licenseEvidence": "License.txt inside the archive: \"License: (Creative Commons Zero, CC0)\"",
+      "root": "frontend/assets/characters-survivors",
       "files": []
+    }
+  ],
+  "unpinned": [
+    {
+      "id": "quaternius-ultimate-platformer-pack",
+      "title": "Ultimate Platformer Pack",
+      "author": "Quaternius",
+      "license": "CC0-1.0",
+      "page": "https://quaternius.itch.io/ultimate-platformer-pack",
+      "status": "not fetched: itch.io has no stable direct download URL to pin"
     }
   ]
 }

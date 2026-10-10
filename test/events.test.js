@@ -17,6 +17,8 @@ const SAMPLES = {
   'permission.response': { promptId: 'p1', runId: 'r1', allow: true },
   'object.place': { objectId: 'o1', kind: 'trailhead_sign', roomId: 'room-1', x: 2, y: 3 },
   'object.reclaim': { objectId: 'o1', roomId: 'room-1' },
+  'work.handoff': { fromAgentId: 'chief', toAgentId: 'ranger', fromRoomId: 'ranger-station', toRoomId: 'camp', trailId: 't1', workItemId: 'w1', summary: 'draft listings' },
+  'layout.seed': { seed: 42 },
 };
 
 test('the contract lists exactly the phase 1 events and is frozen', () => {

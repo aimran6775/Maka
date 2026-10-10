@@ -13,7 +13,7 @@ import { createRunManager } from './runs.js';
 import { createApp, createHttpServer, createLayoutState } from './server.js';
 import { providerStatus } from './providers/provider.js';
 import { keystoreStatus, defaultKeystorePath } from './providers/keys.js';
-import { defaultLayout, LAYOUT_SCHEMA } from '../shared/world.js';
+import { defaultLayout, LAYOUT_SCHEMA, DEFAULT_SEED } from '../shared/world.js';
 import { defaultLeash, validateLeash } from '../shared/leash.js';
 import { defaultPolicy, validatePolicy } from './router.js';
 import { validate } from '../shared/schema.js';
@@ -36,6 +36,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     if (layout) log.warn(`layout.json is invalid; starting from the default layout (the file is left untouched until the next change)`);
     layout = defaultLayout();
   }
+  if (!layout.seed) layout = { ...layout, seed: DEFAULT_SEED };
   const layoutState = createLayoutState({ initial: layout, store, bus });
 
   // Optional operator files in MAKA_HOME. Invalid files are reported and ignored, never

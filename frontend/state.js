@@ -27,6 +27,7 @@ export function initialState() {
     agentStates: {}, // agentId -> AGENT_STATES
     agentRuns: {}, // agentId -> runId of the run that last touched it
     pendingPrompts: [], // [{ promptId, runId, callId, tool, reason, input }]
+    handoffs: {}, // agentId -> { fromZone, toZone, workItemId, startedAt } (latest work.handoff per walker)
     spend: { totalUsd: 0, reconciledTurns: 0, unreconciledTurns: 0 },
     invalidEvents: 0,
   };
@@ -207,6 +208,14 @@ export function applyEvent(state, event) {
     }
     case 'object.reclaim': {
       next.layout = { ...next.layout, objects: next.layout.objects.filter((o) => o.id !== p.objectId) };
+      break;
+    }
+    case 'layout.seed': {
+      next.layout = { ...next.layout, seed: p.seed };
+      break;
+    }
+    case 'work.handoff': {
+      next.handoffs = { ...next.handoffs, [p.toAgentId]: { fromZone: p.fromRoomId, toZone: p.toRoomId, workItemId: p.workItemId, summary: p.summary, startedAt: event.ts } };
       break;
     }
     default:

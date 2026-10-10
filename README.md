@@ -21,17 +21,24 @@ Product laws:
 
 Status: pre-alpha. See [docs/KICKOFF_BRIEF.md](docs/KICKOFF_BRIEF.md) for the plan.
 
-## Run from source
+## Run the park
 
-Requires Node 22+. No dependencies to install.
+Requires Node 22+ and a browser with WebGL2 (Safari, Chrome, or the Tauri webview later).
+No npm dependencies. Three.js and the CC0 model kits are vendored by a script that verifies
+each archive's SHA-256 (see `NOTICE.md` and `frontend/assets/manifest.json`); they are
+committed, so the step below is only needed after a clean checkout without them or to
+reproduce them.
 
 ```bash
+npm run assets                        # fetch + verify Three.js and the kits (network)
 ollama serve                          # local worker models (any tool-capable model pulled)
 export ANTHROPIC_API_KEY=sk-ant-...   # the judge; or OPENROUTER_API_KEY; or the keystore below
 npm start                             # node sidecar/index.js
 ```
 
-Then open <http://127.0.0.1:8790>. Routine turns run on the local worker model (Ollama at
+Then open <http://127.0.0.1:8790>. Orbit with the mouse, scroll to zoom, switch to fly or
+follow with the buttons at the bottom, re-roll the terrain seed there too. Click the Ranger,
+a zone, a fixture or the Entrance Gate to inspect it. Routine turns run on the local worker model (Ollama at
 `OLLAMA_HOST`, default `http://127.0.0.1:11434`, model `OLLAMA_MODEL` or the first installed).
 Claude via the Anthropic API is the judge tier; the judge step itself lands in phase 2.
 Without Ollama running, a default run answers `400 OLLAMA_UNREACHABLE`; without a key, an
@@ -50,12 +57,14 @@ refuses to read a keystore with looser permissions.
 
 ## What you can do in phase 1
 
-The park has one zone (the Ranger Station) and one Ranger. In BUILD, place a Supply cache
-(grants `fs.read` and `fs.write` in the Ranger's own workspace) or a Trailhead sign (grants
-`web.fetch`). In COMMS, write a brief and run it; tokens stream in, tool calls show their
-input and result, and each turn says which model ran it and what it cost. A file write stops
-at the Entrance Gate card until you allow or deny it; the Ranger waits with a raised hand.
-Deliverables land in `workspace/<ranger>/outbox/`. SPEND shows reconciled cost only.
+The park has one zone (the Ranger Station), the Entrance Gate, a trail between them and one
+Ranger. In BUILD, pick a Supply cache (grants `fs.read` and `fs.write` in the Ranger's own
+workspace) or a Trailhead sign (grants `web.fetch`) and click inside the station clearing to
+place it. In COMMS, write a brief and run it; tokens stream in, tool calls show their input
+and result, and each turn says which model ran it and what it cost. A file write stops at
+the Entrance Gate card until you allow or deny it; the Ranger walks to the Gate and waits
+there. Deliverables land in `workspace/<ranger>/outbox/`. SPEND shows reconciled cost only.
+Every animation state maps to a real event; the sun follows your clock and encodes nothing.
 
 Phase 2 (business crew, connectors, leash enforcement, judge step, Lookout Tower) and
 phase 3 (macOS app) are described in the brief and are not in this build.

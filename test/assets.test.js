@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { deflateRawSync } from 'node:zlib';
-import { readZip, checkVendored, fetchAll, SOURCES } from '../scripts/fetch-assets.mjs';
+import { readZip, readTgz, checkVendored, fetchAll, SOURCES, UNPINNED } from '../scripts/fetch-assets.mjs';
+import { gzipSync } from 'node:zlib';
 
 // Builds a minimal zip (stored or deflated) without any library, for the reader test.
 function makeZip(files, { deflate = false } = {}) {
@@ -52,10 +53,10 @@ test('zip reader handles stored and deflated entries and rejects junk', () => {
   assert.throws(() => readZip(Buffer.from('not a zip at all')), /not a zip/);
 });
 
-test('vendored assets match the manifest and every source is CC0 or CC-BY with evidence', async () => {
+test('vendored assets match the manifest and every source is CC0, CC-BY or MIT with evidence', async () => {
   assert.deepEqual(await checkVendored(), []);
   for (const s of SOURCES) {
-    assert.match(s.license, /^CC0-1\.0$|^CC-BY-4\.0$/, s.id);
+    assert.match(s.license, /^CC0-1\.0$|^CC-BY-4\.0$|^MIT$/, s.id);
     assert.match(s.sha256, /^[0-9a-f]{64}$/, s.id);
     assert.ok(s.licenseEvidence.length > 10, s.id);
     assert.ok(s.page.startsWith('https://'), s.id);
@@ -63,8 +64,34 @@ test('vendored assets match the manifest and every source is CC0 or CC-BY with e
 });
 
 test('fetchAll refuses an archive whose hash does not match the pin, before extracting', async () => {
-  const bogus = makeZip({ 'Tilemap/tilemap_packed.png': 'not the real file' });
+  const bogus = makeZip({ 'package/LICENSE': 'not the real file' });
   assert.notEqual(createHash('sha256').update(bogus).digest('hex'), SOURCES[0].sha256);
   await assert.rejects(fetchAll({ log: { info() {} }, fetchImpl: async () => bogus }), /does not match the pinned/);
   assert.deepEqual(await checkVendored(), [], 'nothing on disk changed');
+});
+
+// Builds a minimal ustar tar.gz for the tgz reader test.
+function makeTgz(files) {
+  const blocks = [];
+  for (const [name, content] of Object.entries(files)) {
+    const data = Buffer.from(content);
+    const header = Buffer.alloc(512);
+    header.write(name, 0, 'utf8');
+    header.write('0000644\0', 100, 'utf8');
+    header.write(data.length.toString(8).padStart(11, '0') + '\0', 124, 'utf8');
+    header.write('0', 156, 'utf8');
+    header.write('ustar\0', 257, 'utf8');
+    const pad = Buffer.alloc(Math.ceil(data.length / 512) * 512 - data.length);
+    blocks.push(header, data, pad);
+  }
+  blocks.push(Buffer.alloc(1024));
+  return gzipSync(Buffer.concat(blocks));
+}
+
+test('tgz reader lists and reads ustar entries', () => {
+  const tgz = readTgz(makeTgz({ 'package/LICENSE': 'MIT', 'package/build/x.js': 'export const x = 1;\n' }));
+  assert.deepEqual(tgz.names(), ['package/LICENSE', 'package/build/x.js']);
+  assert.equal(tgz.read('package/build/x.js').toString(), 'export const x = 1;\n');
+  assert.throws(() => tgz.read('nope'), /not in the archive/);
+  assert.ok(UNPINNED[0].status.startsWith('not fetched'));
 });
