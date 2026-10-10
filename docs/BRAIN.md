@@ -11,9 +11,14 @@ browser (frontend/, vanilla JS, canvas)
    ▼
 sidecar (one Node process, no dependencies)
    ├─ loop        the agentic while-loop; every transition is an event
-   ├─ capability  world layout → tool allowlist; a placed object is a tool grant
-   ├─ providers   Anthropic, OpenRouter; streaming + tool use
-   └─ store       atomic on-disk persistence (runs, transcripts, spend, layout)
+   ├─ capability  world layout → tool allowlist; a placed object is a tool grant;
+   │              the leash decides whether a granted action runs, waits at the Gate,
+   │              or is refused
+   ├─ gate-queue  the Entrance Gate: items waiting on the Superintendent, decisions,
+   │              loosening proposals; leash-ledger counts the day's actions and money
+   ├─ providers   Anthropic, OpenRouter, Ollama; streaming + tool use
+   └─ store       atomic on-disk persistence (runs, transcripts, spend, layout, leash,
+                  ledger, gate items)
 ```
 
 Three ideas carry everything:
@@ -29,7 +34,16 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 1, step 7 done: the first slice of the 3D park. `npm run assets` vendors Three.js
+Phase 2 step 1 done: leash enforcement. Every tool with a leash domain now goes through
+`resolveLeash` (agent override → zone default → park default) in the capability gate:
+Observe refuses, Draft for review parks the call as a `gate.item` until the Superintendent
+approves / revises / rejects it at the Gate (`POST /api/gate/:id`), Act with cap runs
+while the ledger's daily USD and action caps hold, Act freely runs and is counted. Five
+approvals in a row raise a proposal to loosen that Ranger one level; approving it writes
+an agent override into `leash.json`. The park shows the queue as cards and on the Gate,
+Ranger and Peak inspector panels, and a Ranger whose run is parked stands at the Gate.
+
+Phase 1 (done): the first slice of the 3D park. `npm run assets` vendors Three.js
 and the CC0 kits (hash-verified), `npm start` serves the park: seeded terrain with a river,
 sky and sun from the real clock, instanced forest, the Ranger Station clearing with its
 building, the Entrance Gate clearing with its gate, a trail between them, one animated
@@ -48,6 +62,15 @@ An event is `{ v, id, type, ts, seq?, payload }`. Payload schemas are strict
 reconciled only when the token counts came from the provider's own usage report and the
 model has a known price.
 
+### The leash (`shared/leash.js`, `sidecar/capability/gate.js`, `sidecar/gate-queue.js`)
+
+A tool declares a domain (`tool.domain` or `TOOL_DOMAINS`). The gate resolves the agent's
+level for it and either runs the tool, refuses it, or submits a Gate item and awaits the
+decision with the tool call parked (no provider call is in flight, so waiting is free).
+The ledger (`sidecar/leash-ledger.js`) is the only counter of "what ran today" per domain,
+and the only source for the daily caps. Everything the Gate decides is a `gate.item` event
+with the same `itemId` across its status changes.
+
 ### The loop (`sidecar/loop.js`)
 
 One turn = one provider call + the tool calls it asked for. Before every provider call the
@@ -62,7 +85,7 @@ an unpriced model cannot be budget-capped (the UI shows its tokens as unreconcil
 
 1. `shared/events.js` — the vocabulary.
 2. `sidecar/loop.js` — the behaviour.
-3. `sidecar/capability/` and `shared/leash.js` — the permission model.
+3. `sidecar/capability/`, `shared/leash.js`, `sidecar/gate-queue.js`, `sidecar/leash-ledger.js` — the permission model.
 4. `sidecar/router.js` and `sidecar/providers/` — which model runs and what it costs.
 5. `sidecar/index.js` — how it is served and persisted.
 6. `frontend/app.js` — how it is shown.

@@ -21,9 +21,11 @@ const SAMPLES = {
   'layout.seed': { seed: 42 },
   'workspace.offline': { root: '/Volumes/LaCie/Maka/workspace', reason: 'ENOENT' },
   'workspace.online': { root: '/Volumes/LaCie/Maka/workspace' },
+  'gate.item': { itemId: 'g1', agentId: 'ranger', kind: 'action', domain: 'money_out', tool: 'pay.supplier', summary: 'pay $12', status: 'pending', runId: 'r1', callId: 'c1', turn: 2, level: 'draft', amountUsd: 12, evidence: [{ kind: 'said', text: 'ordering stock', ref: 'r1' }], reason: 'leash is draft' },
+  'agent.waiting': { runId: 'r1', agentId: 'ranger', itemId: 'g1', domain: 'money_out', tool: 'pay.supplier' },
 };
 
-test('the contract lists exactly the phase 1 events and is frozen', () => {
+test('the contract lists exactly the known events and is frozen', () => {
   assert.deepEqual([...EVENT_TYPES].sort(), Object.keys(SAMPLES).sort());
   assert.equal(Object.isFrozen(PAYLOAD_SCHEMAS), true);
   assert.equal(Object.isFrozen(PAYLOAD_SCHEMAS['agent.token'].properties), true);
@@ -81,6 +83,11 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('object.place', { ...SAMPLES['object.place'], x: 1.5 });
   bad('permission.response', { promptId: 'p', runId: 'r', allow: 'yes' });
   bad('agent.tool_call', { ...SAMPLES['agent.tool_call'], input: 'string' });
+  bad('gate.item', { ...SAMPLES['gate.item'], status: 'maybe' });
+  bad('gate.item', { ...SAMPLES['gate.item'], kind: 'wish' });
+  bad('gate.item', { ...SAMPLES['gate.item'], evidence: [{ text: 'no kind' }] });
+  bad('agent.waiting', { runId: 'r1', agentId: 'a' });
+  assert.equal(validate_('gate.item', { itemId: 'g2', agentId: 'ranger', kind: 'proposal', domain: 'publishing', tool: 'leash.loosen', summary: 'loosen?', status: 'pending', proposal: { from: 'draft', to: 'act_capped' } }).ok, true);
   assert.equal(validate_('cost.estimate', { ...SAMPLES['cost.estimate'], usd: null, reconciled: false }).ok, true);
   assert.throws(() => assertEvent({ v: 1, id: 'x', type: 'agent.token', ts: 1, payload: {} }), /agent\.token payload failed validation/);
   assert.throws(() => makeEvent('nope', {}), /envelope failed validation/);

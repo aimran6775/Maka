@@ -43,6 +43,19 @@ function payload(required, properties) {
 
 export const RUN_END_REASONS = deepFreeze(['completed', 'cancelled', 'max_turns', 'budget']);
 
+// Gate item lifecycle (phase 2 step 1). An item is emitted once per status change with the
+// same itemId, so a receiver upserts by id:
+//   pending   waiting on the Superintendent (level 'draft', or 'act_capped' over its cap)
+//   approved / revised / rejected   the Superintendent's decision on a pending item
+//   allowed   the leash let the action through ('act_free', or 'act_capped' under cap)
+//   refused   the leash blocked it outright ('observe')
+//   expired   the run ended (or the sidecar restarted) before a decision
+export const GATE_ITEM_STATUSES = deepFreeze(['pending', 'approved', 'revised', 'rejected', 'allowed', 'refused', 'expired']);
+// 'action' is a tool call under a leash domain; 'proposal' is the ledger asking to loosen a
+// leash after a streak of approvals (approve applies it, reject resets the streak).
+export const GATE_ITEM_KINDS = deepFreeze(['action', 'proposal']);
+const LEASH_LEVEL_ENUM = deepFreeze(['observe', 'draft', 'act_capped', 'act_free']);
+
 export const PAYLOAD_SCHEMAS = deepFreeze({
   // A run began. `tools` lists the tool names the agent was granted by its room layout.
   'agent.run.start': payload(
@@ -161,6 +174,38 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
   // Runs are stopped and no new run starts until workspace.online follows.
   'workspace.offline': payload(['root', 'reason'], { root: nonEmpty, reason: str }),
   'workspace.online': payload(['root'], { root: nonEmpty }),
+  // Added v1 (phase 2 step 1): a leash decision at the Entrance Gate. See GATE_ITEM_STATUSES.
+  // `summary` is a one-line description of the action; `evidence` carries what the Ranger
+  // said and did around it; `amountUsd` is the action's money-out amount when it has one;
+  // `level` is the leash level that applied; `proposal` is set on kind 'proposal'.
+  'gate.item': payload(['itemId', 'agentId', 'kind', 'domain', 'tool', 'summary', 'status'], {
+    itemId: nonEmpty,
+    agentId: nonEmpty,
+    kind: { type: 'string', enum: GATE_ITEM_KINDS },
+    domain: nonEmpty,
+    tool: nonEmpty,
+    summary: str,
+    status: { type: 'string', enum: GATE_ITEM_STATUSES },
+    runId: nonEmpty,
+    callId: nonEmpty,
+    turn: int1,
+    level: { type: 'string', enum: LEASH_LEVEL_ENUM },
+    amountUsd: num0,
+    evidence: { type: 'array', items: { type: 'object', required: ['kind', 'text'], additionalProperties: false, properties: { kind: nonEmpty, text: str, ref: str } } },
+    notes: str,
+    reason: str,
+    proposal: { type: 'object', required: ['from', 'to'], additionalProperties: false, properties: { from: { type: 'string', enum: LEASH_LEVEL_ENUM }, to: { type: 'string', enum: LEASH_LEVEL_ENUM } } },
+    away: bool,
+  }),
+  // Added v1 (phase 2 step 1): a run is parked on a pending Gate item; the Ranger waits at
+  // the Gate until a gate.item with that itemId leaves 'pending'.
+  'agent.waiting': payload(['runId', 'agentId', 'itemId'], {
+    runId: nonEmpty,
+    agentId: nonEmpty,
+    itemId: nonEmpty,
+    domain: str,
+    tool: str,
+  }),
 });
 
 export const EVENT_TYPES = deepFreeze(Object.keys(PAYLOAD_SCHEMAS));

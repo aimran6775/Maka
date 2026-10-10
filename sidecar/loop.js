@@ -235,7 +235,7 @@ export async function runLoop(options) {
         result = { ok: false, error: 'tool input was not valid JSON' };
       } else {
         try {
-          result = normalizeResult(await tools.execute(call, { runId, agentId, turn, signal }));
+          result = normalizeResult(await tools.execute(call, { runId, agentId, turn, signal, turnText: textOf(content) }));
         } catch (err) {
           result = { ok: false, error: err && err.message ? err.message : String(err) };
         }

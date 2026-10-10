@@ -12,3 +12,4 @@ test/leash.test.js
 test/frontend-state.test.js
 test/assets.test.js
 test/park.test.js
+test/leash-ledger.test.js

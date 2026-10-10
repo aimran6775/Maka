@@ -16,6 +16,8 @@ import { createStore } from './store.js';
 import { createWorkspaceWatcher } from './workspace.js';
 import { createEventBus } from './bus.js';
 import { createRunManager } from './runs.js';
+import { createLeashLedger, createLeashState } from './leash-ledger.js';
+import { createGateQueue } from './gate-queue.js';
 import { createApp, createHttpServer, createLayoutState } from './server.js';
 import { providerStatus } from './providers/provider.js';
 import { keystoreStatus, defaultKeystorePath } from './providers/keys.js';
@@ -50,10 +52,13 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   // silently "fixed". There is no UI to edit them in phase 1.
   const policy = await loadOrDefault(path.join(home, 'policy.json'), validatePolicy, defaultPolicy, log, 'policy.json');
   const leash = await loadOrDefault(path.join(home, 'leash.json'), validateLeash, defaultLeash, log, 'leash.json');
-  const leashState = { get: () => leash };
+  // leash.json is both the operator file and where approved loosening proposals land.
+  const leashState = createLeashState({ initial: leash, store });
+  const ledger = await createLeashLedger({ store, earnApprovals: leash.earn && leash.earn.approvals }).init();
+  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get }).init();
 
   const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, onOffline: () => runs.cancel() });
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leash, workspaceOnline: () => workspace.state().online });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, workspaceOnline: () => workspace.state().online });
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -67,6 +72,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     runs,
     layoutState,
     leashState,
+    ledger,
+    gateQueue,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -94,6 +101,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     if (s.local) log.info(`  provider ${name}: ${s.reachable ? `reachable at ${s.host}, models: ${s.models.join(', ') || '(none installed)'}` : `not reachable at ${s.host} (start Ollama or set OLLAMA_HOST)`}`);
     else log.info(`  provider ${name}: ${s.configured ? 'key configured' : `not wired (set ${s.envVar} or add to ${keystorePath})`}`);
   }
+  log.info(`  gate: ${gateQueue.pending().length} item(s) waiting; leash day ${ledger.dayKey()}`);
   log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${policy.tiers.judge.provider}${policy.tiers.judge.model ? '/' + policy.tiers.judge.model : ''}`);
 
   async function close() {
@@ -104,7 +112,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await new Promise((resolve) => server.close(resolve));
   }
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, close };
 }
 
 function validateConfig(data) {

@@ -10,6 +10,10 @@
 //   POST /api/layout/reclaim   { objectId } → emits object.reclaim
 //   POST /api/layout/reroll    { seed? } → new park seed, emits layout.seed
 //   POST /api/permission       { promptId, runId, allow } → emits permission.response
+//   GET  /api/gate             { pending, recent, ledger } the Entrance Gate queue
+//   POST /api/gate/:id         { decision: approve|revise|reject, notes? } → gate.item
+//   GET  /api/leash            the live leash policy
+//   PUT  /api/leash            replace the leash policy (validated, persisted)
 //   GET  /api/runs             run summaries, newest first
 //   GET  /api/runs/:id         one run record (events + messages)
 //   GET  /shared/*             the shared contract modules, served to the browser
@@ -25,6 +29,7 @@ import { randomUUID } from 'node:crypto';
 import { makeEvent, CONTRACT_VERSION, PAYLOAD_SCHEMAS } from '../shared/events.js';
 import { validate } from '../shared/schema.js';
 import { LAYOUT_SCHEMA, OBJECT_KINDS, roomOf, tileInRoom } from '../shared/world.js';
+import { validateLeash } from '../shared/leash.js';
 
 const BODY_LIMIT = 1024 * 1024;
 const MIME = {
@@ -134,7 +139,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -184,6 +189,8 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, wo
         pendingPrompts: runs.pending(),
         policy: runs.policy,
         leash: leashState ? leashState.get() : null,
+        ledger: ledger ? ledger.summary() : null,
+        gate: gateQueue ? { pending: gateQueue.pending(), recent: gateQueue.recent(20) } : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -215,6 +222,29 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, wo
       if (!r.ok) throw new HttpError(400, `permission.response invalid: ${r.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`);
       const accepted = runs.answer(body);
       return sendJson(res, accepted ? 200 : 404, { accepted });
+    }
+    if (p === '/api/gate' && method === 'GET') {
+      if (!gateQueue) throw new HttpError(404, 'no Gate queue');
+      return sendJson(res, 200, { pending: gateQueue.pending(), recent: gateQueue.recent(Number(url.searchParams.get('limit')) || 50), ledger: ledger ? ledger.summary() : null });
+    }
+    if (p.startsWith('/api/gate/') && method === 'POST') {
+      if (!gateQueue) throw new HttpError(404, 'no Gate queue');
+      const id = decodeURIComponent(p.slice('/api/gate/'.length));
+      const body = await readJsonBody(req);
+      try {
+        return sendJson(res, 200, await gateQueue.resolve(id, body));
+      } catch (err) {
+        if (err.status) throw new HttpError(err.status, err.message, err.code);
+        throw err;
+      }
+    }
+    if (p === '/api/leash' && method === 'GET') return sendJson(res, 200, leashState ? leashState.get() : null);
+    if (p === '/api/leash' && method === 'PUT') {
+      if (!leashState || typeof leashState.set !== 'function') throw new HttpError(404, 'leash is read-only here');
+      const body = await readJsonBody(req);
+      const r = validateLeash(body);
+      if (!r.ok) throw new HttpError(400, `leash invalid: ${r.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`, 'LEASH_INVALID');
+      return sendJson(res, 200, await leashState.set(body));
     }
     if (p === '/api/runs' && method === 'GET') return sendJson(res, 200, await store.listRuns());
     if (p.startsWith('/api/runs/') && method === 'GET') {

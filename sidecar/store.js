@@ -6,6 +6,9 @@
 // Layout on disk (root = MAKA_HOME or ./.maka):
 //   layout.json            the world layout (shared/world.js LAYOUT_SCHEMA)
 //   spend.json             reconciled spend totals
+//   leash.json             the leash policy (shared/leash.js); also the operator file
+//   leash-ledger.json      daily per-domain action totals, approval streaks, judge spend
+//   gate-items.json        the Entrance Gate queue (recent items, pending first)
 //   runs/<runId>.json      one record per run: metadata + every event + final messages
 
 import { promises as fsp } from 'node:fs';
@@ -55,6 +58,9 @@ export function createStore({ root, fs = fsp }) {
   if (!root) throw new TypeError('createStore needs root');
   const layoutFile = path.join(root, 'layout.json');
   const spendFile = path.join(root, 'spend.json');
+  const leashFile = path.join(root, 'leash.json');
+  const ledgerFile = path.join(root, 'leash-ledger.json');
+  const gateFile = path.join(root, 'gate-items.json');
   const runsDir = path.join(root, 'runs');
 
   const runFile = (runId) => {
@@ -71,6 +77,12 @@ export function createStore({ root, fs = fsp }) {
     saveLayout: (layout) => writeJsonAtomic(layoutFile, layout, { fs }),
     loadSpend: () => readJson(spendFile, { version: 1, totalUsd: 0, reconciledTurns: 0, unreconciledTurns: 0, byRun: {} }, { fs }),
     saveSpend: (spend) => writeJsonAtomic(spendFile, spend, { fs }),
+    loadLeash: (fallback) => readJson(leashFile, fallback, { fs }),
+    saveLeash: (leash) => writeJsonAtomic(leashFile, leash, { fs }),
+    loadLeashLedger: (fallback) => readJson(ledgerFile, fallback, { fs }),
+    saveLeashLedger: (ledger) => writeJsonAtomic(ledgerFile, ledger, { fs }),
+    loadGateItems: (fallback) => readJson(gateFile, fallback, { fs }),
+    saveGateItems: (items) => writeJsonAtomic(gateFile, items, { fs }),
     saveRun: async (record) => writeJsonAtomic(runFile(record.runId), record, { fs }),
     loadRun: async (runId) => readJson(runFile(runId), null, { fs }),
     async listRuns() {

@@ -2,8 +2,12 @@
 // reconciled spend, and persists the run record through the store.
 //
 //   createRunManager({ bus, store, getLayout, workspaceRoot, env, keystorePath, fetch,
-//                      clock, makeProvider, policy, leash })
+//                      clock, makeProvider, policy, leash | leashState, ledger, gateQueue })
 //     -> { start(opts), cancel(runId), answer(permissionResponse), active(), pending(), policy }
+//
+// Leash (phase 2 step 1): the gate for every run reads the live leash policy (leashState),
+// checks daily caps against the ledger and parks draft-level actions in the Gate queue.
+// When the run ends, its pending Gate items expire.
 //
 // Model choice: an explicit { provider, model } in start() wins; otherwise the router picks
 // the worker tier from the policy (phase 1 runs are routine 'turn' steps). The tier is
@@ -45,6 +49,9 @@ export function createRunManager({
   systemPrompt = DEFAULT_SYSTEM_PROMPT,
   policy = defaultPolicy(),
   leash = defaultLeash(),
+  leashState = null, // { get() } live policy; wins over the static `leash`
+  ledger = null, // sidecar/leash-ledger.js
+  gateQueue = null, // sidecar/gate-queue.js
   workspaceOnline = () => true, // the watcher's view; a run never starts while offline
 } = {}) {
   if (!bus || !store || typeof getLayout !== 'function' || !workspaceRoot) {
@@ -82,7 +89,9 @@ export function createRunManager({
     pending: () => [...pendingPrompts.entries()].map(([promptId, p]) => ({ promptId, runId: p.runId })),
 
     policy: router.policy,
-    leash,
+    get leash() {
+      return leashState ? leashState.get() : leash;
+    },
     route: (step) => router.route(step),
 
     async start({ agentId = 'ranger', prompt, provider: providerName, model, maxTurns = DEFAULT_MAX_TURNS, budgetUsd = DEFAULT_BUDGET_USD } = {}) {
@@ -179,7 +188,16 @@ export function createRunManager({
           emit('permission.prompt', payload);
         });
 
-      const gate = createToolGate({ getLayout, agentId, workspaceDir, fetch: fetchImpl, ask, leash });
+      const gate = createToolGate({
+        getLayout,
+        agentId,
+        workspaceDir,
+        fetch: fetchImpl,
+        ask,
+        getLeash: () => (leashState ? leashState.get() : leash),
+        ledger,
+        submit: gateQueue ? { submit: (item) => gateQueue.submit({ ...item, runId, agentId }), log: (item) => gateQueue.log({ ...item, runId, agentId }) } : null,
+      });
 
       active = { runId, agentId, abort: () => ac.abort(), record, flush };
       await flush();
@@ -198,6 +216,7 @@ export function createRunManager({
             p.resolve(false);
           }
         }
+        if (gateQueue) await gateQueue.expireRun(runId).catch((err) => console.error('gate expire failed:', err));
         stopListening();
         if (flushTimer) {
           clearTimeout(flushTimer);

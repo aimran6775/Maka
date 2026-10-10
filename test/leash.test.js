@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEASH_LEVELS, DOMAINS, TOOL_DOMAINS, LEASH_SCHEMA, defaultLeash, validateLeash, leashFor, domainOfTool, looserThan, LEASH_LEVEL_LABELS } from '../shared/leash.js';
+import { LEASH_LEVELS, DOMAINS, TOOL_DOMAINS, LEASH_SCHEMA, defaultLeash, validateLeash, leashFor, domainOfTool, looserThan, LEASH_LEVEL_LABELS, resolveLeash, resolveAllLeash, withAgentLeash, nextLooser, DEFAULT_EARN_APPROVALS } from '../shared/leash.js';
 import { TOOL_NAMES } from '../sidecar/capability/tools.js';
 import { PAYLOAD_SCHEMAS } from '../shared/events.js';
 
@@ -51,4 +51,29 @@ test('validation rejects unknown domains, levels and caps', () => {
   assert.equal(validateLeash({ version: 1, domains: { money_out: { level: 'act_capped', dailyCapUsd: -1 } } }).ok, false);
   assert.equal(validateLeash({ version: 1, domains: { money_out: { level: 'act_capped', extra: 1 } } }).ok, false);
   assert.equal(validateLeash({ version: 1 }).ok, false);
+});
+
+test('resolution order: agent override → zone default → park default → draft; proposals move one level', () => {
+  const leash = defaultLeash();
+  leash.zones = { camp: { domains: { publishing: { level: 'act_capped', dailyCapActions: 3 } } } };
+  leash.agents = { ada: { domains: { publishing: { level: 'act_free' } } } };
+  assert.equal(validateLeash(leash).ok, true);
+  assert.deepEqual(resolveLeash(leash, { agentId: 'ada', roomId: 'camp' }, 'publishing'), { domain: 'publishing', level: 'act_free', dailyCapUsd: null, dailyCapActions: null, scope: 'agent' });
+  assert.deepEqual(resolveLeash(leash, { agentId: 'bob', roomId: 'camp' }, 'publishing'), { domain: 'publishing', level: 'act_capped', dailyCapUsd: null, dailyCapActions: 3, scope: 'zone' });
+  assert.deepEqual(resolveLeash(leash, { agentId: 'bob', roomId: 'hq' }, 'publishing').scope, 'park');
+  assert.deepEqual(resolveLeash(leash, { agentId: 'bob', roomId: 'hq' }, 'money_out'), { domain: 'money_out', level: 'draft', dailyCapUsd: 0, dailyCapActions: null, scope: 'park' });
+  assert.deepEqual(resolveLeash({ version: 1, domains: {} }, {}, 'money_out'), { domain: 'money_out', level: 'draft', dailyCapUsd: null, dailyCapActions: null, scope: 'default' });
+  assert.equal(resolveLeash(leash, {}, 'piloting').level, 'draft');
+  assert.deepEqual(Object.keys(resolveAllLeash(leash, { agentId: 'ada', roomId: 'camp' })).sort(), [...DOMAINS].sort());
+  const next = withAgentLeash(leash, 'bob', 'money_out', { level: 'act_capped', dailyCapUsd: 0, dailyCapActions: null });
+  assert.deepEqual(next.agents.bob.domains.money_out, { level: 'act_capped', dailyCapUsd: 0 });
+  assert.deepEqual(next.agents.ada, leash.agents.ada, 'other overrides untouched');
+  assert.equal(validateLeash(next).ok, true);
+  assert.equal(nextLooser('draft'), 'act_capped');
+  assert.equal(nextLooser('act_free'), null);
+  assert.equal(DEFAULT_EARN_APPROVALS, 5);
+  assert.equal(validateLeash({ ...leash, earn: { approvals: 3 } }).ok, true);
+  assert.equal(validateLeash({ ...leash, earn: { approvals: 0 } }).ok, false);
+  assert.equal(validateLeash({ ...leash, zones: { camp: { domains: { piloting: { level: 'draft' } } } } }).ok, false);
+  assert.equal(validateLeash({ ...leash, agents: { x: { level: 'draft' } } }).ok, false);
 });

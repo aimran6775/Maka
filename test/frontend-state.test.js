@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, applySnapshot, applyEvent, grantedTools, currentRun, AGENT_STATES } from '../frontend/state.js';
+import { initialState, applySnapshot, applyEvent, grantedTools, currentRun, AGENT_STATES, pendingGate, recentGate } from '../frontend/state.js';
 import { makeEvent } from '../shared/events.js';
 import { defaultLayout, OBJECT_KINDS } from '../shared/world.js';
 
@@ -146,4 +146,35 @@ test('workspace offline/online events update the workspace view', () => {
   assert.equal(s.workspace.reason, 'ENOENT');
   s = reduce(s, [ev('workspace.online', { root: '/w' })]);
   assert.equal(s.workspace.online, true);
+});
+
+test('gate.item and agent.waiting: the Ranger waits at the Gate until the item is decided; items upsert by id; snapshot seeds the queue', () => {
+  seq = 0;
+  const pendingItem = { itemId: 'g0', agentId: 'ranger', kind: 'proposal', domain: 'publishing', tool: 'leash.loosen', summary: 'loosen?', status: 'pending', createdAt: 5 };
+  const oldItem = { itemId: 'g-old', agentId: 'ranger', kind: 'action', domain: 'research', tool: 'fs.read', summary: 'read', status: 'allowed', decidedAt: 3 };
+  let s = applySnapshot(initialState(), snapshot({ gate: { pending: [pendingItem], recent: [oldItem] }, ledger: { day: '2026-10-10', domains: {}, judge: { usd: 0, calls: 0 } } }));
+  assert.deepEqual(pendingGate(s).map((i) => i.itemId), ['g0']);
+  assert.deepEqual(recentGate(s).map((i) => i.itemId), ['g-old']);
+  assert.equal(s.ledger.day, '2026-10-10');
+  s = reduce(s, [
+    ev('agent.run.start', { runId: 'r', agentId: 'ranger', provider: 'p', model: 'm', prompt: 'x', maxTurns: 3, budgetUsd: 1, tools: ['fs.read'] }),
+    ev('agent.tool_call', { runId: 'r', turn: 1, callId: 'c1', name: 'fs.read', input: { path: 'a' } }),
+    ev('gate.item', { itemId: 'g1', agentId: 'ranger', kind: 'action', domain: 'research', tool: 'fs.read', summary: 'read a', status: 'pending', runId: 'r', callId: 'c1', turn: 1, level: 'draft' }),
+    ev('agent.waiting', { runId: 'r', agentId: 'ranger', itemId: 'g1' }),
+  ]);
+  assert.equal(s.agentStates.ranger, 'waiting');
+  assert.deepEqual(pendingGate(s).map((i) => i.itemId), ['g0', 'g1']);
+  s = reduce(s, [ev('gate.item', { itemId: 'g1', agentId: 'ranger', kind: 'action', domain: 'research', tool: 'fs.read', summary: 'read a', status: 'approved', runId: 'r', callId: 'c1', turn: 1, level: 'draft' })]);
+  assert.equal(s.agentStates.ranger, 'tool-running');
+  assert.equal(s.gateItems.g1.status, 'approved');
+  assert.equal(s.gateOrder.filter((id) => id === 'g1').length, 1, 'upsert, not append');
+  assert.deepEqual(pendingGate(s).map((i) => i.itemId), ['g0']);
+  assert.match(s.runs.r.items.at(-1).text, /Approved at the Entrance Gate/);
+  s = reduce(s, [
+    ev('gate.item', { itemId: 'g2', agentId: 'ranger', kind: 'action', domain: 'publishing', tool: 'social.post', summary: 'post', status: 'refused', runId: 'r', level: 'observe' }),
+  ]);
+  assert.equal(s.agentStates.ranger, 'tool-running', 'a refusal is not a wait');
+  assert.equal(recentGate(s)[0].itemId, 'g2');
+  s = reduce(s, [ev('gate.item', { itemId: 'g0', agentId: 'ranger', kind: 'proposal', domain: 'publishing', tool: 'leash.loosen', summary: 'loosen?', status: 'rejected' })]);
+  assert.equal(pendingGate(s).length, 0);
 });

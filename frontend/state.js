@@ -27,6 +27,9 @@ export function initialState() {
     agentStates: {}, // agentId -> AGENT_STATES
     agentRuns: {}, // agentId -> runId of the run that last touched it
     pendingPrompts: [], // [{ promptId, runId, callId, tool, reason, input }]
+    gateItems: {}, // itemId -> latest gate.item payload (+ ts)
+    gateOrder: [], // itemIds, oldest first
+    ledger: null, // today's per-domain totals from the sidecar's leash ledger
     handoffs: {}, // agentId -> { fromZone, toZone, workItemId, startedAt } (latest work.handoff per walker)
     workspace: null, // { root, online, known, since, reason } from the sidecar's watcher
     spend: { totalUsd: 0, reconciledTurns: 0, unreconciledTurns: 0 },
@@ -68,6 +71,17 @@ export function applySnapshot(state, snap) {
   next.keystore = snap.keystore || { path: '', problem: null };
   next.layout = snap.layout;
   next.objectKinds = snap.objectKinds || {};
+  next.ledger = snap.ledger || null;
+  if (snap.gate) {
+    const items = { ...state.gateItems };
+    const order = [...state.gateOrder];
+    for (const it of [...(snap.gate.recent || [])].reverse().concat(snap.gate.pending || [])) {
+      if (!items[it.itemId]) order.push(it.itemId);
+      items[it.itemId] = { ...it, ts: it.decidedAt || it.createdAt || 0 };
+    }
+    next.gateItems = items;
+    next.gateOrder = order;
+  }
   next.activeRun = snap.activeRun || null;
   next.spend = {
     totalUsd: snap.spend ? snap.spend.totalUsd : 0,
@@ -224,6 +238,25 @@ export function applyEvent(state, event) {
       next.workspace = { ...(next.workspace || {}), root: p.root, online: true, known: true, since: event.ts, reason: null };
       break;
     }
+    case 'gate.item': {
+      const prev = next.gateItems[p.itemId];
+      next.gateItems = { ...next.gateItems, [p.itemId]: { ...(prev || {}), ...p, ts: event.ts } };
+      if (!prev) next.gateOrder = [...next.gateOrder, p.itemId];
+      const run = p.runId ? next.runs[p.runId] : null;
+      if (run && run.status === 'running') {
+        if (p.status === 'pending') next = setAgent(next, run.agentId, 'waiting', p.runId);
+        else if (['approved', 'revised', 'rejected', 'expired'].includes(p.status)) {
+          next = updateRun(next, p.runId, (r) => ({ ...r, items: [...r.items, { kind: 'note', text: `${p.status[0].toUpperCase()}${p.status.slice(1)} at the Entrance Gate (${p.domain}: ${p.summary})${p.notes ? ` — ${p.notes}` : ''}` }] }));
+          if (!pendingGate(next).some((it) => it.runId === p.runId) && !next.pendingPrompts.some((q) => q.runId === p.runId)) next = setAgent(next, run.agentId, 'tool-running', p.runId);
+        }
+      }
+      break;
+    }
+    case 'agent.waiting': {
+      const run = next.runs[p.runId];
+      if (run && run.status === 'running') next = setAgent(next, p.agentId, 'waiting', p.runId);
+      break;
+    }
     case 'work.handoff': {
       next.handoffs = { ...next.handoffs, [p.toAgentId]: { fromZone: p.fromRoomId, toZone: p.toRoomId, workItemId: p.workItemId, summary: p.summary, startedAt: event.ts } };
       break;
@@ -232,6 +265,16 @@ export function applyEvent(state, event) {
       break;
   }
   return next;
+}
+
+// Gate items still waiting on the Superintendent, oldest first.
+export function pendingGate(state) {
+  return state.gateOrder.map((id) => state.gateItems[id]).filter((it) => it && it.status === 'pending');
+}
+
+// Decided or logged Gate items, newest first.
+export function recentGate(state, n = 20) {
+  return state.gateOrder.map((id) => state.gateItems[id]).filter((it) => it && it.status !== 'pending').slice(-n).reverse();
 }
 
 // Tools granted to an agent by the current layout (mirrors shared/world.js grantsFor, but

@@ -205,6 +205,79 @@ test('permission round trip over HTTP: fs.write prompts, the answer gates the wr
   }
 });
 
+test('Entrance Gate over HTTP: a draft-level action waits as a gate.item, approve runs it, reject answers it, observe refuses, leash is editable', async () => {
+  const layout = (await import('../shared/world.js')).defaultLayout();
+  layout.objects.push({ id: 'sc', kind: 'supply_cache', roomId: 'ranger-station', x: 2, y: 2 });
+  const leash = (await import('../shared/leash.js')).defaultLeash();
+  leash.domains.research = { level: 'draft' };
+  const turns = [
+    [text('reading notes'), ...toolCall('c1', 'fs.read', { path: 'notes.txt' }), end('tool_use')],
+    [...toolCall('c2', 'fs.read', { path: 'notes.txt' }), end('tool_use')],
+    [...toolCall('c3', 'fs.read', { path: 'notes.txt' }), end('tool_use')],
+    [text('finished'), end()],
+  ];
+  const srv = await startTestServer({ layout, leash, makeProvider: scripted(turns) });
+  try {
+    await fsp.mkdir(path.join(srv.workspaceRoot, 'ranger'), { recursive: true });
+    await fsp.writeFile(path.join(srv.workspaceRoot, 'ranger', 'notes.txt'), 'milk');
+    const stream = await srv.sse();
+    const { body: { runId } } = await srv.post('/api/run', { prompt: 'read the notes' });
+    const item = await stream.waitFor((e) => e.type === 'gate.item');
+    assert.equal(item.payload.status, 'pending');
+    assert.equal(item.payload.domain, 'research');
+    assert.equal(item.payload.tool, 'fs.read');
+    assert.equal(item.payload.level, 'draft');
+    assert.equal(item.payload.runId, runId);
+    assert.equal(item.payload.evidence[0].text, 'reading notes');
+    const waiting = await stream.waitFor((e) => e.type === 'agent.waiting');
+    assert.equal(waiting.payload.itemId, item.payload.itemId);
+    const q = await srv.get('/api/gate');
+    assert.equal(q.body.pending.length, 1);
+    assert.equal(q.body.pending[0].itemId, item.payload.itemId);
+    assert.equal(q.body.ledger.day, srv.ledger.dayKey());
+    assert.equal((await srv.get('/api/state')).body.gate.pending.length, 1);
+    assert.equal((await srv.post(`/api/gate/${item.payload.itemId}`, { decision: 'later' })).status, 400);
+    assert.equal((await srv.post('/api/gate/nope', { decision: 'approve' })).status, 404);
+    const ok = await srv.post(`/api/gate/${item.payload.itemId}`, { decision: 'approve' });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.status, 'approved');
+    assert.equal((await srv.post(`/api/gate/${item.payload.itemId}`, { decision: 'approve' })).status, 409);
+    const r1 = await stream.waitFor((e) => e.type === 'agent.tool_result' && e.payload.callId === 'c1');
+    assert.deepEqual([r1.payload.ok, r1.payload.output], [true, 'milk']);
+    const approved = await stream.waitFor((e) => e.type === 'gate.item' && e.payload.status === 'approved');
+    assert.equal(approved.payload.itemId, item.payload.itemId);
+
+    const second = await stream.waitFor((e) => e.type === 'gate.item' && e.payload.callId === 'c2');
+    await srv.post(`/api/gate/${second.payload.itemId}`, { decision: 'reject', notes: 'not now' });
+    const r2 = await stream.waitFor((e) => e.type === 'agent.tool_result' && e.payload.callId === 'c2');
+    assert.equal(r2.payload.ok, false);
+    assert.match(r2.payload.error, /rejected at the Entrance Gate: not now/);
+
+    // Tighten research to observe while the run is going: the third call is refused outright.
+    const third = await stream.waitFor((e) => e.type === 'gate.item' && e.payload.callId === 'c3' && e.payload.status === 'pending');
+    const tightened = { ...leash, domains: { ...leash.domains, research: { level: 'observe' } } };
+    assert.equal((await srv.put('/api/leash', { version: 1, domains: { nope: { level: 'draft' } } })).status, 400);
+    assert.equal((await srv.put('/api/leash', tightened)).status, 200);
+    assert.equal((await srv.get('/api/leash')).body.domains.research.level, 'observe');
+    assert.equal(JSON.parse(await fsp.readFile(path.join(srv.home, 'leash.json'), 'utf8')).domains.research.level, 'observe', 'persisted');
+    // The pending item was created under draft; decide it so the run continues.
+    await srv.post(`/api/gate/${third.payload.itemId}`, { decision: 'reject' });
+    const endEv = await stream.waitFor((e) => e.type === 'agent.run.end');
+    assert.equal(endEv.payload.reason, 'completed');
+    await srv.runs.waitForIdle();
+    const after = await srv.get('/api/gate');
+    assert.equal(after.body.pending.length, 0);
+    assert.deepEqual(after.body.recent.map((i) => i.status), ['rejected', 'rejected', 'approved']);
+    assert.equal(after.body.ledger.domains.research.actions, 1, 'only the executed read is counted');
+    const types = stream.events.map((e) => e.type);
+    assert.ok(types.includes('agent.waiting'));
+    for (const e of stream.events) assert.equal(validateEvent(e).ok, true);
+    stream.close();
+  } finally {
+    await srv.close();
+  }
+});
+
 test('provider failure becomes agent.run.error and the run record says so; NO_KEY is a 400 before any event', async () => {
   const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([() => { const e = new Error('upstream 500'); e.code = 'HTTP_500'; throw e; }]), model: 'm', price: null }) });
   try {

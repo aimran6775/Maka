@@ -6,6 +6,9 @@ import { promises as fsp } from 'node:fs';
 import { createStore } from '../../sidecar/store.js';
 import { createEventBus } from '../../sidecar/bus.js';
 import { createRunManager } from '../../sidecar/runs.js';
+import { createLeashLedger, createLeashState } from '../../sidecar/leash-ledger.js';
+import { createGateQueue } from '../../sidecar/gate-queue.js';
+import { defaultLeash } from '../../shared/leash.js';
 import { createWorkspaceWatcher } from '../../sidecar/workspace.js';
 import { createApp, createHttpServer, createLayoutState } from '../../sidecar/server.js';
 import { providerStatus } from '../../sidecar/providers/provider.js';
@@ -28,8 +31,11 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   await store.saveLayout(layout);
   await fsp.mkdir(workspaceRoot, { recursive: true });
   let runsRef = null;
+  const leashState = createLeashState({ initial: leash || defaultLeash(), store });
+  const ledger = await createLeashLedger({ store, clock, earnApprovals: leash && leash.earn && leash.earn.approvals }).init();
+  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
   const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, intervalMs: 60000, onOffline: () => runsRef && runsRef.cancel() });
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leash, fetch: localFetch, workspaceOnline: () => workspace.state().online });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, fetch: localFetch, workspaceOnline: () => workspace.state().online });
   runsRef = runs;
   await workspace.check();
   const app = createApp({
@@ -37,7 +43,9 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     store,
     runs,
     layoutState,
-    leashState: { get: () => runs.leash || null },
+    leashState,
+    ledger,
+    gateQueue,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -58,6 +66,9 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     bus,
     runs,
     layoutState,
+    leashState,
+    ledger,
+    gateQueue,
     workspace,
     async get(p) {
       const res = await fetch(url + p);

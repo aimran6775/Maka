@@ -293,3 +293,46 @@ Gate, so no layout record changes and the sidecar needs no new route. `ZONE_KIND
   Cloudflare token is account-scoped; secret name CLOUDFLARE_API_TOKEN (replaces
   CLOUDFLARE_API_TOKEN). Hugging Face Inference Providers added as an optional metered
   `hosted_worker` tier (HF_TOKEN).
+
+## D35. Leash resolution is agent override → zone default → park default; caps ride the entry
+
+Phase 2 step 1 adds optional `zones[roomId]` and `agents[agentId]` maps to the leash policy
+(additive). The most specific layer that names the domain wins as a whole entry, caps
+included, so a per-agent override at "Act with cap" must carry its own `dailyCapUsd`.
+`dailyCapActions` was added next to `dailyCapUsd` so Act with cap means something for
+domains with no money in them (outbound messages, publishing). A missing cap is no cap.
+
+## D36. Ledger days are the sidecar machine's local calendar day
+
+Daily caps are the Superintendent's day; the sidecar runs on their machine, so the local
+date is their date. The ledger keys days as `YYYY-MM-DD` local time and keeps 400 days.
+
+## D37. A Gate item waits without a timeout; the run ending expires it
+
+Unlike the phase 1 per-call confirmation (five minutes, then denied), a draft-level action
+costs nothing while it waits (no provider call is open) and the owner may be away for
+hours. So `gate-queue.js` has no timeout by default; cancelling the run, a run error or a
+sidecar restart expire the item and the tool call is answered as expired. A timeout can
+be injected for tests or a future setting.
+
+## D38. Research at "Act freely" is counted in the ledger but not logged as a Gate item
+
+Every allowed action in a leash domain is counted per day in the ledger. Emitting a
+`gate.item { allowed }` for every `fs.read` and `web.fetch` would drown the Gate in noise
+while `agent.tool_call` already records each one, so the Gate event is emitted for allowed
+actions outside the research domain only. Observe refusals are always logged, in any
+domain.
+
+## D39. Earned loosening is one level at a time and proposes, never applies
+
+After `earn.approvals` (default 5) consecutive approvals of one Ranger in one domain, the
+queue raises a kind `proposal` Gate item from the current level to the next looser one.
+Only an approval of that item changes the leash, as an agent override written to
+`leash.json`. A rejection of any action item, or of the proposal, resets the streak.
+
+## D40. `leash.json` is both the operator file and the persisted live policy
+
+Phase 1 read `leash.json` once at boot and never wrote it (D21). Now `PUT /api/leash` and
+approved proposals write it atomically through the store, so a hand edit and an in-park
+change land in the same file. Editing it by hand while the sidecar runs is still only
+picked up at the next boot.

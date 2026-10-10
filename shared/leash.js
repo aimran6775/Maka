@@ -1,7 +1,12 @@
 // Leash model: per-domain autonomy levels for an agent (docs/KICKOFF_BRIEF.md, Autonomy).
-// Phase 1 defines the data (levels, domains, schema, defaults, tool → domain mapping) so
-// the capability gate can enforce it in phase 2. Phase 1 only shows the current level on
-// the permission card. Frozen and additive-only like shared/events.js.
+// Phase 1 defined the data (levels, domains, schema, defaults, tool → domain mapping);
+// phase 2 step 1 enforces it in the capability gate (sidecar/capability/gate.js) and adds
+// zone defaults, per-agent overrides, action caps and the earned-loosening setting. Frozen
+// and additive-only like shared/events.js.
+//
+// Resolution order for an agent's level in a domain (resolveLeash):
+//   leash.agents[agentId].domains[d]  →  leash.zones[roomId].domains[d]  →  leash.domains[d]
+//   →  'draft' when nothing names the domain.
 
 import { deepFreeze, validate } from './schema.js';
 
@@ -38,26 +43,37 @@ export const TOOL_DOMAINS = deepFreeze({
   'fs.write': null,
 });
 
+// One domain entry. `dailyCapUsd` and `dailyCapActions` matter at 'act_capped': an action
+// that would push the day's total over either cap becomes a Gate item instead.
+const domainEntry = {
+  type: 'object',
+  required: ['level'],
+  additionalProperties: false,
+  properties: {
+    level: { type: 'string', enum: LEASH_LEVELS },
+    dailyCapUsd: { type: 'number', minimum: 0 },
+    dailyCapActions: { type: 'integer', minimum: 0 },
+  },
+};
+const domainMap = { type: 'object', additionalProperties: domainEntry };
+const scoped = { type: 'object', additionalProperties: { type: 'object', required: ['domains'], additionalProperties: false, properties: { domains: domainMap } } };
+
 export const LEASH_SCHEMA = deepFreeze({
   type: 'object',
   required: ['version', 'domains'],
   additionalProperties: false,
   properties: {
     version: { const: 1 },
-    domains: {
-      type: 'object',
-      additionalProperties: {
-        type: 'object',
-        required: ['level'],
-        additionalProperties: false,
-        properties: {
-          level: { type: 'string', enum: LEASH_LEVELS },
-          dailyCapUsd: { type: 'number', minimum: 0 },
-        },
-      },
-    },
+    domains: domainMap, // park default
+    zones: scoped, // zone default, keyed by room id (added in phase 2, optional)
+    agents: scoped, // per-agent override, keyed by agent id (added in phase 2, optional)
+    // Earned loosening: after `approvals` Gate approvals in a row in one domain, the
+    // ledger raises a proposal item to move that agent one level looser.
+    earn: { type: 'object', additionalProperties: false, properties: { approvals: { type: 'integer', minimum: 1 } } },
   },
 });
+
+export const DEFAULT_EARN_APPROVALS = 5;
 
 // Brief defaults: everything "Draft for review" except read-only research, which is
 // "Act freely"; money out carries a hard per-day cap even when loosened.
@@ -72,9 +88,14 @@ export function defaultLeash() {
 export function validateLeash(leash) {
   const r = validate(LEASH_SCHEMA, leash);
   if (!r.ok) return r;
-  const unknown = Object.keys(leash.domains).filter((d) => !DOMAINS.includes(d));
-  if (unknown.length) return { ok: false, errors: unknown.map((d) => ({ path: `$.domains.${d}`, message: 'unknown domain' })) };
-  return r;
+  const errors = [];
+  const checkDomains = (domains, path) => {
+    for (const d of Object.keys(domains || {})) if (!DOMAINS.includes(d)) errors.push({ path: `${path}.${d}`, message: 'unknown domain' });
+  };
+  checkDomains(leash.domains, '$.domains');
+  for (const [k, v] of Object.entries(leash.zones || {})) checkDomains(v.domains, `$.zones.${k}.domains`);
+  for (const [k, v] of Object.entries(leash.agents || {})) checkDomains(v.domains, `$.agents.${k}.domains`);
+  return errors.length ? { ok: false, errors } : r;
 }
 
 export function domainOfTool(toolName) {
@@ -91,4 +112,45 @@ export function leashFor(leash, toolName) {
 
 export function looserThan(a, b) {
   return LEASH_LEVELS.indexOf(a) > LEASH_LEVELS.indexOf(b);
+}
+
+// The next looser level, or null at the loosest.
+export function nextLooser(level) {
+  const i = LEASH_LEVELS.indexOf(level);
+  return i >= 0 && i < LEASH_LEVELS.length - 1 ? LEASH_LEVELS[i + 1] : null;
+}
+
+// Resolves the effective entry for one agent and domain: agent override → zone default →
+// park default → { level: 'draft' }. `scope` says which layer answered. Caps are taken
+// from the same layer that set the level (an override replaces the whole entry).
+export function resolveLeash(leash, { agentId, roomId } = {}, domain) {
+  const pick = (entry, scope) => (entry ? { domain, level: entry.level, dailyCapUsd: entry.dailyCapUsd ?? null, dailyCapActions: entry.dailyCapActions ?? null, scope } : null);
+  if (!leash || !DOMAINS.includes(domain)) return pick({ level: 'draft' }, 'default');
+  const agent = agentId && leash.agents && leash.agents[agentId] && leash.agents[agentId].domains[domain];
+  if (agent) return pick(agent, 'agent');
+  const zone = roomId && leash.zones && leash.zones[roomId] && leash.zones[roomId].domains[domain];
+  if (zone) return pick(zone, 'zone');
+  const park = leash.domains && leash.domains[domain];
+  if (park) return pick(park, 'park');
+  return pick({ level: 'draft' }, 'default');
+}
+
+// Every domain resolved for one agent (for the inspector and the Gate card).
+export function resolveAllLeash(leash, agent) {
+  const out = {};
+  for (const d of DOMAINS) out[d] = resolveLeash(leash, agent, d);
+  return out;
+}
+
+// Returns a new leash policy with one agent's level in one domain set (caps carried over
+// from the level the agent had). Used when a loosening proposal is approved.
+export function withAgentLeash(leash, agentId, domain, entry) {
+  const agents = { ...(leash.agents || {}) };
+  const current = agents[agentId] ? { ...agents[agentId], domains: { ...agents[agentId].domains } } : { domains: {} };
+  const clean = { level: entry.level };
+  if (typeof entry.dailyCapUsd === 'number') clean.dailyCapUsd = entry.dailyCapUsd;
+  if (typeof entry.dailyCapActions === 'number') clean.dailyCapActions = entry.dailyCapActions;
+  current.domains[domain] = clean;
+  agents[agentId] = current;
+  return { ...leash, agents };
 }

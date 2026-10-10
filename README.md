@@ -69,8 +69,17 @@ the Entrance Gate card until you allow or deny it; the Ranger walks to the Gate 
 there. Deliverables land in `workspace/<ranger>/outbox/`. SPEND shows reconciled cost only.
 Every animation state maps to a real event; the sun follows your clock and encodes nothing.
 
-Phase 2 (business crew, connectors, leash enforcement, judge step, Lookout Tower) and
-phase 3 (macOS app) are described in the brief and are not in this build.
+## Phase 2 so far
+
+Step 1, leash enforcement: every tool with a leash domain is checked against the leash
+(per Ranger, per zone, or the park default; edit `$MAKA_HOME/leash.json` or `PUT /api/leash`).
+At "Observe" the call is refused; at "Draft for review" it waits as a card at the Entrance
+Gate until you approve, revise or reject it, and the Ranger stands at the Gate meanwhile;
+at "Act with cap" it runs while the day's USD and action caps hold; at "Act freely" it
+runs and is counted. Five approvals in a row raise a proposal card to loosen that Ranger
+one level. Phase 1 tools fall under `research` (reads and fetches) or none (`fs.write`,
+still confirmed per call); the money, mail and connector tools arrive in later steps.
+The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash
 npm run test:fast   # the merge gate
