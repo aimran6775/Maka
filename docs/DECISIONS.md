@@ -1101,3 +1101,17 @@ what is left and the item says so, since a smaller budget is still useful work; 
 left is a refusal, and a delegator with no run or no mission has nothing to draw on and
 is refused rather than guessed at. Per-agent budgets (`agent.budgetUsd`) stay what they
 were, the reflection's threshold, and are not a second pool.
+
+## D123. No connector fixture at the Mountain Peak (safety L5)
+
+The Chief is unjudged by design (D51): a judge reviewing the judge is spend without a
+decision. That holds only while the Chief has nothing to act on in a money domain. A
+Park Store, Notice board or Fee booth placed at the Peak would have armed it with
+money_in and money_out tools under its own leash and no review. The review offered
+judging the Chief's money actions instead; refusing the fixtures is the smaller, surer
+change: it keeps D51 whole and keeps money actions where Rangers, the judge and the
+Gate stand. Placement and layout replacement refuse such a fixture at the Peak, and the
+run manager withholds every tool a connector fixture would grant there (the generic
+`connector.status` / `connector.sync` included: nothing a connector brings is the
+Chief's), so a hand-edited `layout.json` changes nothing. The Chief reads the figures
+through the Peak's cards and the reflection, as before.

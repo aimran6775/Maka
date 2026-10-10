@@ -34,10 +34,24 @@ import { personaLines } from './agents.js';
 import { createProvider as defaultMakeProvider } from './providers/provider.js';
 import { createRouter, defaultPolicy } from './router.js';
 import { makeEvent } from '../shared/events.js';
-import { agentOf, allGrantsFor } from '../shared/world.js';
+import { agentOf, allGrantsFor, roomOf, OBJECT_KINDS, PEAK_REFUSED_KINDS } from '../shared/world.js';
 import { defaultLeash } from '../shared/leash.js';
 
 export const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
+
+// The grants a run gets: fixtures plus role, less every tool a connector fixture would
+// grant at the Mountain Peak (safety L5: a hand-edited layout.json cannot arm the
+// unjudged Chief with a money tool; the server refuses to place one there too).
+export function grantsForRun(layout, agentId) {
+  const base = allGrantsFor(layout, agentId);
+  const agent = agentOf(layout, agentId);
+  const room = agent ? roomOf(layout, agent.roomId) : null;
+  if (!room || room.kind !== 'mountain_peak') return base;
+  const withheld = new Set();
+  for (const kind of PEAK_REFUSED_KINDS) for (const t of OBJECT_KINDS[kind].grants) withheld.add(t);
+  // a tool another fixture at the Peak also grants (connector.status / sync come with every connector fixture) stays withheld: nothing a connector fixture brings is the Chief's
+  return base.filter((t) => !withheld.has(t));
+}
 export const DEFAULT_MAX_CONCURRENT = 4;
 const FLUSH_DEBOUNCE_MS = 400;
 
@@ -294,7 +308,7 @@ export function createRunManager({
           fetch: fetchImpl,
           ask,
           registry,
-          grants: allGrantsFor,
+          grants: grantsForRun,
           toolContext: { agents, runs: api, ...toolContext },
           getLeash: currentLeash,
           ledger,

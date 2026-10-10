@@ -95,7 +95,7 @@ import { promises as fsp } from 'node:fs';
 import { randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
 import { makeEvent, CONTRACT_VERSION, PAYLOAD_SCHEMAS } from '../shared/events.js';
 import { validate } from '../shared/schema.js';
-import { LAYOUT_SCHEMA, OBJECT_KINDS, roomOf, tileInRoom } from '../shared/world.js';
+import { LAYOUT_SCHEMA, OBJECT_KINDS, roomOf, tileInRoom, PEAK_REFUSED_KINDS, peakConnectorProblem } from '../shared/world.js';
 import { validateLeash } from '../shared/leash.js';
 
 const BODY_LIMIT = 1024 * 1024;
@@ -227,6 +227,8 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
     async replace(next) {
       const r = validate(LAYOUT_SCHEMA, next);
       if (!r.ok) throw new HttpError(400, `layout invalid: ${r.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`);
+      const atPeak = peakConnectorProblem(next);
+      if (atPeak) throw new HttpError(400, `layout invalid: ${OBJECT_KINDS[atPeak.kind].label} "${atPeak.id}" stands at the Mountain Peak; connector fixtures do not belong there (the Chief is unjudged, safety L5)`, 'PEAK_NO_CONNECTOR');
       layout = next;
       await store.saveLayout(layout);
       return layout;
@@ -236,6 +238,8 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
       const room = roomOf(layout, roomId);
       if (!room) throw new HttpError(400, `unknown room "${roomId}"`);
       if (!Number.isInteger(x) || !Number.isInteger(y) || !tileInRoom(room, x, y)) throw new HttpError(400, 'tile is outside the room');
+      // Safety L5: no connector fixture at the Peak.
+      if (room.kind === 'mountain_peak' && PEAK_REFUSED_KINDS.includes(kind)) throw new HttpError(400, `a ${OBJECT_KINDS[kind].label} cannot stand at the Mountain Peak: the Chief is unjudged, so connector fixtures belong in the camps`, 'PEAK_NO_CONNECTOR');
       const occupied = layout.objects.some((o) => o.x === x && o.y === y) || layout.agents.some((a) => a.x === x && a.y === y);
       if (occupied) throw new HttpError(409, 'tile is occupied');
       const id = objectId || `obj-${randomUUID().slice(0, 8)}`;

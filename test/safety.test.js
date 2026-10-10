@@ -21,7 +21,8 @@ import { createConnectors } from '../sidecar/connectors/registry.js';
 import { metaAdsSpec } from '../sidecar/connectors/meta-ads.js';
 import { googleAdsSpec, GOOGLE_ADS_SCOPES } from '../sidecar/connectors/google-ads.js';
 import { setKey } from '../sidecar/providers/keys.js';
-import { defaultLayout, allGrantsFor } from '../shared/world.js';
+import { defaultLayout, allGrantsFor, freeTile, PEAK_REFUSED_KINDS } from '../shared/world.js';
+import { grantsForRun } from '../sidecar/runs.js';
 import { defaultLeash, resolveLeash } from '../shared/leash.js';
 import { startFakeMetaAds } from './helpers/fake-meta-ads.js';
 import { startFakeGoogleAds } from './helpers/fake-google-ads.js';
@@ -979,6 +980,45 @@ test('L4 delegate() caps the sub-run\'s budget at the delegator\'s remaining bud
       await srv.runs.waitForIdle();
       await new Promise((r) => setTimeout(r, 30));
     }
+    await srv.close();
+  }
+});
+
+// ---------- L5: no connector fixture at the Mountain Peak, so the unjudged Chief never holds a money tool ----------
+
+test('L5 a connector fixture cannot be placed at the Peak (place, replace), and one that is there anyway grants the Chief nothing', async () => {
+  assert.deepEqual([...PEAK_REFUSED_KINDS], ['park_store', 'notice_board', 'fee_booth']);
+  const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([[text('hi'), end()]]), model: 'fake-1', price: null }), withChief: true });
+  try {
+    const layout = srv.layoutState.get();
+    const peak = layout.rooms.find((r) => r.kind === 'mountain_peak');
+    assert.ok(peak, 'the Chief\'s room exists');
+    const tile = freeTile(layout, peak);
+    for (const kind of PEAK_REFUSED_KINDS) {
+      const r = await srv.post('/api/layout/place', { kind, roomId: peak.id, x: tile.x, y: tile.y });
+      assert.equal(r.status, 400, `${kind}: ${JSON.stringify(r.body)}`);
+      assert.equal(r.body.code, 'PEAK_NO_CONNECTOR');
+      assert.match(r.body.error, /Peak/);
+    }
+    assert.equal(srv.layoutState.get().objects.length, layout.objects.length, 'nothing was placed');
+    const tower = await srv.post('/api/layout/place', { kind: 'radio_tower', roomId: peak.id, x: tile.x, y: tile.y });
+    assert.equal(tower.status, 201, 'a Radio tower is not a connector');
+    const booth = { id: 'booth-peak', kind: 'fee_booth', roomId: peak.id, x: tile.x + 1, y: tile.y };
+    const replaced = await srv.put('/api/layout', { ...srv.layoutState.get(), objects: [...srv.layoutState.get().objects, booth] });
+    assert.equal(replaced.status, 400);
+    assert.equal(replaced.body.code, 'PEAK_NO_CONNECTOR');
+    // a hand-edited layout.json that puts a Fee booth at the Peak grants the Chief none of its tools
+    const edited = { ...srv.layoutState.get(), objects: [...srv.layoutState.get().objects, booth] };
+    assert.ok(allGrantsFor(edited, 'chief-ranger').includes('stripe.refund'), 'the raw fixture grant exists');
+    const granted = grantsForRun(edited, 'chief-ranger');
+    assert.ok(!granted.includes('stripe.refund'));
+    assert.ok(!granted.includes('stripe.charges'));
+    assert.ok(!granted.includes('connector.sync'));
+    assert.ok(granted.includes('mail.send'), 'the tower\'s tools stay');
+    assert.ok(granted.includes('plan.submit'));
+    const camp = { ...edited, rooms: [...edited.rooms, { id: 'finance', name: 'Finance', kind: 'finance', x: 40, y: 1, w: 6, h: 6 }], objects: [...edited.objects, { id: 'booth-camp', kind: 'fee_booth', roomId: 'finance', x: 41, y: 2 }], agents: [...edited.agents, { id: 'bea', name: 'Bea', roomId: 'finance', x: 40, y: 1, role: 'ranger' }] };
+    assert.ok(grantsForRun(camp, 'bea').includes('stripe.refund'), 'a Ranger in a camp keeps the booth');
+  } finally {
     await srv.close();
   }
 });

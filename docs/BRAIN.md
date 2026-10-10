@@ -72,7 +72,10 @@ click run unchecked. L2 done: a Stripe refund is for USD charges only; a charge 
 another currency has no provable amount and is refused. L3 done: a tool whose domain
 function throws falls back to its known domain, or is refused; it never runs unleashed. L4 done: a
 delegated budget is capped at what the delegator has left (the mission for the Chief,
-the active run for a Ranger), so sub-runs cannot multiply a budget.
+the active run for a Ranger), so sub-runs cannot multiply a budget. L5 done: no
+connector fixture stands at the Mountain Peak (placement and layout replacement refuse
+it, and one in a hand-edited layout grants the Chief nothing), so the unjudged Chief
+never holds a money tool. Every row of the review is fixed.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

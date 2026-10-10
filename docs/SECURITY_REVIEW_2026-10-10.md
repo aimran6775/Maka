@@ -18,7 +18,7 @@ before the first Mac build. Status column is updated by the fix session.
 | L2 | LOW | Stripe amounts treated as USD regardless of charge currency. | Convert or restrict to USD charges; refuse otherwise. | fixed c6ee0c2 |
 | L3 | LOW | A throwing `tool.domain()` yields no domain → tool runs under the no-domain path. | Fall back to `TOOL_DOMAINS[name]` or refuse. | fixed c89be32 |
 | L4 | LOW | Delegation `budgetUsd` for sub-runs unchecked against the delegator's budget. | Cap at the delegator's remaining budget. | fixed 03ec330 |
-| L5 | LOW | The Chief is unjudged by design (D51); a connector fixture at the Peak would let it act in money domains without a judge. | Refuse connector fixtures at the Peak, or judge the Chief's money-domain actions. | open |
+| L5 | LOW | The Chief is unjudged by design (D51); a connector fixture at the Peak would let it act in money domains without a judge. | Refuse connector fixtures at the Peak, or judge the Chief's money-domain actions. | fixed (sha in the next commit) |
 
 Also: `npm run test:fast` showed one non-reproducing failure in three runs (213/214 once). Find and
 fix the flaky test.

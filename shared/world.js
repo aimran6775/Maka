@@ -36,6 +36,18 @@ export const OBJECT_KINDS = deepFreeze({
 
 export const OBJECT_KIND_NAMES = deepFreeze(Object.keys(OBJECT_KINDS));
 
+// Safety review L5: the Chief Ranger at the Mountain Peak is unjudged by design (D51), so
+// no connector fixture (money tools) may stand there. Placement refuses them, a layout
+// holding one is invalid, and the run manager grants nothing from one that is there anyway.
+export const PEAK_REFUSED_KINDS = deepFreeze(['park_store', 'notice_board', 'fee_booth']);
+
+// The first object that is a refused fixture in a mountain_peak room, or null.
+export function peakConnectorProblem(layout) {
+  if (!layout || !Array.isArray(layout.objects) || !Array.isArray(layout.rooms)) return null;
+  const peaks = new Set(layout.rooms.filter((r) => r.kind === 'mountain_peak').map((r) => r.id));
+  return layout.objects.find((o) => peaks.has(o.roomId) && PEAK_REFUSED_KINDS.includes(o.kind)) || null;
+}
+
 const id = { type: 'string', minLength: 1 };
 const int0 = { type: 'integer', minimum: 0 };
 const int1 = { type: 'integer', minimum: 1 };
