@@ -1,65 +1,105 @@
-# Maka — kickoff brief for the first cloud session
+# Maka — kickoff brief (revised 2026-10-10 after owner scoping)
 
 ## What Maka is
-A local-first desktop harness where a user creates real AI agents, arranges them in a living
-visual world, and watches them do real work with real models and tools. Modeled on StarNet
-(github.com/androoAGI/starnet, MIT, by Andrew Sims) in concept and architecture, but built
-from scratch under the name Maka. Do not copy StarNet source files wholesale; if a snippet is
-borrowed, keep the MIT notice and say so in NOTICE.md.
+A local-first macOS app where a user runs a crew of real AI agents that operate an online
+business for them, with as little hands-on time as the user chooses to give. The agents and
+their work are rendered as a living national park: the user is the Superintendent, the agents
+are Rangers, and the park layout IS the org chart and the permission model.
 
-## Product laws (carry these from StarNet, they are the point)
-1. Truthful telemetry: the UI never asserts state the harness cannot prove. No simulated
-   activity, spend, or progress.
-2. Layout is the org: a room is a capability-scoped team, a placed object is a real tool grant.
-   The world the user draws IS the workflow agents run.
-3. Secrets live in the sidecar / OS keychain, never in the frontend.
-4. Agents ask one concrete question instead of guessing silently.
-5. Finished work lands as real files in an outbox, not chat scrollback.
+Modeled on StarNet (github.com/androoAGI/starnet, MIT, Andrew Sims) in architecture, built
+from scratch under the name Maka. No StarNet source copied wholesale; any adapted snippet is
+recorded in NOTICE.md. Maka must not be mistakable for StarNet visually or by name.
 
-## Stack (match StarNet so the model is proven)
-- ONE Node process: `node sidecar/index.js` serves HTTP + SSE on a local port and the
-  static frontend. Node core modules only in the sidecar; zero runtime deps.
-- `frontend/`: vanilla JS, no build step, canvas-rendered world + windowed UI, dark-first.
-- `shared/`: frozen event contract (`events.js`) + tiny schema validator. Additive-only.
-- `src-tauri/`: Tauri 2 desktop shell, added in a later phase, not phase 1.
-- Tests: `node --test`, a fast list that is the merge gate.
+## Owner decisions (2026-10-10)
+- Platform: macOS app, local-first. Apple Silicon first. Ships as a Tauri 2 shell around the
+  Node sidecar (same runtime as the browser dev mode). Intel build later if wanted.
+- Theme: a NATIONAL PARK. Not a workshop, not a space station.
+- Mission: a powerhouse for running online businesses autonomously. The agents do the work of
+  running a business end to end; the user supervises from the park.
+- Autonomy: the owner's goal is "free of touch, fully autonomous". See the Autonomy section
+  for how Maka gets there without a single bad run draining an account.
 
-## Phase 1 scope (this session, in order; commit after each step)
-1. Repo skeleton: README (concept + run from source), LICENSE (MIT), .gitignore, package.json
-   with `start`, `test:fast`, CODE_MAP.md, docs/BRAIN.md orientation page, CLAUDE.md.
-2. `shared/events.js` + `shared/schema.js`: agent.run.start / agent.token / agent.tool_call /
-   agent.tool_result / agent.run.end / agent.run.error / cost.estimate / permission.prompt /
-   permission.response / object.place / object.reclaim. Schema-validated both directions.
-3. `sidecar/loop.js`: the agentic loop. Messages-array while-loop, tool calls accumulated by
-   index, every tool_call paired with exactly one tool_result, guards before every paid call
-   (cancelled / max turns / budget). Pure given injected provider, emit, clock, signal.
-   Unit-tested with a fake provider.
-4. `sidecar/providers/`: `provider.js` interface + `anthropic.js` + `openrouter.js`
-   (streaming, tool use). Keys from env or a local keystore file with 0600 perms for now;
-   keychain comes with Tauri.
-5. `sidecar/capability/`: world layout → tool allowlist. Start with three tools: `fs.read`,
-   `fs.write` (sandboxed to the agent workspace), `web.fetch`. A tool runs only if the
-   agent's room has the matching object placed.
-6. `sidecar/index.js`: routes `/api/run`, `/api/cancel`, `/api/layout`, `/api/events` (SSE),
-   static frontend. Persist runs, transcripts, spend, layout to disk with
-   fsync-before-rename atomic writes.
-7. `frontend/`: canvas world with one room, one hero agent body that visibly changes state
-   on real events (idle / thinking / tool-running / done / error), a build mode to place
-   objects, a COMMS window with streaming output, a spend readout fed only by reconciled
-   cost events, and a permission prompt card.
-8. `test/fast.list` + runner; `npm run test:fast` green before every push.
+## Product laws (non-negotiable)
+1. Truthful telemetry: the UI never asserts state the harness cannot prove. Revenue, spend,
+   orders, and messages shown in the park come only from connected real sources (Stripe,
+   Shopify, email, ad accounts, the model-cost ledger). Never projected, never simulated.
+2. Layout is the org: a zone is a capability-scoped team, a placed fixture is a real tool or
+   connector grant, a trail is an authorized handoff between zones.
+3. Secrets live in the sidecar and the macOS Keychain, never in the frontend.
+4. Ask, don't guess: an agent turns ambiguity into one concrete question with options.
+5. Finished work has a front door: deliverables land as real files and real records, not chat.
+6. No outcome promises in product copy. Maka shows what the agents did and what it cost.
+   It never claims or implies guaranteed income.
 
-## Not in phase 1
-Tauri shell, channels (Telegram/Discord), MCP, cron, voice, multiple concurrent crew,
-auto-updater, release signing. Leave stubs and TODO notes in CODE_MAP.md, not fake UI.
+## The park (national park metaphor, data-driven so it can be re-skinned)
+| Park element | What it is in the harness |
+| --- | --- |
+| Superintendent | the user |
+| Ranger | an agent: own workspace, transcript, memory, bounded permissions |
+| Ranger Station | HQ zone: orchestration, task briefs, the daily plan |
+| Visitor Center | comms zone: inbox, customer messages, the outbox counter |
+| Campground | an agent's working area; one campsite per active run |
+| Lookout Tower | monitoring: live runs, spend, alerts, what needs the Superintendent |
+| Trail | a handoff lane between zones; work items travel along it |
+| Entrance Gate | the consent and spend rail; nothing with money or outbound effect passes without a grant |
+| Fixtures (grants) | Trailhead sign = web fetch; Supply cache = filesystem; Radio tower = email/channels; Park Store = commerce connectors (Shopify/Stripe); Notice board = social/publishing; Fee booth = payments; Ledger desk = accounting |
+Visual style: hand-drawn-feel pixel art, calm palette (greens, stone, sky), day/night cycle
+driven by the real clock. Weather is purely cosmetic and must never encode state.
 
-## Open decisions (defaults chosen; owner may override)
-- World theme: StarNet uses a space station. Maka default: a workshop / atelier. Keep the
-  renderer theme-agnostic (tile + prop definitions in data) so this can change.
-- Default provider: Anthropic via API key, OpenRouter second.
-- Port: 8790.
+## Autonomy model (how "fully autonomous" is reached safely)
+- Every Ranger has a leash level per domain: Observe → Draft for review → Act with cap →
+  Act freely. Levels are set by the Superintendent and can be earned: a Ranger that
+  completes N reviewed actions in a domain without a rejection gets a proposal to loosen.
+- Domains: outbound messages, publishing, money out (ad spend, refunds, purchases), money in
+  (pricing, invoicing), data deletion, account settings. Each is a separate leash.
+- Defaults for a new park: everything at "Draft for review" except read-only research,
+  which is "Act freely". Money out starts with a hard per-day cap even at "Act with cap".
+- Away mode (the owner's "free of touch"): the Superintendent sets leashes, leaves, and
+  every action taken while away is logged with evidence and shown at the Lookout Tower on
+  return. Nothing is hidden, and any action can be rolled back where the connector allows.
+
+## First vertical (assumption, owner to confirm)
+E-commerce store operations: a store on Shopify or similar with Stripe payments. Ranger
+roles for phase 2: Support Ranger (customer email and chat), Listings Ranger (product
+copy, images, pricing proposals), Marketing Ranger (social posts, email campaigns, ad
+reports), Books Ranger (orders, refunds, daily P&L from real connector data).
+If the owner's first business is different (services, content, SaaS), swap the roles; the
+harness is vertical-agnostic.
+
+## Stack
+- ONE Node process (`sidecar/`): HTTP + SSE, static frontend, agent loop, providers,
+  capability gate, connectors, atomic on-disk persistence. Node core modules only.
+- `frontend/`: vanilla JS, no build step, canvas park + windowed UI.
+- `shared/`: frozen schema-validated event contract. Additive only.
+- `src-tauri/`: Tauri 2 macOS shell, Keychain-backed secrets, bundled Node. Phase 3.
+- Tests: `node --test`; `npm run test:fast` is the merge gate.
+
+## Phase 1 (foundation) — steps 1-6 done, 7-8 remaining
+7. Frontend: canvas park with the Ranger Station zone and one Ranger whose body visibly
+   reflects real run state (idle / thinking / tool running / waiting on you / done / error),
+   build mode to place fixtures, a COMMS window with streaming output, a spend readout fed
+   only by reconciled cost events, and a permission prompt card at the Entrance Gate.
+   Rename the theme data from workshop to park; keep theme data-driven.
+8. `test/fast.list` complete, README and CODE_MAP true to what exists.
+
+## Phase 2 (the business crew)
+- Leash model from the Autonomy section, enforced in the capability gate, visible at the Gate.
+- Multiple concurrent Rangers with separate workspaces; trails as real handoff queues.
+- Connectors: email (IMAP/SMTP) first, then Shopify and Stripe read paths, then write paths
+  behind leashes. MCP client for everything else.
+- Task briefs, the daily plan at the Ranger Station, the Lookout Tower with real ledgers.
+- Away mode with the evidence log.
+
+## Phase 3 (the macOS app)
+Tauri 2 shell, Keychain secrets, signed and notarized build, auto-update, first-run flow:
+paste a key or sign in, a Ranger is already standing at the Ranger Station, say what the
+business is.
+
+## Not now
+Windows/Linux, voice, computer control, Telegram/Discord/Slack, a hosted backend, accounts,
+a marketplace. Stubs are documented in CODE_MAP.md, never faked in the UI.
 
 ## Working rules
-- Small reviewable commits on the designated branch, push after each milestone.
-- Never commit keys; `.env*`, `*.key`, `secrets/` in .gitignore from commit 1.
-- Keep CODE_MAP.md and docs/BRAIN.md true to what exists, nothing aspirational.
+- Small reviewable commits; push to main after each step; test:fast green before every push.
+- Never commit keys; `.env*`, `*.key`, `secrets/` gitignored from commit 1.
+- CODE_MAP.md, docs/BRAIN.md, docs/DECISIONS.md stay true to what exists.

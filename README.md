@@ -1,7 +1,8 @@
 # Maka
 
-A local-first desktop harness where you create real AI agents, arrange them in a living
-visual world, and watch them do real work with real models and tools.
+A local-first macOS app where a crew of real AI agents, your Rangers, run an online business
+for you. You supervise from a living national park whose layout is the org chart and the
+permission model.
 
 Maka is modeled on the concept and architecture of
 [StarNet](https://github.com/androoAGI/starnet) (MIT, Andrew Sims) and built from scratch.
@@ -14,7 +15,7 @@ Product laws:
 4. **Ask, don't guess.** Agents turn ambiguity into one concrete question.
 5. **Finished work has a front door.** Deliverables land as real files in an outbox.
 
-Status: pre-alpha. See [docs/KICKOFF_BRIEF.md](docs/KICKOFF_BRIEF.md) for the phase 1 plan.
+Status: pre-alpha. See [docs/KICKOFF_BRIEF.md](docs/KICKOFF_BRIEF.md) for the plan.
 
 ## Run from source
 

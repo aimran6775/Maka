@@ -102,3 +102,13 @@ fixture granting a capability (notice board → web fetch, toolshed → filesyst
 outbox), the hero agent is a groundskeeper. Internal event and module names do not change;
 this is copy plus the default prop/tile data set. Not yet applied: work was halted before
 the change could be made, pending the owner's answers to scoping questions.
+
+## 2026-10-10 — owner scoping decisions
+- Platform: macOS app, local-first, Tauri 2 shell over the Node sidecar. Apple Silicon first.
+- Theme: NATIONAL PARK. User = Superintendent, agents = Rangers, zones/trails/fixtures as in
+  docs/KICKOFF_BRIEF.md. Theme data stays swappable.
+- Mission: autonomous operation of online businesses. Revenue and spend shown only from real
+  connected sources; no projections; no income promises in copy.
+- Autonomy: per-domain leash levels (Observe / Draft for review / Act with cap / Act freely),
+  earned loosening, hard daily cap on money out, away mode with a full evidence log.
+- First vertical (assumed, to confirm): e-commerce store ops with Shopify + Stripe.
