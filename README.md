@@ -257,8 +257,15 @@ Keychain), and put in the bucket under `maka/<your-mac>/`. Back up now, Verify l
 and Restore latest (into a fresh `workspace/_restore/<time>/`, never over live data) are
 on the same card. Run transcripts, browser profiles and secrets are never uploaded.
 
-The signed, notarized `.dmg` and the download page come with steps 6 and 7
-(`docs/RELEASE_RUNBOOK.md`).
+Step 6, the release: `node scripts/release-bump.mjs 0.2.0` sets the version and tags;
+`npm run release` (on the Mac, from the tagged checkout, with the six signing variables
+in the environment) runs the gates, bundles the official Node binary (verified against
+nodejs.org), builds and signs the app with the Developer ID, notarizes and staples the
+`.app` and the `.dmg`, signs the updater artifact, and assembles `dist/site/`: the
+version-free download page from `website/`, `releases/latest.json` for the app's
+updater and `releases/download.json` for the page. `npm run release:dry` prints the exact
+command sequence and writes it to `dist/release/plan.sh` without building anything. The
+runbook with the Mac commands is step 7 (`docs/RELEASE_RUNBOOK.md`).
 
 ## License
 

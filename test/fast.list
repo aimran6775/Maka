@@ -35,3 +35,4 @@ test/shell.test.js
 test/credentials.test.js
 test/setup.test.js
 test/backup.test.js
+test/release.test.js

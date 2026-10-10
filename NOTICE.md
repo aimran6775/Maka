@@ -15,6 +15,16 @@ Any code adapted from StarNet is listed here with its origin.
 Vendored under `frontend/vendor/three/` by `scripts/fetch-assets.mjs`, which verifies the
 tarball's SHA-256 before extracting; per-file hashes are in `frontend/assets/manifest.json`.
 
+## Bundled runtime (the macOS app)
+
+| Component | Version | License | Source |
+| --- | --- | --- | --- |
+| Node.js (the official `darwin-arm64` binary, bundled as the sidecar's runtime by `scripts/release-node.mjs`, verified against nodejs.org's `SHASUMS256.txt`; never committed) | 22.22.0 (`scripts/release-lib.mjs` `NODE_VERSION`) | MIT (https://github.com/nodejs/node/blob/main/LICENSE; the binary embeds V8, ICU, OpenSSL and others under their own licenses listed there) | https://nodejs.org/dist/v22.22.0/node-v22.22.0-darwin-arm64.tar.gz |
+
+The Rust crates of the shell (`src-tauri/Cargo.toml`, pinned; `Cargo.lock` for the rest)
+are MIT / Apache-2.0 / MPL-2.0 licensed open source from crates.io, compiled into the
+shell on the owner's Mac; `cargo tree --manifest-path src-tauri/Cargo.toml` lists them.
+
 ## Art assets
 
 Vendored model files live under `frontend/assets/<pack>/` and are produced by

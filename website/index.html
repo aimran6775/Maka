@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Maka</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Maka: a crew of AI Rangers running an online business from a living national park. A local-first macOS app.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%234f8a3f'/%3E%3Cpath d='M3 12 8 4l5 8z' fill='%23f1e9d2'/%3E%3C/svg%3E">
+<style>
+  :root { color-scheme: dark; --bg: #0b1410; --panel: rgba(18, 28, 22, 0.94); --border: #2e4a38; --text: #e8e4d8; --muted: #9aa89c; --accent: #8fd18a; --ink: #0b1410; --warn: #ffd36b; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 20px 64px; }
+  h1 { font-family: var(--mono); letter-spacing: 0.12em; color: var(--accent); font-size: 22px; margin: 0 0 6px; }
+  .tag { color: var(--muted); margin: 0 0 28px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin: 0 0 18px; }
+  .btn { display: inline-block; background: var(--accent); color: var(--ink); font-weight: 600; padding: 10px 16px; border-radius: 6px; text-decoration: none; }
+  .btn[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
+  code, .mono { font-family: var(--mono); font-size: 13px; word-break: break-all; }
+  .muted { color: var(--muted); }
+  .warn { color: var(--warn); }
+  ol { padding-left: 20px; }
+  li { margin: 4px 0; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>MAKA</h1>
+  <p class="tag">A crew of AI Rangers running an online business for you, supervised from a living national park. Local-first, for macOS on Apple Silicon.</p>
+
+  <section class="card" id="download">
+    <p id="line">Looking up the latest release…</p>
+    <p><a class="btn" id="dmg" href="#" aria-disabled="true">Download for macOS (Apple Silicon)</a></p>
+    <p class="muted" id="meta"></p>
+    <p class="muted">SHA-256 <code id="sha">—</code></p>
+    <p class="muted" id="notes"></p>
+  </section>
+
+  <section class="card">
+    <p><strong>Install.</strong> Open the <code>.dmg</code>, drag Maka to Applications, open it. The app is signed with a Developer ID and notarized by Apple, so Gatekeeper opens it without a warning. On first run Maka asks where the crew works, for a Claude API key, for a local model in Ollama, and for the mission.</p>
+    <p><strong>Verify the download.</strong> <code>shasum -a 256 ~/Downloads/&lt;file&gt;.dmg</code> must print the SHA-256 above.</p>
+    <p><strong>Updates.</strong> Maka checks <code>releases/latest.json</code> on this site when it starts and offers an update from its menu bar item; updates are signed with Maka's own key and verified before they install.</p>
+  </section>
+
+  <section class="card">
+    <p><strong>What it is.</strong> One Node sidecar runs the agents; the park is the org chart and the permission model; every action with money or outside effect passes the Entrance Gate under a leash you set; the UI shows only what the agents proved. Maka never promises income: it shows what the crew did and what it cost.</p>
+    <p class="muted">Source: <a href="https://github.com/aimran6775/Maka">github.com/aimran6775/Maka</a> (MIT). Modeled on the concept and architecture of StarNet (MIT, Andrew Sims) and built from scratch.</p>
+  </section>
+</main>
+<script>
+  // The page is static; the release only changes releases/download.json (and latest.json
+  // for the updater). It shows what that file says, or that there is no release yet.
+  (async () => {
+    const line = document.getElementById('line');
+    try {
+      const res = await fetch('releases/download.json', { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const r = await res.json();
+      const mb = (r.dmg.bytes / 1024 / 1024).toFixed(1);
+      line.textContent = `${r.dryRun ? 'DRY RUN · ' : ''}Maka ${r.version} · ${new Date(r.pub_date).toLocaleDateString()} · macOS ${r.minimumSystemVersion}+ · ${r.arch}`;
+      if (r.dryRun) line.className = 'warn';
+      const a = document.getElementById('dmg');
+      a.href = r.dmg.url;
+      a.textContent = `Download ${r.dmg.name} (${mb} MB)`;
+      a.removeAttribute('aria-disabled');
+      document.getElementById('sha').textContent = r.dmg.sha256;
+      document.getElementById('meta').textContent = r.dryRun ? 'This is a dry-run manifest: the file it names was not built.' : '';
+      document.getElementById('notes').textContent = r.notes || '';
+    } catch (err) {
+      line.textContent = `No release is published yet (${err.message}).`;
+    }
+  })();
+</script>
+</body>
+</html>

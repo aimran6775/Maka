@@ -40,7 +40,19 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 5 done: the
+Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 6 done: the release
+scripts (`scripts/release*.mjs`). `release-bump` sets one version in three files and
+tags; `release-node` downloads the official Node binary and verifies it against
+nodejs.org's checksums before Tauri bundles it; `release-build` runs `cargo tauri build`
+with the committed config overlay (the updater's public key substituted from the
+environment) so Tauri's bundler signs every binary with the Developer ID certificate,
+notarizes and staples the `.app`, builds the `.dmg` and the signed updater tarball;
+`release-notarize` notarizes and staples the `.dmg` too and runs Gatekeeper's own checks;
+`release-site` assembles `dist/site/` from `website/` (a version-free page) plus
+`releases/latest.json` for the updater and `download.json` for the page. `release.mjs`
+runs them in order after the gates; `--dry-run` prints every command and writes
+`plan.sh` and dry-run manifests, which is how the sequence is tested here without
+Xcode. Secrets are six environment variables, never files in the repo. Step 5 done: the
 offsite backup (`sidecar/backup/`). A snapshot is a tar of the Peak's files, the mail
 store, every Ranger's outbox and the home's ledgers and records (never transcripts,
 browser profiles or the keystore), gzipped and sealed with AES-256-GCM under a 32-byte

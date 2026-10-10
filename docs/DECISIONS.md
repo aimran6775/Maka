@@ -891,3 +891,30 @@ mail addresses, scheduler state, setup, reflections, connector syncs). Out: run
 transcripts (large, and the ledgers carry what the reflection and SPEND need), browser
 profiles (cookies and sessions belong on the machine that was logged in), and the
 keystore (secrets never leave the machine; the Keychain is the store in the app).
+
+## D106. Tauri's bundler does the code signing; the scripts add the .dmg's ticket and the checks
+
+The bundler already knows how to sign a bundle with the Developer ID (every Mach-O
+inside, hardened runtime, the entitlements file), submit the `.app` to the notary
+service, staple it, build the `.dmg` and sign the updater artifact, driven by the
+documented `APPLE_*` and `TAURI_SIGNING_*` variables. Re-implementing that with
+`codesign` by hand would only add places to get it wrong. What the scripts add is what
+the bundler leaves out: a notary ticket stapled to the `.dmg` itself (Gatekeeper checks
+the disk image too), `spctl` and `codesign --verify --deep --strict` as proof, and the
+artifacts under stable release names.
+
+## D107. A dry run prints the plan instead of pretending to run it
+
+`--dry-run` makes the runner print and record every command and write `plan.sh`; the
+manifests it writes say `dryRun: true` with placeholder hashes and no artifact is
+invented. That is what the Linux test proves: the exact sequence, in order, with no
+secret value in it. A dry run that produced a fake `.dmg` or a plausible signature would
+be a lie the download page could end up serving.
+
+## D108. The download page is version-free and reads a manifest
+
+`website/index.html` never changes at release time; it reads `releases/download.json`
+and renders what is there (version, date, the `.dmg` link, its size and SHA-256), says
+"no release is published yet" when the file is missing, and labels a dry-run manifest.
+Publishing a release is therefore uploading new files under `releases/`, nothing else,
+and the updater's `latest.json` lives beside them on the same origin as the brief asks.
