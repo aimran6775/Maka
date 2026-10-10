@@ -231,3 +231,25 @@ test('step 7 clips: a delivery walks out to the Visitor Center and back; handoff
   assert.equal(lookFor(null).tint, 0xffffff);
   assert.equal(badgeFor('thinking', { paused: true }), 'paused');
 });
+
+test('park-check cleanup: the profile removal is forced, recursive and retried; a stubborn directory is reported, not fatal', async () => {
+  const { removeWithRetry } = await import('../scripts/park-check.mjs');
+  const calls = [];
+  let failures = 2;
+  const fs = { rm: async (dir, opts) => { calls.push({ dir, opts }); if (failures-- > 0) { const e = new Error('busy'); e.code = 'ENOTEMPTY'; throw e; } } };
+  const sleeps = [];
+  assert.equal(await removeWithRetry('/tmp/x', { fs, sleep: async (ms) => sleeps.push(ms), delayMs: 5 }), true);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0].opts, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  assert.deepEqual(sleeps, [5, 5]);
+  failures = 99;
+  const warn = console.warn;
+  const warned = [];
+  console.warn = (m) => warned.push(m);
+  try {
+    assert.equal(await removeWithRetry('/tmp/y', { fs, sleep: async () => {}, attempts: 3 }), false);
+  } finally {
+    console.warn = warn;
+  }
+  assert.match(warned[0], /could not be removed \(ENOTEMPTY\)/);
+});

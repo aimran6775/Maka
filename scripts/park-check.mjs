@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import { promises as fsp } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { startTestServer } from '../test/helpers/test-server.js';
 import { fakeProvider, text, toolCall, end } from '../test/helpers/fake-provider.js';
 
@@ -160,15 +161,47 @@ async function main() {
   console.log('console errors:', errors.length ? errors : 'none');
   if (logs.length) console.log('console logs:', logs.slice(0, 10));
   const ok = errors.length === 0 && /ranger (ready|static)/.test(await statusText()) && bodies.length === summary.agents.length && bodies.some((b) => b.role === 'chief_ranger');
+  // Cleanup never decides the verdict: the check passed or failed above. Chromium keeps
+  // writing to its profile for a moment after SIGKILL, so the removal is forced,
+  // recursive and retried; a profile that still cannot be removed is reported, not fatal.
   cdp.close();
-  chrome.kill('SIGKILL');
+  await stopChromium(chrome);
   await srv.close();
-  await fsp.rm(profile, { recursive: true, force: true });
+  await removeWithRetry(profile);
   console.log(ok ? 'PARK CHECK OK' : 'PARK CHECK FAILED');
   process.exit(ok ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+function stopChromium(chrome) {
+  return new Promise((resolve) => {
+    if (chrome.exitCode !== null || chrome.signalCode) return resolve();
+    const t = setTimeout(resolve, 5000);
+    chrome.once('exit', () => {
+      clearTimeout(t);
+      resolve();
+    });
+    chrome.kill('SIGKILL');
+  });
+}
+
+export async function removeWithRetry(dir, { attempts = 8, delayMs = 250, fs = fsp, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  let last = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await fs.rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      return true;
+    } catch (err) {
+      last = err;
+      await sleep(delayMs);
+    }
+  }
+  console.warn(`profile directory ${dir} could not be removed (${last && last.code ? last.code : last}); remove it by hand`);
+  return false;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
