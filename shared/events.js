@@ -282,6 +282,26 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     briefings: { type: 'array', items: nonEmpty },
     path: str,
   }),
+  // Added v1 (phase 2 step 8): the Superintendent left or came back. While away, every
+  // Gate item and the other decisions below are appended to the evidence log and the Peak
+  // shows "Away since …, N actions, M waiting".
+  'away.changed': payload(['away', 'since'], {
+    away: bool,
+    since: int0,
+    actions: int0,
+    waiting: int0,
+  }),
+  // Added v1 (phase 2 step 8): the digest written when the Superintendent returns.
+  'away.digest': payload(['digestId', 'since', 'until', 'actions', 'waiting', 'path'], {
+    digestId: nonEmpty,
+    since: int0,
+    until: int0,
+    actions: int0,
+    waiting: int0,
+    spentUsd: num0,
+    path: str,
+    summary: str,
+  }),
   // Added v1 (phase 2 step 3): an agent record was created, changed or removed. `agent` is
   // the layout record as it now stands (absent on 'removed').
   'crew.agent': payload(['agentId', 'change'], {

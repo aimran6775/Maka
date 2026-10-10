@@ -299,3 +299,21 @@ test('step 7: a work.done with files starts a delivery walk to the Visitor Cente
   s = reduce(s, [ev('crew.agent', { agentId: 'ranger', change: 'updated', agent: { ...layout.agents[0], paused: true } })]);
   assert.equal(s.layout.agents[0].paused, true);
 });
+
+test('away mode: the Peak counts Gate actions while away and keeps the return digest', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ away: { away: false, since: 0, actions: 0, waiting: 0, lastDigest: null } }));
+  s = reduce(s, [
+    ev('away.changed', { away: true, since: 5, actions: 0, waiting: 0 }),
+    ev('gate.item', { itemId: 'g1', agentId: 'ranger', kind: 'action', domain: 'publishing', tool: 'social.post', summary: 'post', status: 'pending', away: true }),
+    ev('gate.item', { itemId: 'g1', agentId: 'ranger', kind: 'action', domain: 'publishing', tool: 'social.post', summary: 'post', status: 'allowed', away: true }),
+  ]);
+  assert.equal(s.away.away, true);
+  assert.equal(s.away.actions, 1, 'a pending item is not yet an action');
+  s = reduce(s, [
+    ev('away.digest', { digestId: 'd1', since: 5, until: 50, actions: 1, waiting: 0, spentUsd: 0, path: '_peak/d1.md', summary: '1 action' }),
+    ev('away.changed', { away: false, since: 50, actions: 1, waiting: 0 }),
+  ]);
+  assert.equal(s.away.away, false);
+  assert.equal(s.away.lastDigest.digestId, 'd1');
+});

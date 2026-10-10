@@ -113,6 +113,12 @@ them and carry finished files to the Visitor Center. Click a Ranger to brief, pa
 reassign it; a zone for its roster, budget burn and leash defaults; a trail for the work on
 it; the Gate to approve, revise or reject; the Peak for the portfolio. `node
 scripts/park-check.mjs` runs the headless check against the fakes.
+
+Step 8, away mode: click the Peak and "I'm away". Every Gate decision and notable event is
+appended to `workspace/_peak/away-log.ndjson`, the Peak shows "Away since …, N actions, M
+waiting", and "I'm back" writes a digest next to the log with what happened, what still
+waits on you and what it cost. Nothing is hidden and nothing is rolled back for you: the
+log is the account. That completes Part A of phase 2.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

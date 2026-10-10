@@ -22,6 +22,9 @@
 //   POST /api/mission          { text, budgetUsd, horizon? } → the Chief plans (202 { mission, runId })
 //   GET  /api/reflections      reflection summaries, newest first; /api/reflections/:id the document
 //   POST /api/reflect          run the reflection now (202 { started }) — the result is reflection.posted
+//   GET  /api/away             away state (flag, since, counters, last digest)
+//   POST /api/away             { away: true|false } → away.changed (+ away.digest and the digest on return)
+//   GET  /api/away/log         the evidence log lines (JSON array)
 //   GET  /api/agents           every agent record with zone, reports, grants, resolved leash
 //   POST /api/agents           { name, role?, zoneId, parentAgentId?, venture?, specialty?, persona?, policy? }
 //   GET  /api/agents/:id
@@ -166,7 +169,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -226,6 +229,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         work: trails ? { inTransit: trails.inTransit(), recent: trails.list().slice(0, 20) } : null,
         mission: chief ? chief.state() : null,
         reflection: reflect ? reflect.state() : null,
+        away: away ? away.state() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -314,6 +318,19 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);
         throw err;
       }
+    }
+    if (p === '/api/away' && method === 'GET') {
+      if (!away) throw new HttpError(404, 'no away mode');
+      return sendJson(res, 200, away.state());
+    }
+    if (p === '/api/away' && method === 'POST') {
+      if (!away) throw new HttpError(404, 'no away mode');
+      const body = await readJsonBody(req);
+      return sendJson(res, 200, await rethrow(() => away.set(body.away)));
+    }
+    if (p === '/api/away/log' && method === 'GET') {
+      if (!away) throw new HttpError(404, 'no away mode');
+      return sendJson(res, 200, await away.readLog());
     }
     if (p === '/api/reflections' && method === 'GET') {
       if (!reflect) throw new HttpError(404, 'no reflection cycle');

@@ -39,6 +39,13 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 8 done: away mode. "I'm away" on the Peak card (or `POST /api/away`) turns
+on the evidence log: every Gate decision and the other notable events are appended to
+`<root>/_peak/away-log.ndjson`, Gate items are stamped `away`, and the Peak shows "Away
+since …, N actions, M waiting". "I'm back" writes a digest (counts by status, domain and
+Ranger, what still waits, work done, spend, notable events) next to the log, emits
+`away.digest`, and will mail gate@ once the mail system exists. Part A of phase 2 is done.
+
 Phase 2 step 7 done: the park shows the crew. Department camps, the Visitor Center (made
 at boot) and a trailhead per venture (made when the Chief submits a plan) are rooms in the
 layout, drawn as clearings dressed per kind; trails run hub-and-spoke through the Ranger

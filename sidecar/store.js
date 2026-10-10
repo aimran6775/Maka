@@ -13,6 +13,7 @@
 //   mission.json           the Superintendent's mission to the Chief Ranger
 //   plan.json              the Chief Ranger's current plan (every version kept)
 //   scheduler.json         last run / next run per scheduled job
+//   away.json              away mode: flag, since, counters, last digest
 //   reflections/<id>.json  reflection documents (the Peak's history)
 //   runs/<runId>.json      one record per run: metadata + every event + final messages
 
@@ -70,6 +71,7 @@ export function createStore({ root, fs = fsp }) {
   const missionFile = path.join(root, 'mission.json');
   const planFile = path.join(root, 'plan.json');
   const schedulerFile = path.join(root, 'scheduler.json');
+  const awayFile = path.join(root, 'away.json');
   const reflectionsDir = path.join(root, 'reflections');
   const runsDir = path.join(root, 'runs');
 
@@ -85,6 +87,8 @@ export function createStore({ root, fs = fsp }) {
       await fs.mkdir(reflectionsDir, { recursive: true });
     },
     loadScheduler: (fallback) => readJson(schedulerFile, fallback, { fs }),
+    loadAway: (fallback) => readJson(awayFile, fallback, { fs }),
+    saveAway: (state) => writeJsonAtomic(awayFile, state, { fs }),
     saveScheduler: (state) => writeJsonAtomic(schedulerFile, state, { fs }),
     saveReflection: (doc) => {
       if (!RUN_ID_RE.test(doc.id)) throw new Error(`bad reflection id ${doc.id}`);

@@ -518,6 +518,47 @@ test('reflection over HTTP: reflect now posts a document, lists it, and the stat
   }
 });
 
+test('away mode over HTTP: Gate items are stamped and logged while away; return writes a digest', async () => {
+  const layout = (await import('../shared/world.js')).defaultLayout();
+  layout.objects.push({ id: 'sc', kind: 'supply_cache', roomId: 'ranger-station', x: 2, y: 2 });
+  const leash = (await import('../shared/leash.js')).defaultLeash();
+  leash.domains.research = { level: 'draft' };
+  const srv = await startTestServer({ layout, leash, makeProvider: scripted([[...toolCall('c1', 'fs.read', { path: 'n.txt' }), end('tool_use')], [text('ok'), end()]]) });
+  try {
+    await fsp.mkdir(path.join(srv.workspaceRoot, 'ranger'), { recursive: true });
+    await fsp.writeFile(path.join(srv.workspaceRoot, 'ranger', 'n.txt'), 'x');
+    assert.equal((await srv.get('/api/away')).body.away, false);
+    assert.equal((await srv.post('/api/away', { away: 'soon' })).status, 400);
+    const stream = await srv.sse();
+    const on = await srv.post('/api/away', { away: true });
+    assert.equal(on.body.state.away, true);
+    await stream.waitFor((e) => e.type === 'away.changed' && e.payload.away === true);
+    const { body: { runId } } = await srv.post('/api/run', { prompt: 'read' });
+    const item = await stream.waitFor((e) => e.type === 'gate.item' && e.payload.status === 'pending');
+    assert.equal(item.payload.away, true, 'stamped while away');
+    await srv.post(`/api/gate/${item.payload.itemId}`, { decision: 'approve' });
+    await stream.waitFor((e) => e.type === 'agent.run.end' && e.payload.runId === runId);
+    await srv.runs.waitForIdle();
+    const mid = await srv.get('/api/away');
+    assert.equal(mid.body.actions, 1);
+    assert.equal((await srv.get('/api/state')).body.away.away, true);
+    const back = await srv.post('/api/away', { away: false });
+    assert.equal(back.body.state.away, false);
+    assert.equal(back.body.digest.actions, 1);
+    assert.deepEqual(back.body.digest.byStatus, { approved: 1 });
+    const digest = await stream.waitFor((e) => e.type === 'away.digest');
+    assert.match(digest.payload.summary, /1 Gate action\(s\)/);
+    assert.match(await fsp.readFile(path.join(srv.workspaceRoot, back.body.digest.path), 'utf8'), /# Away digest/);
+    const log = await srv.get('/api/away/log');
+    assert.ok(log.body.length >= 2);
+    assert.equal(log.body[0].type, 'gate.item');
+    assert.equal((await srv.get('/api/away')).body.lastDigest.digestId, back.body.digest.digestId);
+    stream.close();
+  } finally {
+    await srv.close();
+  }
+});
+
 test('provider failure becomes agent.run.error and the run record says so; NO_KEY is a 400 before any event', async () => {
   const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([() => { const e = new Error('upstream 500'); e.code = 'HTTP_500'; throw e; }]), model: 'm', price: null }) });
   try {

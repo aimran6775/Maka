@@ -24,6 +24,7 @@ import { createTrails } from './trails.js';
 import { createChief } from './chief.js';
 import { createScheduler } from './scheduler.js';
 import { createReflect } from './reflect.js';
+import { createAway } from './away.js';
 import { TOOLS } from './capability/tools.js';
 import { CREW_TOOLS } from './capability/crew.js';
 import { createRouter } from './router.js';
@@ -64,7 +65,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   // leash.json is both the operator file and where approved loosening proposals land.
   const leashState = createLeashState({ initial: leash, store });
   const ledger = await createLeashLedger({ store, earnApprovals: leash.earn && leash.earn.approvals }).init();
-  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get }).init();
+  let away = null;
+  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, isAway: () => Boolean(away && away.state().away) }).init();
 
   const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, onOffline: () => runs.cancel() });
   const judge = createJudge({ router: createRouter(policy), ledger, bus, env, keystorePath, log });
@@ -82,6 +84,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const scheduler = await createScheduler({ store, log }).init();
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router, scheduler, getLayout: layoutState.get, workspaceRoot, env, keystorePath, schedule: { daily: config.reflectAt || '07:00' }, log }).init();
   scheduler.start();
+  away = await createAway({ bus, store, gateQueue, workspaceRoot, log }).init();
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -101,6 +104,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     trails,
     chief,
     reflect,
+    away,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -130,6 +134,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   }
   log.info(`  gate: ${gateQueue.pending().length} item(s) waiting; leash day ${ledger.dayKey()}`);
   log.info(`  crew: ${agents.list().map((a) => `${a.name} (${a.role})`).join(', ')}; up to ${runs.maxConcurrent} runs at once`);
+  if (away.state().away) log.info(`  away since ${new Date(away.state().since).toISOString()}: ${away.state().actions} action(s) so far, ${away.state().waiting} waiting`);
   log.info(`  reflection: daily at ${config.reflectAt || '07:00'}, next ${new Date(scheduler.state().reflection.nextRunAt).toISOString()}${reflect.latest() ? `, last ${reflect.latest().id} (${reflect.latest().status})` : ', none yet'}`);
   log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${judge.route.provider}/${judge.route.model || 'default'} (cap $${judge.caps.judgeUsdPerDay}/day, $${ledger.judgeToday().usd.toFixed(2)} used today)`);
 
@@ -142,7 +147,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await new Promise((resolve) => server.close(resolve));
   }
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, close };
 }
 
 function validateConfig(data) {

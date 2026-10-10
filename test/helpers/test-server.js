@@ -14,6 +14,7 @@ import { createTrails } from '../../sidecar/trails.js';
 import { createChief } from '../../sidecar/chief.js';
 import { createScheduler } from '../../sidecar/scheduler.js';
 import { createReflect } from '../../sidecar/reflect.js';
+import { createAway } from '../../sidecar/away.js';
 import { TOOLS } from '../../sidecar/capability/tools.js';
 import { CREW_TOOLS } from '../../sidecar/capability/crew.js';
 import { createRouter, defaultPolicy } from '../../sidecar/router.js';
@@ -44,7 +45,8 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   let runsRef = null;
   const leashState = createLeashState({ initial: leash || defaultLeash(), store });
   const ledger = await createLeashLedger({ store, clock, earnApprovals: leash && leash.earn && leash.earn.approvals }).init();
-  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
+  let away = null;
+  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock, isAway: () => Boolean(away && away.state().away) }).init();
   const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, intervalMs: 60000, onOffline: () => runsRef && runsRef.cancel() });
   const judge = judgeProvider ? createJudge({ router: createRouter(policy || defaultPolicy()), makeProvider: judgeProvider, ledger, bus, clock, env, keystorePath, log: { error() {} } }) : null;
   const agents = createAgents({ layoutState, leashState, bus, clock, activeRunFor: (id) => (runsRef ? runsRef.activeFor(id) : null) });
@@ -61,6 +63,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const chief = await createChief({ bus, store, runs, agents, trails, ledger, router: createRouter(policy || defaultPolicy()), getLayout: layoutState.get, clock, workspaceRoot, log: { error() {} } }).init();
   Object.assign(registry, chief.tools);
   const scheduler = await createScheduler({ store, clock, tickMs: 60_000, log: { error() {} } }).init();
+  away = await createAway({ bus, store, gateQueue, workspaceRoot, clock, log: { error() {} } }).init();
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, log: { error() {} } }).init();
   await workspace.check();
   const app = createApp({
@@ -75,6 +78,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     trails,
     chief,
     reflect,
+    away,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -103,6 +107,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     chief,
     scheduler,
     reflect,
+    away,
     workspace,
     async get(p) {
       const res = await fetch(url + p);

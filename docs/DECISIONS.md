@@ -483,3 +483,18 @@ card from the item's own status, not from the animation.
 and queued runs are cancelled when the pause is set. It survives a restart, it is visible
 to every client through `crew.agent`, and the body shows it. Resume clears the field; it
 restarts nothing by itself.
+
+## D59. The evidence log is append-only NDJSON next to the Peak's files
+
+One JSON line per event, appended with an fsync, under `<root>/_peak/` on the workspace
+drive (the owner's data, not the sidecar's home). A torn last line after a crash is
+skipped when the log is read; nothing is rewritten. The digest counts decided Gate items
+by their latest status (an item that went pending → approved counts once, as approved) and
+takes "waiting" from the live queue at the moment of return, not from the log.
+
+## D60. Away is a persisted flag with its own counters, not a filter on history
+
+Away state lives in `away.json` with the start time and running counters, so a restart
+while away stays away and the digest still covers the whole absence. The Gate queue stamps
+`away: true` on action items through its `isAway` hook rather than by consulting the away
+module, so the queue stays independent of it.

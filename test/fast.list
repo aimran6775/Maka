@@ -19,3 +19,4 @@ test/trails.test.js
 test/chief.test.js
 test/scheduler.test.js
 test/reflect.test.js
+test/away.test.js

@@ -23,6 +23,7 @@ export function initialState() {
     planUpdates: [], // plan.updated payloads this session, oldest first
     reflection: null, // { latest, schedule, job } from the snapshot; latest kept current by reflection.posted
     budgetAlerts: [], // budget.threshold payloads this session, oldest first
+    away: null, // { away, since, actions, waiting, spentUsd, lastDigest } from the snapshot and away.changed / away.digest
     leash: null, // leash policy from the snapshot (shared/leash.js shape)
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
@@ -83,6 +84,7 @@ export function applySnapshot(state, snap) {
   next.agents = snap.agents || [];
   next.mission = snap.mission || null;
   next.reflection = snap.reflection || null;
+  next.away = snap.away || null;
   next.spendByAgent = (snap.reflection && snap.reflection.spentByAgent) || {};
   next.leash = snap.leash || null;
   next.workspace = snap.workspace || null;
@@ -293,6 +295,7 @@ export function applyEvent(state, event) {
       break;
     }
     case 'gate.item': {
+      if (p.status !== 'pending' && next.away && next.away.away) next.away = { ...next.away, actions: (next.away.actions || 0) + 1 };
       const prev = next.gateItems[p.itemId];
       next.gateItems = { ...next.gateItems, [p.itemId]: { ...(prev || {}), ...p, ts: event.ts } };
       if (!prev) next.gateOrder = [...next.gateOrder, p.itemId];
@@ -325,6 +328,14 @@ export function applyEvent(state, event) {
     case 'reflection.posted': {
       const latest = { id: p.reflectionId, at: event.ts, reason: p.reason, status: p.status, skipReason: p.skipReason || null, missionId: p.missionId || null, model: p.model || null, usd: typeof p.usd === 'number' ? p.usd : null, portfolio: p.portfolio || '', ventures: p.ventures || [], briefings: p.briefings || [], path: p.path || null };
       next.reflection = { ...(next.reflection || {}), latest };
+      break;
+    }
+    case 'away.changed': {
+      next.away = { ...(next.away || {}), away: p.away, since: p.since, actions: p.actions || 0, waiting: p.waiting || 0 };
+      break;
+    }
+    case 'away.digest': {
+      next.away = { ...(next.away || {}), lastDigest: { digestId: p.digestId, since: p.since, until: p.until, actions: p.actions, waiting: p.waiting, spentUsd: p.spentUsd || 0, path: p.path, summary: p.summary || '' } };
       break;
     }
     case 'budget.threshold': {

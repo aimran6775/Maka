@@ -195,7 +195,11 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     const refl = s.reflection || {};
     const latest = refl.latest || null;
     const alerts = s.budgetAlerts.slice(-5).reverse();
+    const away = s.away || null;
+    const pendingNow = pendingGate(s).length;
     return [
+      away ? row('away', away.away ? `Away since ${new Date(away.since).toLocaleString()}, ${away.actions} action(s), ${pendingNow} waiting` : `you are here${away.lastDigest ? ` · last digest: ${away.lastDigest.summary || `${away.lastDigest.actions} action(s), ${away.lastDigest.waiting} waiting`} (${away.lastDigest.path})` : ''}`) : null,
+      away ? el('div', { class: 'row' }, el('button', { class: `btn ${away.away ? 'primary' : ''}`, text: away.away ? "I'm back" : "I'm away", onclick: async () => { const r = await api.post('/api/away', { away: !away.away }); missionNotice.textContent = r.ok ? (r.body.digest ? `Digest written: ${r.body.digest.path}` : 'Away mode on: every Gate decision is logged as evidence.') : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } })) : null,
       el('div', { class: 'muted small', text: 'The control centre: the Chief Ranger\'s mission and plan, the Gate queue, spend. Connector ledgers and the reflection cycle arrive in later steps.' }),
       row('mission', mission ? `${mission.status}${mission.reason ? ` (${mission.reason})` : ''} · ${(mission.text || '').slice(0, 160)}` : 'none yet: brief the Chief below'),
       plan ? row('plan', `v${plan.version} · ${(plan.summary || '').slice(0, 200)}`) : row('plan', 'no plan submitted yet'),
