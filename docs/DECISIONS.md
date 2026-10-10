@@ -37,3 +37,29 @@ with `agent.run.end { reason: 'cancelled' }`. Partial streamed text stays in the
 If the model's tool input is not a JSON object, the tool is not executed; the call is
 answered with an error result ("tool input was not valid JSON") so the model can retry
 and the call/result pairing invariant holds.
+
+## D7. Raw `fetch`, not the official SDKs
+
+The brief requires zero runtime dependencies in the sidecar, so both providers are small
+hand-written HTTP adapters over the documented streaming endpoints. The surface they use
+is deliberately minimal (one POST, SSE parsing, tool blocks). If the dependency rule is
+ever relaxed, swapping in `@anthropic-ai/sdk` is confined to `providers/anthropic.js`.
+
+## D8. Default Anthropic model is `claude-opus-5-5`; `thinking` is left to the model default
+
+Opus 5.5 runs adaptive thinking by default and rejects explicit disable/budget settings,
+so the adapter sends no `thinking` parameter. Thinking blocks come back with empty text and
+a signature; they are stored verbatim in the transcript and replayed, as the API requires.
+
+## D9. OpenRouter cost is taken from the provider, not a local table
+
+OpenRouter returns `usage.cost` for each request when asked. That number is the
+provider's own figure, so the adapter forwards it and the loop marks the turn reconciled.
+The OpenRouter default model (`anthropic/claude-sonnet-4.5`) is a placeholder that was not
+verified against the live catalog in this environment; the UI lets the user set the model.
+
+## D10. A `refusal` stop reason ends the run as `completed`
+
+The run-end reason enum is frozen at four values. A safety refusal from the provider is an
+HTTP 200 with no tool calls, so the loop ends the run normally with whatever text came
+back. The stop reason is not surfaced as a distinct state in phase 1.

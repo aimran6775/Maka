@@ -36,9 +36,15 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 | --- | --- |
 | `sidecar/loop.js` | The agentic loop, `runLoop(options)`. Messages-array while-loop; guards (cancelled / max turns / budget) before every paid call; content blocks accumulated by index; one `agent.tool_result` per `agent.tool_call`; provider failure emits `agent.run.error` and no `agent.run.end`. Pure given injected `provider`, `tools`, `emit`, `clock`, `signal`, `ids`. Also exports `costOf(usage, price)`. |
 
-**Planned (steps 4 to 6):** `providers/` (interface, Anthropic, OpenRouter, keys),
-`capability/` (layout → tool allowlist, three tools), `index.js` and the store (HTTP + SSE,
-atomic persistence).
+| `sidecar/providers/provider.js` | The provider contract (normalized stream chunks) and registry: `createProvider(name, opts)` resolves a key and a price, `providerStatus()` reports which providers have keys without revealing them. |
+| `sidecar/providers/anthropic.js` | Anthropic Messages API over raw `fetch`, streaming, tool use. Keeps `thinking` blocks verbatim and replays them. Default model `claude-opus-5-5`. |
+| `sidecar/providers/openrouter.js` | OpenRouter chat-completions over raw `fetch`, streaming, tool calls. Translates to/from the internal block format; forwards OpenRouter's reported `usage.cost` as reconciled spend. |
+| `sidecar/providers/sse.js` | `text/event-stream` parser and HTTP error helper shared by both adapters. |
+| `sidecar/providers/keys.js` | Key resolution: env var first, then `.maka/keystore.json` which must be mode 0600 (refused otherwise). `setKey` writes it 0600. Keys never leave this module except into a request header. |
+| `sidecar/providers/pricing.js` | List prices per million tokens for known Anthropic models. Unknown model → `null` → unreconciled cost. |
+
+**Planned (steps 5 and 6):** `capability/` (layout → tool allowlist, three tools),
+`index.js` and the store (HTTP + SSE, atomic persistence).
 
 ## `frontend/` — **planned (step 7)**
 
@@ -53,7 +59,9 @@ Static vanilla JS canvas world and windowed UI, served by the sidecar.
 | `test/schema.test.js` | Validator behaviour. |
 | `test/events.test.js` | Every event type validates, round-trips JSON, rejects bad shapes; contract is frozen. |
 | `test/loop.test.js` | Loop invariants against the fake provider: tool pairing, index accumulation, bad JSON, guards, cancellation at three points, provider failure. |
+| `test/providers.test.js` | SSE parser, both adapters against recorded streams (request shape, chunk normalization, errors, abort), both adapters driving the real loop, keystore permissions, pricing, registry. |
 | `test/helpers/fake-provider.js` | Scripted provider, fake clock, event recorder, fake tool set. Test-only. |
+| `test/helpers/fake-fetch.js` | `fetch` stand-in that streams SSE text in small chunks. Test-only. |
 
 ## Not in phase 1 (no code, no UI)
 

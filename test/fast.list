@@ -3,3 +3,4 @@
 test/schema.test.js
 test/events.test.js
 test/loop.test.js
+test/providers.test.js

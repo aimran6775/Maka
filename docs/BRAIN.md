@@ -29,7 +29,7 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 1, step 3: skeleton, event contract in `shared/`, and the loop in `sidecar/loop.js`. There is no runnable
+Phase 1, step 4: skeleton, event contract, loop, and providers. There is no runnable
 sidecar yet. The README's run instructions are marked not yet implemented and will be
 unmarked when `sidecar/index.js` lands (step 6).
 

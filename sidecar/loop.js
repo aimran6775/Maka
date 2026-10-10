@@ -23,7 +23,8 @@
 //   { type:'text_delta', index, text }
 //   { type:'tool_use_start', index, id, name }
 //   { type:'tool_input_delta', index, partialJson }
-//   { type:'message_end', stopReason, usage: { inputTokens, outputTokens } | null }
+//   { type:'opaque_block', index, block }           (provider-specific, kept verbatim)
+//   { type:'message_end', stopReason, usage: { inputTokens, outputTokens, costUsd? } | null }
 // See sidecar/providers/provider.js for the full description.
 
 import { makeEvent } from '../shared/events.js';
@@ -141,6 +142,8 @@ export async function runLoop(options) {
         } else if (chunk.type === 'tool_input_delta') {
           const b = blocks[chunk.index];
           if (b && b.type === 'tool_use') b.json += chunk.partialJson;
+        } else if (chunk.type === 'opaque_block') {
+          blocks[chunk.index] = { type: 'opaque', block: chunk.block };
         } else if (chunk.type === 'message_end') {
           stopReason = chunk.stopReason || null;
           usage = chunk.usage || null;
@@ -172,7 +175,8 @@ export async function runLoop(options) {
       usageTotal.inputTokens += turnUsage.inputTokens;
       usageTotal.outputTokens += turnUsage.outputTokens;
     }
-    const usd = costOf(turnUsage, price);
+    // A provider-reported cost (OpenRouter's usage.cost) beats the local price table.
+    const usd = usage && typeof usage.costUsd === 'number' && usage.costUsd >= 0 ? usage.costUsd : costOf(turnUsage, price);
     send('cost.estimate', {
       runId,
       turn,
@@ -232,7 +236,9 @@ function assemble(blocks) {
   const badInputs = new Set();
   for (const b of blocks) {
     if (!b) continue;
-    if (b.type === 'text') {
+    if (b.type === 'opaque') {
+      content.push(b.block); // provider-specific block (e.g. thinking); replayed verbatim
+    } else if (b.type === 'text') {
       if (b.text) content.push({ type: 'text', text: b.text });
     } else if (b.type === 'tool_use') {
       let input = {};
