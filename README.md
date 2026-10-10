@@ -166,8 +166,14 @@ variable connects it at boot; "Connect" at the Peak takes an API key or starts a
 sign-in, both as Gate items you approve before the credential lands in the 0600 keystore.
 Connected platforms sync every 15 minutes (`connectors.syncEveryMs`) and on "Sync now";
 the figures the park shows come only from those syncs. Place a Park Store in a camp to
-grant its Rangers the connector tools. No platform is defined yet: Stripe, Shopify, Etsy
-and the ad networks are steps 15–17.
+grant its Rangers the connector tools.
+
+Step 15, Stripe: set `STRIPE_API_KEY` (or connect at the Peak) and the balance, charges,
+payouts and refunds sync into the local store; click the Finance camp to read them. Place
+a Fee booth there and its Rangers can read the same figures and refund a charge, which is
+money out: it waits at the Gate with its amount (or runs under the daily cap at
+act_capped) and is tagged `maka:<ranger>` at Stripe. Shopify, Etsy and the ad networks are
+steps 16–17.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

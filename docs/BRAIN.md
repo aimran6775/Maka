@@ -40,6 +40,15 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 15 done: Stripe. `STRIPE_API_KEY` (or a key approved at the Gate) connects
+it; every 15 minutes and on demand the balance, charges, payouts and refunds are read into
+the local store, and that store is what the Finance camp card, the Books Ranger's tools
+and the reflection show, amounts in the platform's own currency. A Fee booth placed in the
+Finance camp grants the reads (research) and `stripe.refund`, the one write: money out,
+so the Gate item and the ledger carry the real amount (the charge's remaining amount when
+none is given), the daily cap applies at act_capped, and the refund is tagged with the
+Ranger that made it.
+
 Phase 2 step 14 done: the connector framework. One registry defines each platform as data
 plus two functions (a client and a sync); a platform's environment variable connects it
 at boot, and a key or an OAuth sign-in given in the park is an Entrance Gate item the

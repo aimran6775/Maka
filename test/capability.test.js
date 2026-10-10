@@ -34,7 +34,9 @@ test('world: default layout validates; grants derive from objects in the agent r
   const { MAIL_TOOLS } = await import('../sidecar/capability/../mail/tools.js');
   const { BROWSER_TOOLS } = await import('../sidecar/browser/tools.js');
   const CONNECTOR_TOOL_NAMES = ['connector.status', 'connector.sync']; // the framework's own tools (sidecar/connectors/registry.js)
-  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t) || t in MAIL_TOOLS || t in BROWSER_TOOLS || CONNECTOR_TOOL_NAMES.includes(t), `${t} exists`);
+  const { CONNECTOR_SPECS } = await import('../sidecar/connectors/kinds.js');
+  const connectorTools = Object.assign({}, ...CONNECTOR_SPECS.map((spec) => spec.tools || {}));
+  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t) || t in MAIL_TOOLS || t in BROWSER_TOOLS || CONNECTOR_TOOL_NAMES.includes(t) || t in connectorTools, `${t} exists`);
   assert.equal(tileInRoom(layout.rooms[0], 1, 1), true);
   assert.equal(tileInRoom(layout.rooms[0], 13, 1), false);
   const bad = layoutWith(['piano']);

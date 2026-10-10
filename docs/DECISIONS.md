@@ -636,3 +636,21 @@ Each connected platform has a scheduler job (15 minutes by default) and a manual
 the sync writes what the platform answered into `connectors/<kind>.json` and emits the
 counts. Disconnecting removes the credential and the job but keeps the synced data: it is
 real history, and the park shows it as such ("not connected, last synced …").
+
+## D78. Stripe reads come from the store; a refund is the one write and it carries its amount
+
+The tools never call Stripe for a read: they answer from the last sync (with its time) and
+`fresh: true` syncs first, so a Ranger's loop cannot hammer the API and the park and the
+Ranger see the same numbers. `stripe.refund` is money_out; the gate asks the tool for the
+amount with the tool context, so an unspecified amount is the charge's remaining amount
+from the store, never 0, and the daily cap and the ledger see it. The refund carries a
+`maka:<agent>` metadata tag at Stripe so the owner can see in the dashboard which Ranger
+did it. Validation (unknown charge, over the remaining amount) runs when the tool runs,
+after the Gate at Draft: the Gate sees every attempt, as it does for every other domain.
+
+## D79. The Fee booth is the payments fixture
+
+The kickoff fixture table says Park Store = commerce (Shopify / Stripe), Fee booth =
+payments. Stripe is payments, so its tools hang on the Fee booth and the Park Store keeps
+the storefront connectors (step 16); both also grant the framework's own `connector.*`
+reads. A camp without the fixture has no Stripe tools, whatever the leash says.

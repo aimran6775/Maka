@@ -19,7 +19,7 @@
 // the input for tools whose domain depends on what they send), else shared/leash.js
 // TOOL_DOMAINS. Tools with no domain (fs.write) keep the phase 1 per-call confirmation
 // through ask() when they are marked `confirm: true`. A tool may declare
-// `amountUsd(input)` (money the action moves) and `summarize(input)` (one line for the
+// `amountUsd(input, toolContext)` (money the action moves) and `summarize(input)` (one line for the
 // Gate card).
 //
 // ask({ runId, callId, tool, reason, input }) -> Promise<boolean>   (permission.prompt)
@@ -139,7 +139,14 @@ export function createToolGate({
       const domain = domainOf(tool, call.input);
       if (domain) {
         const entry = leashFor(call.name, call.input);
-        const amountUsd = typeof tool.amountUsd === 'function' ? Number(tool.amountUsd(call.input)) || 0 : 0;
+        let amountUsd = 0;
+        if (typeof tool.amountUsd === 'function') {
+          try {
+            amountUsd = Number(tool.amountUsd(call.input, { ...toolContext, agentId })) || 0;
+          } catch {
+            amountUsd = 0;
+          }
+        }
         const base = {
           agentId,
           kind: 'action',

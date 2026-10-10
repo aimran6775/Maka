@@ -96,6 +96,7 @@ export function createReflect({
   bus,
   store,
   runs,
+  getConnectors = null, // () => connectors registry (step 14); its summaries feed the reflection
   agents,
   trails,
   chief,
@@ -228,8 +229,17 @@ export function createReflect({
       ventures,
       zones,
       gatePending: gate.filter((g) => g.status === 'pending').length,
-      connectors: 'none wired: revenue, orders, ad results are unknown',
+      connectors: connectorLines(),
     };
+  }
+
+  // What the connectors' syncs hold, as plain text: real figures or "not connected".
+  function connectorLines() {
+    const reg = typeof getConnectors === 'function' ? getConnectors() : null;
+    const rows = reg ? reg.list() : [];
+    if (!rows.length) return 'none wired: revenue, orders, ad results are unknown';
+    const parts = rows.map((c) => `${c.label}: ${c.connected ? (c.summary || 'connected') + (c.syncedAt ? ` (synced ${new Date(c.syncedAt).toISOString()})` : ' (not synced yet)') : 'not connected'}`);
+    return parts.join('; ');
   }
 
   function promptFor(data) {

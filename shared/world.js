@@ -23,7 +23,9 @@ export const OBJECT_KINDS = deepFreeze({
   // logins, one-time codes, captchas and payment pages are handed to the Superintendent.
   // Phase 2 step 14: platform connectors (official APIs). The framework's own tools are
   // research; each connector adds read tools and leashed write tools (steps 15–17).
-  park_store: { label: 'Park Store', grants: ['connector.status', 'connector.sync'], hint: 'Rangers in this zone use the commerce connectors (Stripe, Shopify, Etsy): read what the syncs brought in and refresh them; platform writes follow their leash.' },
+  park_store: { label: 'Park Store', grants: ['connector.status', 'connector.sync'], hint: 'Rangers in this zone use the commerce connectors (Shopify, Etsy): read what the syncs brought in and refresh them; platform writes follow their leash.' },
+  // Phase 2 step 15: payments (Stripe). Reads are research; a refund is money_out.
+  fee_booth: { label: 'Fee booth', grants: ['connector.status', 'connector.sync', 'stripe.balance', 'stripe.charges', 'stripe.payouts', 'stripe.refunds', 'stripe.refund'], hint: 'Rangers in this zone read the Stripe balance, charges, payouts and refunds from the last sync, and can refund a charge under the money_out leash and its daily cap.' },
   field_office: { label: 'Field office', grants: ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.download', 'browser.screenshot'], hint: 'Rangers in this zone drive a real browser with their own profile (open, read, click, type, upload, download, screenshot) under the browser_control leash; a login, code, captcha or payment page is handed to you.' },
 });
 

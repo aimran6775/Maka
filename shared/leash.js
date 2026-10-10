@@ -52,6 +52,12 @@ export const TOOL_DOMAINS = deepFreeze({
   // Phase 2 step 14: connector framework tools (reads from the local store / a sync).
   'connector.status': 'research',
   'connector.sync': 'research',
+  // Phase 2 step 15: Stripe. A refund moves money out.
+  'stripe.balance': 'research',
+  'stripe.charges': 'research',
+  'stripe.payouts': 'research',
+  'stripe.refunds': 'research',
+  'stripe.refund': 'money_out',
   // Phase 2 step 13: every browser action is browser_control, reads included (a real
   // browser with the Ranger's cookies is never just research).
   'browser.open': 'browser_control',

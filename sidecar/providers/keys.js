@@ -20,6 +20,7 @@ export const ENV_VARS = Object.freeze({
   resend: 'RESEND_API_KEY',
   resendWebhook: 'RESEND_WEBHOOK_SECRET',
   huggingface: 'HF_TOKEN',
+  stripe: 'STRIPE_API_KEY',
 });
 
 export function defaultKeystorePath(env = process.env) {

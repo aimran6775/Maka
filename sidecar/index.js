@@ -92,7 +92,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const chief = await createChief({ bus, store, runs, agents, trails, ledger, router, getLayout: layoutState.get, workspaceRoot, log }).init();
   Object.assign(registry, chief.tools);
   const scheduler = await createScheduler({ store, log }).init();
-  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router, scheduler, getLayout: layoutState.get, workspaceRoot, env, keystorePath, schedule: { daily: config.reflectAt || '07:00' }, log }).init();
+  let connectors = null;
+  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router, scheduler, getLayout: layoutState.get, workspaceRoot, env, keystorePath, schedule: { daily: config.reflectAt || '07:00' }, getConnectors: () => connectors, log }).init();
   scheduler.start();
   away = await createAway({ bus, store, gateQueue, workspaceRoot, log }).init();
   const mailSetup = createMailSetup({ bus, gateQueue, env, keystorePath, domain: config.mailDomain || undefined, region: config.resendRegion || undefined, log });
@@ -102,7 +103,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const browser = await createBrowserControl({ bus, env, workspaceRoot, config: config.browser || {}, log }).init();
   Object.assign(registry, browser.tools);
   toolContext.browser = browser;
-  const connectors = createConnectors({ bus, store, scheduler, gateQueue, env, keystorePath, config: config.connectors || {}, log });
+  connectors = createConnectors({ bus, store, scheduler, gateQueue, env, keystorePath, config: config.connectors || {}, log });
   for (const spec of CONNECTOR_SPECS) connectors.define(spec);
   await connectors.init();
   Object.assign(registry, connectors.tools);

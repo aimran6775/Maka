@@ -135,6 +135,53 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     ];
   }
 
+  // Camp cards show the connectors of their kind (finance → Stripe …) from the sidecar's
+  // local store: fetched when inspected, refreshed after a sync event.
+  const connCache = { key: null, rows: [], loading: false };
+  async function loadConnectorData(s, room) {
+    const mine = s.connectors.filter((c) => c.zoneKind === room.kind);
+    const key = `${room.id}:${mine.map((c) => `${c.kind}:${c.syncedAt || 0}:${c.connected}`).join(',')}`;
+    if (!mine.length || connCache.key === key || connCache.loading) return;
+    connCache.loading = true;
+    try {
+      const rows = await Promise.all(mine.map(async (c) => { const r = await api.get(`/api/connectors/${encodeURIComponent(c.kind)}`); return r.ok ? r.body : { ...c, data: null }; }));
+      connCache.rows = rows;
+      connCache.key = key;
+    } finally {
+      connCache.loading = false;
+      selectionRefresh && selectionRefresh();
+    }
+  }
+  const money = (minorAmount, currency) => `${(['jpy', 'krw'].includes(currency) ? minorAmount : minorAmount / 100).toFixed(2)} ${String(currency || '').toUpperCase()}`;
+  function connectorRows(c) {
+    const d = c.data;
+    if (!c.connected && !(d && d.syncedAt)) return [row(c.label, `not connected (connect it at the Peak)${c.lastError ? ` · ${c.lastError.message}` : ''}`)];
+    if (!d || !d.syncedAt) return [row(c.label, `connected · not synced yet${c.lastSync && !c.lastSync.ok ? ` · last sync failed: ${c.lastSync.error}` : ''}`)];
+    const head = `${c.connected ? 'connected' : 'disconnected'} · synced ${new Date(d.syncedAt).toLocaleString()}${c.lastSync && !c.lastSync.ok ? ` · last sync failed: ${c.lastSync.error}` : ''}`;
+    if (c.kind === 'stripe') {
+      const week = Date.now() - 7 * 86_400_000;
+      const sum = (rows) => rows.reduce((n, r) => n + (r.amount || 0), 0);
+      const recent = (d.charges || []).filter((ch) => ch.created >= week && ch.status === 'succeeded');
+      const cur = (d.charges[0] || d.balance.available[0] || {}).currency || 'usd';
+      return [
+        row('Stripe', head),
+        row('balance', `${(d.balance.available || []).map((b) => money(b.amount, b.currency)).join(' + ') || '0'} available · ${(d.balance.pending || []).map((b) => money(b.amount, b.currency)).join(' + ') || '0'} pending${d.balance.livemode === false ? ' · TEST MODE' : ''}`),
+        row('charges', `${d.charges.length} in the store · last 7 days: ${recent.length} succeeded, ${money(sum(recent), cur)}`),
+        row('payouts', d.payouts.length ? `${d.payouts.length} · latest ${money(d.payouts[0].amount, d.payouts[0].currency)} ${d.payouts[0].status} (${new Date(d.payouts[0].arrivalDate).toLocaleDateString()})` : 'none'),
+        row('refunds', d.refunds.length ? `${d.refunds.length} · ${money(sum(d.refunds), cur)} in total` : 'none'),
+        ...d.charges.slice(0, 5).map((ch) => el('div', { class: `use ${ch.status === 'succeeded' ? 'ok' : ch.status === 'failed' ? 'failed' : ''}`, text: `${new Date(ch.created).toLocaleDateString()} · ${money(ch.amount, ch.currency)} · ${ch.status}${ch.refunded ? ' · refunded' : ch.amountRefunded ? ` · ${money(ch.amountRefunded, ch.currency)} refunded` : ''} · ${ch.description || ch.customer || ch.id}` })),
+      ];
+    }
+    return [row(c.label, `${head}${c.summary ? ` · ${c.summary}` : ''}`)];
+  }
+  function connectorSection(s, room) {
+    const mine = (s.connectors || []).filter((c) => c.zoneKind === room.kind);
+    if (!mine.length) return [];
+    loadConnectorData(s, room);
+    const rows = connCache.key && connCache.key.startsWith(`${room.id}:`) ? connCache.rows : mine.map((c) => ({ ...c, data: null }));
+    return [el('div', { class: 'k', text: 'connectors for this camp (figures from the last sync only)' }), ...rows.flatMap(connectorRows)];
+  }
+
   function renderZone(s, room) {
     setTitle(`INSPECT · ${room.name}`);
     const roster = s.layout.agents.filter((a) => a.roomId === room.id);
@@ -153,6 +200,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       row('queue', `${workInTransit(s, room.id).length} work item(s) in transit here · ${s.queuedRuns.filter((r) => roster.some((a) => a.id === r.agentId)).length} run(s) queued`),
       ...workInTransit(s, room.id).slice(0, 6).map((it) => el('div', { class: 'use running', text: `${it.fromAgentId} → ${it.toAgentId} · ${(it.brief || '').slice(0, 60)}` })),
       ...mailSection(s, room),
+      ...connectorSection(s, room),
       el('div', { class: 'k', text: 'leash defaults for this zone (a Ranger override still wins)' }),
       el('div', { class: 'leash' }, ...zoneLeash.map(([d, v]) => el('div', { class: 'kv' },
         el('span', { class: 'k', text: d }),

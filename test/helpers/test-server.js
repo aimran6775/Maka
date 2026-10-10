@@ -47,6 +47,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   await store.saveLayout(layout);
   await fsp.mkdir(workspaceRoot, { recursive: true });
   let runsRef = null;
+  let connectors = null;
   const leashState = createLeashState({ initial: leash || defaultLeash(), store });
   const ledger = await createLeashLedger({ store, clock, earnApprovals: leash && leash.earn && leash.earn.approvals }).init();
   let away = null;
@@ -81,14 +82,14 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   }
   // `connectors`: an array of connector specs to define (tests pass fakes pointing at
   // fake servers); absent → no connector framework is wired.
-  const connectors = connectorSpecs ? createConnectors({ bus, store, scheduler, gateQueue, env, keystorePath, clock, fetch: globalThis.fetch, config: connectorConfig, log: { error() {}, warn() {} } }) : null;
+  connectors = connectorSpecs ? createConnectors({ bus, store, scheduler, gateQueue, env, keystorePath, clock, fetch: globalThis.fetch, config: connectorConfig, log: { error() {}, warn() {} } }) : null;
   if (connectors) {
     for (const spec of connectorSpecs) connectors.define(spec);
     await connectors.init();
     Object.assign(registry, connectors.tools);
     toolContext.connectors = connectors;
   }
-  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, log: { error() {} } }).init();
+  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, getConnectors: () => connectors, log: { error() {} } }).init();
   await workspace.check();
   const app = createApp({
     bus,
