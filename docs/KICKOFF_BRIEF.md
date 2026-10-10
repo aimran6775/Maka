@@ -11,11 +11,16 @@ from scratch under the name Maka. No StarNet source copied wholesale; any adapte
 recorded in NOTICE.md. Maka must not be mistakable for StarNet visually or by name.
 
 ## Owner decisions (2026-10-10)
-- Platform: macOS app, local-first. Apple Silicon first. Ships as a Tauri 2 shell around the
-  Node sidecar (same runtime as the browser dev mode). Intel build later if wanted.
+- Platform: macOS software distributed directly as a signed, notarized .dmg from Maka's own
+  site. NOT the App Store; no App Store review or sandbox rules apply. Gatekeeper still
+  requires Developer ID signing + notarization for a clean install. Apple Silicon first.
+  Language is open; the settled choice is a Node sidecar (already built) inside a Tauri 2
+  shell, with native Swift only where macOS needs it (Keychain, login item, menu bar).
 - Theme: a NATIONAL PARK. Not a workshop, not a space station.
-- Mission: a powerhouse for running online businesses autonomously. The agents do the work of
-  running a business end to end; the user supervises from the park.
+- Mission: a powerhouse for running online businesses autonomously, EVERY kind: online ads,
+  Etsy and Shopify stores, dropshipping, affiliate and digital products, content and
+  marketing, and finding new ways to make money by itself: studying what is publicly working
+  for others and proposing and launching ventures. The user supervises from the park.
 - Autonomy: the owner's goal is "free of touch, fully autonomous". See the Autonomy section
   for how Maka gets there without a single bad run draining an account.
 
@@ -58,13 +63,33 @@ driven by the real clock. Weather is purely cosmetic and must never encode state
   every action taken while away is logged with evidence and shown at the Lookout Tower on
   return. Nothing is hidden, and any action can be rolled back where the connector allows.
 
-## First vertical (assumption, owner to confirm)
-E-commerce store operations: a store on Shopify or similar with Stripe payments. Ranger
-roles for phase 2: Support Ranger (customer email and chat), Listings Ranger (product
-copy, images, pricing proposals), Marketing Ranger (social posts, email campaigns, ad
-reports), Books Ranger (orders, refunds, daily P&L from real connector data).
-If the owner's first business is different (services, content, SaaS), swap the roles; the
-harness is vertical-agnostic.
+## Business scope (owner decision 2026-10-10): every online business
+The harness is vertical-agnostic. Ranger roles for phase 2, each a persona + loadout + leash
+set, not hard-coded logic:
+- Scout Ranger: finds opportunities. Studies publicly visible success stories, trends, and
+  niches; produces a venture brief with evidence, costs, and a go/no-go the judge reviews.
+- Storefront Ranger: runs Etsy / Shopify / dropshipping stores: listings, pricing proposals,
+  supplier orders, fulfilment status.
+- Ads Ranger: creates and manages campaigns (Meta, Google, TikTok), reports real spend and
+  results, proposes budget changes behind the money-out leash.
+- Marketing Ranger: content, social, email campaigns, SEO.
+- Support Ranger: customer email and chat, returns, reviews.
+- Books Ranger: orders, refunds, fees, daily P&L from real connector data only.
+Connectors arrive in the order the owner's first venture needs them; email, Etsy, Shopify,
+Stripe, Meta Ads, Google Ads are the first candidates.
+
+## Conduct rules for autonomous business (product laws 7-9)
+7. Platform-compliant by construction: every connector action goes through the platform's
+   official API or an explicitly granted browser session, under that platform's terms. No
+   scraping that a platform forbids, no review manipulation, no fake engagement. A banned
+   account is the fastest way to zero revenue, so compliance is a money rule, not a legal
+   footnote.
+8. Replicate strategies, not property: the Scout studies what works and Rangers build
+   original listings, copy, and creative. No copied listings, images, or brand names, no
+   impersonation, no counterfeit or restricted goods.
+9. Money-out actions (ad spend, supplier orders, refunds, subscriptions) always pass the
+   Entrance Gate under the leash model, with a hard daily cap that only the Superintendent
+   can raise.
 
 ## Model strategy (owner decision 2026-10-10): local workers, Claude as judge
 - Two tiers. WORKER models are local open-weight models served by Ollama (or any

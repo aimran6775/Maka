@@ -116,3 +116,9 @@ the change could be made, pending the owner's answers to scoping questions.
   routine turns 24/7 at no marginal cost; Claude (Anthropic API) is the JUDGE for planning,
   result review before the Gate, ambiguity, and money/outbound actions. Routing is explicit
   per step and every turn records model and cost.
+- Distribution: direct-download signed + notarized .dmg, not the App Store. Node sidecar in
+  a Tauri 2 shell stays the settled stack; native Swift only for macOS integration points.
+- Scope: every online business (ads, Etsy/Shopify, dropshipping, digital products, marketing,
+  autonomous opportunity discovery). Phase 2 Ranger roles: Scout, Storefront, Ads, Marketing,
+  Support, Books. Product laws 7-9 (platform compliance, originality, money-out through the
+  Gate) added.
