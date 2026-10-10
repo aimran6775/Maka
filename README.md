@@ -160,6 +160,14 @@ leash and traced with screenshots under `<workspace>/<ranger>/browser-trace/`. A
 one-time code, captcha or payment page raises a BROWSER HANDOFF card at the Gate: finish
 the step in the window, add a note, hand it back. Set `"browser": { "headless": true }` or
 `MAKA_BROWSER_HEADLESS=1` for a server without a display.
+
+Step 14, connectors: the Peak lists the platform connectors. A platform's environment
+variable connects it at boot; "Connect" at the Peak takes an API key or starts an OAuth
+sign-in, both as Gate items you approve before the credential lands in the 0600 keystore.
+Connected platforms sync every 15 minutes (`connectors.syncEveryMs`) and on "Sync now";
+the figures the park shows come only from those syncs. Place a Park Store in a camp to
+grant its Rangers the connector tools. No platform is defined yet: Stripe, Shopify, Etsy
+and the ad networks are steps 15–17.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

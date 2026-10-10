@@ -385,6 +385,33 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     notes: str,
     headless: bool,
   }),
+  // Added v1 (phase 2 step 14): a connector sync started / finished / failed / was skipped.
+  // `counts` are what the sync brought in (per the connector); nothing is estimated.
+  'connector.sync': payload(['connector', 'status'], {
+    connector: nonEmpty,
+    status: { type: 'string', enum: ['started', 'done', 'failed', 'skipped'] },
+    reason: str,
+    counts: obj,
+    ms: int0,
+    message: str,
+  }),
+  // Added v1 (phase 2 step 14): a connector failed at a stage (connect / auth / sync / action).
+  'connector.error': payload(['connector', 'stage', 'message'], {
+    connector: nonEmpty,
+    stage: { type: 'string', enum: ['connect', 'auth', 'sync', 'action'] },
+    message: str,
+    code: str,
+  }),
+  // Added v1 (phase 2 step 14): a connector was connected / disconnected, or an OAuth
+  // sign-in is waiting for the Superintendent to open `authorizeUrl`.
+  'connector.status': payload(['connector', 'change', 'connected'], {
+    connector: nonEmpty,
+    change: { type: 'string', enum: ['connected', 'disconnected', 'authorizing'] },
+    connected: bool,
+    auth: str,
+    by: str,
+    authorizeUrl: str,
+  }),
   // Added v1 (phase 2 step 1): a run is parked on a pending Gate item; the Ranger waits at
   // the Gate until a gate.item with that itemId leaves 'pending'.
   'agent.waiting': payload(['runId', 'agentId', 'itemId'], {

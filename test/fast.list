@@ -26,3 +26,4 @@ test/mail-policy.test.js
 test/mail-tools.test.js
 test/hosted-worker.test.js
 test/browser.test.js
+test/connectors.test.js

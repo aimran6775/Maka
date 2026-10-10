@@ -49,6 +49,9 @@ export const TOOL_DOMAINS = deepFreeze({
   'mail.draft': null,
   'mail.send': 'outbound_messages',
   'mail.create_address': 'account_creation',
+  // Phase 2 step 14: connector framework tools (reads from the local store / a sync).
+  'connector.status': 'research',
+  'connector.sync': 'research',
   // Phase 2 step 13: every browser action is browser_control, reads included (a real
   // browser with the Ranger's cookies is never just research).
   'browser.open': 'browser_control',

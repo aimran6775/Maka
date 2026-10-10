@@ -232,6 +232,26 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     missionNotice,
   );
 
+  // Connectors (step 14): one row per platform; connect (a key, or an OAuth sign-in) and
+  // disconnect go through the Gate; sync now is immediate. Figures come from syncs only.
+  function connectorsSection(s) {
+    if (!s.connectors) return [];
+    const rows = s.connectors;
+    return [
+      el('div', { class: 'k', text: 'connectors (official APIs; figures come from their syncs only)' }),
+      rows.length ? null : el('div', { class: 'muted small', text: 'none defined yet: the platform connectors arrive in phase 2 steps 15–17' }),
+      ...rows.map((c) => el('div', { class: 'connector-row' },
+        el('div', { class: 'kv' }, el('span', { class: 'k', text: c.label }), el('span', { class: 'v', text: c.connected ? `connected (${c.auth}${c.by ? ` · ${c.by}` : ''})${c.syncedAt ? ` · synced ${new Date(c.syncedAt).toLocaleString()}` : ' · not synced yet'}${c.lastSync && !c.lastSync.ok ? ` · last sync failed: ${c.lastSync.error}` : ''}${c.summary ? ` · ${c.summary}` : ''}` : c.pendingItemId ? `waiting at the Gate (${c.pendingItemId})` : c.authorizeUrl ? 'sign-in started: open the link below' : `not connected${c.lastError ? ` · ${c.lastError.stage}: ${c.lastError.message}` : ''}` })),
+        c.authorizeUrl ? el('a', { class: 'small', href: c.authorizeUrl, target: '_blank', rel: 'noopener', text: `Sign in to ${c.label} (opens the platform)` }) : null,
+        el('div', { class: 'row' },
+          c.connected ? el('button', { class: 'btn small', text: c.syncing ? 'Syncing…' : 'Sync now', disabled: c.syncing ? '' : null, onclick: async () => { const r = await api.post(`/api/connectors/${encodeURIComponent(c.kind)}/sync`, {}); missionNotice.textContent = r.ok ? `${c.label} synced: ${Object.entries(r.body.counts || {}).map(([k, v]) => `${v} ${k}`).join(', ') || 'nothing new'}` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } }) : null,
+          c.connected ? el('button', { class: 'btn small', text: 'Disconnect (via the Gate)', onclick: async () => { const r = await api.post(`/api/connectors/${encodeURIComponent(c.kind)}/disconnect`, {}); missionNotice.textContent = r.ok ? `Disconnect waiting at the Gate (${r.body.itemId}).` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } }) : null,
+          !c.connected && !c.pendingItemId && !c.authorizeUrl ? el('button', { class: 'btn small primary', text: c.auth === 'oauth2' ? 'Connect (sign in, via the Gate)' : 'Connect (API key, via the Gate)', onclick: async () => { const body = {}; if (c.auth === 'api_key') { const k = window.prompt(`${c.label} API key (stored in the 0600 keystore after your approval at the Gate):`, ''); if (!k) return; body.apiKey = k; } const r = await api.post(`/api/connectors/${encodeURIComponent(c.kind)}/connect`, body); missionNotice.textContent = r.ok ? `Connect waiting at the Gate (${r.body.itemId}).` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } }) : null,
+        ),
+      )),
+    ];
+  }
+
   function renderPeak(s) {
     setTitle('INSPECT · Mountain Peak');
     const runs = s.runOrder.map((id) => s.runs[id]).reverse();
@@ -264,6 +284,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
         el('button', { class: 'btn', text: 'Apply DNS (via the Gate)', disabled: !(s.mail.keys.resend && s.mail.keys.cloudflare), onclick: async () => { const r = await api.post('/api/mail/dns/apply', {}); missionNotice.textContent = r.ok ? (r.body.itemId ? `DNS change waiting at the Gate (${r.body.itemId}).` : r.body.status) : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } }),
       ) : null,
       row('gate queue', `${pendingGate(s).length} waiting`),
+      ...connectorsSection(s),
       s.browser ? row('browser', `${s.browser.wired ? `${s.browser.chromium}${s.browser.headless ? ' (headless)' : ''}` : 'not wired: no Chromium found (browser.chromiumPath or CHROMIUM)'} · ${(s.browser.sessions || []).length} open · ${pendingHandoffs(s).length} handoff(s) waiting`) : null,
       row('judge today', s.judge ? `${fmtUsd(s.judge.today.usd)} of $${s.judge.caps.judgeUsdPerDay} cap · ${s.judge.today.calls} call(s) · ${s.judge.provider}/${s.judge.model || 'default'}` : 'no judge wired'),
       row('spend', `${fmtUsd(s.spend.totalUsd)} reconciled${s.spend.unreconciledTurns ? ` · ${s.spend.unreconciledTurns} unpriced turn(s)` : ''}`),

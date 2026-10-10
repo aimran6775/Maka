@@ -6,7 +6,8 @@
 //   "maxConcurrentRuns": 4, "reflectAt": "07:00", "mailDomain": "makapark.com",
 //   "resendRegion": "us-east-1", "mailPollMs": 60000,
 //   "mailCeilings": { "perAgentPerHour": 30, "perStationPerHour": 120, "campaignRecipientsPerHour": 500 },
-//   "browser": { "chromiumPath": "/Applications/Chromium.app/Contents/MacOS/Chromium", "headless": false } };
+//   "browser": { "chromiumPath": "/Applications/Chromium.app/Contents/MacOS/Chromium", "headless": false },
+//   "connectors": { "syncEveryMs": 900000, "oauthPort": 8765 } };
 //   the env var wins over the file for the root. The root may go away (external drive): runs pause.
 //
 // Everything here is wiring; behaviour lives in loop.js, capability/, providers/, runs.js,
@@ -32,6 +33,8 @@ import { createAway } from './away.js';
 import { createMailSetup } from './mail/setup.js';
 import { createMailSystem } from './mail/system.js';
 import { createBrowserControl } from './browser/control.js';
+import { createConnectors } from './connectors/registry.js';
+import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { TOOLS } from './capability/tools.js';
 import { CREW_TOOLS } from './capability/crew.js';
 import { createRouter } from './router.js';
@@ -99,6 +102,11 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const browser = await createBrowserControl({ bus, env, workspaceRoot, config: config.browser || {}, log }).init();
   Object.assign(registry, browser.tools);
   toolContext.browser = browser;
+  const connectors = createConnectors({ bus, store, scheduler, gateQueue, env, keystorePath, config: config.connectors || {}, log });
+  for (const spec of CONNECTOR_SPECS) connectors.define(spec);
+  await connectors.init();
+  Object.assign(registry, connectors.tools);
+  toolContext.connectors = connectors;
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -122,6 +130,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     mailSetup,
     mail,
     browser,
+    connectors,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -154,6 +163,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   if (away.state().away) log.info(`  away since ${new Date(away.state().since).toISOString()}: ${away.state().actions} action(s) so far, ${away.state().waiting} waiting`);
   const mailStatus = await mailSetup.status();
   const mailSys = await mail.status();
+  const connectorRows = connectors.list();
+  log.info(`  connectors: ${connectorRows.length ? connectorRows.map((c) => `${c.label} ${c.connected ? `connected (${c.by})` : 'not connected'}`).join(' · ') : 'none defined yet'}`);
   const browserStatus = await browser.status();
   log.info(`  browser: ${browserStatus.chromium ? `${browserStatus.chromium} (${browserStatus.headless ? 'headless' : 'windowed'})` : 'not wired (no Chromium found; set browser.chromiumPath or CHROMIUM)'}`);
   log.info(`  mail: ${mailStatus.domain} · resend ${mailStatus.keys.resend ? 'key configured' : 'not wired (RESEND_API_KEY)'} · cloudflare ${mailStatus.keys.cloudflare ? 'token configured' : 'not wired (CLOUDFLARE_API_TOKEN)'} · webhook ${mailSys.keys.webhook ? 'secret configured' : 'not wired (RESEND_WEBHOOK_SECRET)'} · ${mailSys.addresses} address(es), ${mailSys.counts.messages} message(s), poll every ${mailSys.sync.pollMs / 1000}s`);
@@ -166,15 +177,16 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     runs.cancel();
     await runs.waitForIdle();
     await browser.close();
+    await connectors.close();
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, close };
 }
 
 function validateConfig(data) {
-  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } } } }, data);
+  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } }, connectors: { type: 'object', additionalProperties: true, properties: { syncEveryMs: { type: 'integer', minimum: 60000 }, oauthPort: { type: 'integer', minimum: 0, maximum: 65535 } } } } }, data);
 }
 
 async function loadOrDefault(file, validateFn, defaultFn, log, label) {

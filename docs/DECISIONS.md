@@ -611,3 +611,28 @@ text); the tool call blocks until the Superintendent hands the page back or the 
 has seen it and chose to return it, and the Ranger gets the note. `browser.read` never
 raises, so a Ranger can always look at where it is. The sandbox flag is passed only when
 the sidecar runs as root (containers, CI); on the owner's Mac Chromium keeps its sandbox.
+
+## D75. Connector credentials: the environment connects, the park asks the Gate
+
+A platform key set in the environment (STRIPE_API_KEY, say) connects at boot without a
+Gate item, exactly like the model providers' keys: the owner put it there. A key typed
+in the park, an OAuth sign-in, and a disconnect are Entrance Gate items in
+account_settings for the Superintendent, so the keystore changes only on an explicit
+approval and the evidence log (D59) records it. The key itself never appears in the item,
+only its last four characters.
+
+## D76. One OAuth sign-in per approval, tokens as one keystore entry, refresh before use
+
+Approving the connect item starts the PKCE flow and shows the authorize URL at the Peak;
+the local callback on 127.0.0.1 (a fixed port, registered with the platform) exchanges the
+code and stores `{ accessToken, refreshToken, expiresAt, scope }` as one JSON string under
+the connector's keystore name. An expired token is refreshed before any call and the entry
+rewritten; a token that cannot be refreshed asks for a new sign-in rather than failing
+silently inside a sync.
+
+## D77. Syncs are the only source of platform figures, and they keep their history
+
+Each connected platform has a scheduler job (15 minutes by default) and a manual sync;
+the sync writes what the platform answered into `connectors/<kind>.json` and emits the
+counts. Disconnecting removes the credential and the job but keeps the synced data: it is
+real history, and the park shows it as such ("not connected, last synced …").

@@ -15,6 +15,7 @@
 //   scheduler.json         last run / next run per scheduled job
 //   away.json              away mode: flag, since, counters, last digest
 //   mail-addresses.json    mail routing rules (station addresses, Ranger aliases)
+//   connectors/<kind>.json what a connector's last syncs brought in (phase 2 step 14)
 //   reflections/<id>.json  reflection documents (the Peak's history)
 //   runs/<runId>.json      one record per run: metadata + every event + final messages
 
@@ -92,6 +93,8 @@ export function createStore({ root, fs = fsp }) {
     loadAway: (fallback) => readJson(awayFile, fallback, { fs }),
     loadMailAddresses: (fallback) => readJson(mailAddressesFile, fallback, { fs }),
     saveMailAddresses: (rules) => writeJsonAtomic(mailAddressesFile, rules, { fs }),
+    loadConnector: (kind, fallback) => readJson(path.join(root, 'connectors', `${kind}.json`), fallback, { fs }),
+    saveConnector: (kind, data) => writeJsonAtomic(path.join(root, 'connectors', `${kind}.json`), data, { fs }),
     saveAway: (state) => writeJsonAtomic(awayFile, state, { fs }),
     saveScheduler: (state) => writeJsonAtomic(schedulerFile, state, { fs }),
     saveReflection: (doc) => {

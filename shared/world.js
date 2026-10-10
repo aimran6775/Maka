@@ -21,6 +21,9 @@ export const OBJECT_KINDS = deepFreeze({
   radio_tower: { label: 'Radio tower', grants: ['mail.search', 'mail.read', 'mail.draft', 'mail.send', 'mail.create_address'], hint: "Rangers in this zone can read their station's mail, draft and send replies, notifications and campaigns, and ask for a venture address; sends and new addresses follow the leash." },
   // Phase 2 step 13: a real Chromium per Ranger, every action under browser_control;
   // logins, one-time codes, captchas and payment pages are handed to the Superintendent.
+  // Phase 2 step 14: platform connectors (official APIs). The framework's own tools are
+  // research; each connector adds read tools and leashed write tools (steps 15–17).
+  park_store: { label: 'Park Store', grants: ['connector.status', 'connector.sync'], hint: 'Rangers in this zone use the commerce connectors (Stripe, Shopify, Etsy): read what the syncs brought in and refresh them; platform writes follow their leash.' },
   field_office: { label: 'Field office', grants: ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.download', 'browser.screenshot'], hint: 'Rangers in this zone drive a real browser with their own profile (open, read, click, type, upload, download, screenshot) under the browser_control leash; a login, code, captcha or payment page is handed to you.' },
 });
 

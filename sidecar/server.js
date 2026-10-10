@@ -37,6 +37,11 @@
 //   POST /api/mail/send        the Superintendent sends from a station address (policy: ceilings,
 //                              suppression; no leash, the owner is the principal) → the stored copy
 //   POST /api/mail/resend/webhook   Resend webhook (raw body, svix signature)
+//   GET  /api/connectors       one status row per connector (connected, last sync, summary)
+//   GET  /api/connectors/:kind the row plus the local data the syncs brought in
+//   POST /api/connectors/:kind/connect    { apiKey } or {} (OAuth) → a Gate item; 202
+//   POST /api/connectors/:kind/disconnect → a Gate item; 202
+//   POST /api/connectors/:kind/sync       sync now → { counts, ms }
 //   GET  /api/browser          chromium found?, headless, open sessions, pending handoffs
 //   GET  /api/browser/handoffs recent BROWSER HANDOFFs, oldest first
 //   POST /api/browser/handoff/:id/return   { notes? } the Superintendent hands the page back
@@ -188,7 +193,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -258,6 +263,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         away: away ? away.state() : null,
         mail: await mailStatus(),
         browser: browser ? await browser.status() : null,
+        connectors: connectors ? connectors.list() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -432,6 +438,31 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         if (err.status) throw new HttpError(err.status, err.message, err.code);
         if (['NO_KEY', 'NO_ZONE', 'NETWORK', 'BAD_RESPONSE', 'CLOUDFLARE'].includes(err.code) || /^HTTP_/.test(err.code || '')) throw new HttpError(502, err.message, err.code);
         throw err;
+      }
+    }
+    if (p === '/api/connectors' && method === 'GET') {
+      if (!connectors) throw new HttpError(404, 'no connectors');
+      return sendJson(res, 200, connectors.list());
+    }
+    if (p.startsWith('/api/connectors/')) {
+      if (!connectors) throw new HttpError(404, 'no connectors');
+      const [kind, action] = p.slice('/api/connectors/'.length).split('/').map(decodeURIComponent);
+      if (!action && method === 'GET') {
+        const status = connectors.status(kind);
+        if (!status) throw new HttpError(404, `no connector "${kind}"`);
+        return sendJson(res, 200, { ...status, data: connectors.data(kind) });
+      }
+      if (method === 'POST' && ['connect', 'disconnect', 'sync'].includes(action)) {
+        const body = await readJsonBody(req);
+        try {
+          if (action === 'connect') return sendJson(res, 202, await connectors.connect(kind, body));
+          if (action === 'disconnect') return sendJson(res, 202, await connectors.disconnect(kind));
+          return sendJson(res, 200, await connectors.sync(kind, 'manual'));
+        } catch (err) {
+          if (err.status) throw new HttpError(err.status, err.message, err.code);
+          if (['NETWORK', 'BAD_RESPONSE'].includes(err.code) || /^HTTP_/.test(err.code || '')) throw new HttpError(502, err.message, err.code);
+          throw err;
+        }
       }
     }
     if (p === '/api/browser' && method === 'GET') {

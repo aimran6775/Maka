@@ -28,6 +28,8 @@ export function initialState() {
     mailDns: [], // mail.dns payloads this session, oldest first
     mailMessages: [], // mail.message payloads this session, oldest first (bounded)
     mailEvents: [], // mail.event payloads this session, oldest first (bounded)
+    connectors: [], // one row per connector from the snapshot; connector.* events patch them
+    connectorEvents: [], // connector.sync / connector.error payloads this session, oldest first (bounded)
     browser: null, // { chromium, wired, headless, sessions, pending } from the snapshot
     browserHandoffs: {}, // handoffId -> latest browser.handoff payload (+ ts)
     browserHandoffOrder: [], // handoffIds, oldest first
@@ -94,6 +96,7 @@ export function applySnapshot(state, snap) {
   next.away = snap.away || null;
   next.mail = snap.mail || null;
   next.browser = snap.browser || null;
+  next.connectors = Array.isArray(snap.connectors) ? snap.connectors : [];
   if (snap.browser && Array.isArray(snap.browser.pending)) {
     const handoffs = { ...next.browserHandoffs };
     const order = [...next.browserHandoffOrder];
@@ -369,6 +372,21 @@ export function applyEvent(state, event) {
     }
     case 'mail.dns': {
       next.mailDns = [...next.mailDns, { ...p, ts: event.ts }];
+      break;
+    }
+    case 'connector.sync':
+    case 'connector.error':
+    case 'connector.status': {
+      next.connectorEvents = [...next.connectorEvents, { type: event.type, ...p, ts: event.ts }].slice(-200);
+      next.connectors = next.connectors.map((c) => {
+        if (c.kind !== p.connector) return c;
+        if (event.type === 'connector.sync') {
+          if (p.status === 'started') return { ...c, syncing: true };
+          return { ...c, syncing: false, lastSync: { at: event.ts, ok: p.status === 'done', reason: p.reason || '', counts: p.counts || {}, error: p.message || null, ms: p.ms || 0 }, syncedAt: p.status === 'done' ? event.ts : c.syncedAt, connected: p.status === 'done' ? true : c.connected };
+        }
+        if (event.type === 'connector.error') return { ...c, lastError: { at: event.ts, stage: p.stage, message: p.message, code: p.code || '' } };
+        return { ...c, connected: p.connected, auth: p.auth || c.auth, by: p.by || c.by, authorizeUrl: p.change === 'authorizing' ? p.authorizeUrl || null : null, pendingItemId: null };
+      });
       break;
     }
     case 'browser.handoff': {

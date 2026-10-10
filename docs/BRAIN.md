@@ -40,6 +40,15 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 14 done: the connector framework. One registry defines each platform as data
+plus two functions (a client and a sync); a platform's environment variable connects it
+at boot, and a key or an OAuth sign-in given in the park is an Entrance Gate item the
+Superintendent approves before anything lands in the 0600 keystore. Connected platforms
+sync on the scheduler into a local store the park reads; every sync and failure is an
+event, and the figures shown anywhere come only from those syncs. A Park Store placed in
+a camp grants the framework's own tools; the platforms (Stripe, Shopify, Etsy, the ad
+networks) are the next steps, so the Peak's connector list is empty and says so.
+
 Phase 2 step 13 done: the browser. A Field office placed in a camp grants its Rangers a
 real Chromium driven over the DevTools protocol with core modules only: open, read (text
 and accessibility tree), click, type, upload (workspace files only), download (into the
