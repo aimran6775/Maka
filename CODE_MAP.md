@@ -28,6 +28,7 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 | Path | What it is |
 | --- | --- |
 | `shared/schema.js` | Tiny JSON-schema-like validator: `validate`, `assertValid`, `deepFreeze`. Supports type, properties/required/additionalProperties, items, enum, const, min/max for strings, numbers and arrays, anyOf. Nothing else. |
+| `shared/world.js` | Theme-agnostic world data: `OBJECT_KINDS` (bookshelf → `fs.read`, workbench → `fs.write`, window → `web.fetch`), `LAYOUT_SCHEMA`, `defaultLayout()` (one room "Atelier", one agent "hero"), `grantsFor(layout, agentId)`. |
 | `shared/events.js` | The frozen, additive-only event contract. `EVENT_TYPES`, `PAYLOAD_SCHEMAS`, `ENVELOPE_SCHEMA`, `validateEvent`, `assertEvent`, `makeEvent`. Eleven events: `agent.run.start`, `agent.token`, `agent.tool_call`, `agent.tool_result`, `agent.run.end`, `agent.run.error`, `cost.estimate`, `permission.prompt`, `permission.response`, `object.place`, `object.reclaim`. |
 
 ## `sidecar/` — the one Node process
@@ -43,8 +44,10 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 | `sidecar/providers/keys.js` | Key resolution: env var first, then `.maka/keystore.json` which must be mode 0600 (refused otherwise). `setKey` writes it 0600. Keys never leave this module except into a request header. |
 | `sidecar/providers/pricing.js` | List prices per million tokens for known Anthropic models. Unknown model → `null` → unreconciled cost. |
 
-**Planned (steps 5 and 6):** `capability/` (layout → tool allowlist, three tools),
-`index.js` and the store (HTTP + SSE, atomic persistence).
+| `sidecar/capability/tools.js` | The three phase 1 tools. `fs.read` and `fs.write` are sandboxed to the agent workspace via real-path checks (no `..`, no symlink escapes), with size caps and visible truncation notes. `web.fetch` is GET-only http(s) with a timeout, size cap and HTML-to-text. `fs.write` is marked `confirm: true`. |
+| `sidecar/capability/gate.js` | `createToolGate(...)` turns the current layout into the `tools` object the loop uses: `definitions()` lists only granted tools; `execute()` re-checks the grant at call time, validates input, asks the user for confirmation when the tool needs it, and runs it. |
+
+**Planned (step 6):** `index.js` and the store (HTTP + SSE, atomic persistence).
 
 ## `frontend/` — **planned (step 7)**
 
@@ -60,6 +63,7 @@ Static vanilla JS canvas world and windowed UI, served by the sidecar.
 | `test/events.test.js` | Every event type validates, round-trips JSON, rejects bad shapes; contract is frozen. |
 | `test/loop.test.js` | Loop invariants against the fake provider: tool pairing, index accumulation, bad JSON, guards, cancellation at three points, provider failure. |
 | `test/providers.test.js` | SSE parser, both adapters against recorded streams (request shape, chunk normalization, errors, abort), both adapters driving the real loop, keystore permissions, pricing, registry. |
+| `test/capability.test.js` | Layout → grants, sandbox escapes (dotdot, absolute, symlinks), read/write/fetch behaviour, gate refusal and confirmation flow, gate driving the real loop. |
 | `test/helpers/fake-provider.js` | Scripted provider, fake clock, event recorder, fake tool set. Test-only. |
 | `test/helpers/fake-fetch.js` | `fetch` stand-in that streams SSE text in small chunks. Test-only. |
 

@@ -63,3 +63,22 @@ verified against the live catalog in this environment; the UI lets the user set 
 The run-end reason enum is frozen at four values. A safety refusal from the provider is an
 HTTP 200 with no tool calls, so the loop ends the run normally with whatever text came
 back. The stop reason is not surfaced as a distinct state in phase 1.
+
+## D11. Permission prompts are per-call confirmation for side-effecting tools
+
+The brief lists `permission.prompt` / `permission.response` without saying what triggers
+them. Placement is the grant (layout is the org); the prompt is a second, per-call check
+for tools that change the world. In phase 1 only `fs.write` has `confirm: true`. `fs.read`
+and `web.fetch` run without a prompt once granted. A prompt with no answer is a denial.
+
+## D12. Workshop object kinds: bookshelf, workbench, window
+
+One kind per tool so the grant is legible on the canvas: bookshelf → `fs.read`,
+workbench → `fs.write`, window → `web.fetch`. The mapping is data in `shared/world.js`;
+sprites are theme data in the frontend.
+
+## D13. `web.fetch` allows any http(s) host
+
+Maka is local-first and the user is the only principal, so there is no SSRF boundary to
+defend in phase 1. Non-http schemes are refused, the method is GET only, and responses are
+capped and timed out.

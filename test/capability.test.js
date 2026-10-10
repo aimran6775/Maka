@@ -1,0 +1,204 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
+import { promises as fsp } from 'node:fs';
+import { validate } from '../shared/schema.js';
+import { OBJECT_KINDS, LAYOUT_SCHEMA, defaultLayout, grantsFor, tileInRoom } from '../shared/world.js';
+import { TOOLS, TOOL_NAMES, resolveInWorkspace, htmlToText, READ_LIMIT_BYTES, inputProblem } from '../sidecar/capability/tools.js';
+import { createToolGate } from '../sidecar/capability/gate.js';
+import { runLoop } from '../sidecar/loop.js';
+import { fakeProvider, fakeClock, recorder, text, toolCall, end } from './helpers/fake-provider.js';
+
+async function tmpWorkspace() {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-ws-'));
+  return { dir, cleanup: () => fsp.rm(dir, { recursive: true, force: true }) };
+}
+
+function layoutWith(kinds) {
+  const layout = defaultLayout();
+  layout.objects = kinds.map((kind, i) => ({ id: `o${i}`, kind, roomId: 'atelier', x: 2 + i, y: 2 }));
+  return layout;
+}
+
+test('world: default layout validates; grants derive from objects in the agent room only', () => {
+  const layout = defaultLayout();
+  assert.equal(validate(LAYOUT_SCHEMA, layout).ok, true);
+  assert.deepEqual(grantsFor(layout, 'hero'), []);
+  assert.deepEqual(grantsFor(layoutWith(['bookshelf', 'window', 'bookshelf']), 'hero'), ['fs.read', 'web.fetch']);
+  const other = layoutWith(['workbench']);
+  other.rooms.push({ id: 'annex', name: 'Annex', x: 20, y: 1, w: 4, h: 4 });
+  other.objects[0].roomId = 'annex';
+  assert.deepEqual(grantsFor(other, 'hero'), []);
+  assert.deepEqual(grantsFor(other, 'nobody'), []);
+  for (const kind of Object.values(OBJECT_KINDS)) assert.ok(TOOL_NAMES.includes(kind.grants), `${kind.grants} exists`);
+  assert.equal(tileInRoom(layout.rooms[0], 1, 1), true);
+  assert.equal(tileInRoom(layout.rooms[0], 13, 1), false);
+  const bad = layoutWith(['piano']);
+  assert.equal(validate(LAYOUT_SCHEMA, bad).ok, false);
+});
+
+test('sandbox: dotdot, absolute and symlink escapes are refused; inside paths resolve', async () => {
+  const { dir, cleanup } = await tmpWorkspace();
+  try {
+    await fsp.mkdir(path.join(dir, 'sub'));
+    await fsp.writeFile(path.join(dir, 'sub', 'ok.txt'), 'fine');
+    const outside = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-outside-'));
+    await fsp.writeFile(path.join(outside, 'secret.txt'), 'nope');
+    await fsp.symlink(outside, path.join(dir, 'link'));
+    await fsp.symlink(path.join(outside, 'secret.txt'), path.join(dir, 'filelink'));
+
+    assert.equal(await resolveInWorkspace(dir, 'sub/ok.txt'), path.join(await fsp.realpath(dir), 'sub', 'ok.txt'));
+    assert.equal(await resolveInWorkspace(dir, './new/deep/file.md'), path.join(await fsp.realpath(dir), 'new', 'deep', 'file.md'));
+    await assert.rejects(resolveInWorkspace(dir, '../x'), /escapes/);
+    await assert.rejects(resolveInWorkspace(dir, 'sub/../../x'), /escapes/);
+    await assert.rejects(resolveInWorkspace(dir, '/etc/passwd'), /escapes/);
+    await assert.rejects(resolveInWorkspace(dir, 'link/secret.txt'), /escapes the workspace via a link/);
+    await assert.rejects(resolveInWorkspace(dir, 'link/newfile.txt'), /via a link/);
+    await assert.rejects(resolveInWorkspace(dir, 'filelink'), /via a link/);
+    await assert.rejects(resolveInWorkspace(dir, ''), /required/);
+    await assert.rejects(resolveInWorkspace(dir, 'a\0b'), /NUL/);
+    await fsp.rm(outside, { recursive: true, force: true });
+  } finally {
+    await cleanup();
+  }
+});
+
+test('fs.read and fs.write: round trip, truncation, size limit, directories', async () => {
+  const { dir, cleanup } = await tmpWorkspace();
+  try {
+    const ctx = { workspaceDir: dir };
+    const w = await TOOLS['fs.write'].run({ path: 'outbox/report.md', content: '# hi\n' }, ctx);
+    assert.equal(w.ok, true);
+    assert.match(w.output, /wrote 5 bytes to outbox\/report.md/);
+    assert.equal(await fsp.readFile(path.join(dir, 'outbox', 'report.md'), 'utf8'), '# hi\n');
+    const r = await TOOLS['fs.read'].run({ path: 'outbox/report.md' }, ctx);
+    assert.deepEqual(r, { ok: true, output: '# hi\n' });
+    assert.equal((await fsp.readdir(path.join(dir, 'outbox'))).length, 1, 'no temp file left behind');
+
+    await fsp.writeFile(path.join(dir, 'big.txt'), 'x'.repeat(READ_LIMIT_BYTES + 10));
+    const big = await TOOLS['fs.read'].run({ path: 'big.txt' }, ctx);
+    assert.equal(big.ok, true);
+    assert.match(big.output, /\[truncated: showing 204800 of 204810 bytes\]$/);
+    assert.equal(big.output.length, READ_LIMIT_BYTES + '\n[truncated: showing 204800 of 204810 bytes]'.length);
+
+    const dirRead = await TOOLS['fs.read'].run({ path: 'outbox' }, ctx);
+    assert.equal(dirRead.ok, false);
+    await assert.rejects(TOOLS['fs.read'].run({ path: 'missing.txt' }, ctx), /ENOENT/);
+    const tooBig = await TOOLS['fs.write'].run({ path: 'x', content: 'y'.repeat(1024 * 1024 + 1) }, ctx);
+    assert.equal(tooBig.ok, false);
+    assert.match(tooBig.error, /limit/);
+    assert.equal(inputProblem(TOOLS['fs.write'], { path: 'a' }), '$.content: required');
+    assert.equal(inputProblem(TOOLS['fs.read'], { path: 'a', extra: 1 }), '$.extra: unexpected property');
+    assert.equal(inputProblem(TOOLS['fs.read'], { path: 'a' }), null);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('web.fetch: scheme check, html to text, truncation, timeout, non-2xx, cancel', async () => {
+  const calls = [];
+  const fetch = async (url, init) => {
+    calls.push({ url, init });
+    if (url.startsWith('https://slow.test')) {
+      return new Promise((_, reject) => init.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; reject(e); }));
+    }
+    if (url.startsWith('https://big.test')) return new Response('a'.repeat(600 * 1024), { headers: { 'content-type': 'text/plain' } });
+    if (url.startsWith('https://missing.test')) return new Response('<h1>Not found</h1>', { status: 404, headers: { 'content-type': 'text/html' } });
+    return new Response('<html><head><style>x{}</style><script>bad()</script></head><body><h1>Title</h1><p>Hello &amp; welcome</p></body></html>', { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  };
+  const ok = await TOOLS['web.fetch'].run({ url: 'https://example.test/page' }, { fetch });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.output, 'HTTP 200 text/html; charset=utf-8\n\nTitle\nHello & welcome');
+  assert.equal(calls[0].init.method, 'GET');
+  const bad = await TOOLS['web.fetch'].run({ url: 'file:///etc/passwd' }, { fetch });
+  assert.equal(bad.ok, false);
+  assert.match(bad.error, /only http and https/);
+  assert.equal((await TOOLS['web.fetch'].run({ url: 'not a url' }, { fetch })).ok, false);
+  const big = await TOOLS['web.fetch'].run({ url: 'https://big.test/' }, { fetch });
+  assert.match(big.output, /\[truncated: showing 512000 of 614400 bytes\]$/);
+  const slow = await TOOLS['web.fetch'].run({ url: 'https://slow.test/' }, { fetch, fetchTimeoutMs: 20 });
+  assert.equal(slow.ok, false);
+  assert.match(slow.error, /timed out after 20 ms/);
+  const missing = await TOOLS['web.fetch'].run({ url: 'https://missing.test/' }, { fetch });
+  assert.equal(missing.ok, false);
+  assert.match(missing.error, /HTTP 404/);
+  const ac = new AbortController();
+  const pending = TOOLS['web.fetch'].run({ url: 'https://slow.test/' }, { fetch, signal: ac.signal, fetchTimeoutMs: 5000 });
+  ac.abort();
+  assert.deepEqual(await pending, { ok: false, error: 'cancelled' });
+  assert.equal(htmlToText('<p>a</p><p>b</p>'), 'a\nb');
+});
+
+test('gate: definitions follow the layout, ungranted tools are refused at call time, confirm flow', async () => {
+  const { dir, cleanup } = await tmpWorkspace();
+  try {
+    let layout = layoutWith(['bookshelf']);
+    const asks = [];
+    let answer = true;
+    const gate = createToolGate({ getLayout: () => layout, agentId: 'hero', workspaceDir: dir, ask: async (q) => { asks.push(q); return answer; } });
+    assert.deepEqual(gate.definitions().map((d) => d.name), ['fs.read']);
+    assert.ok(gate.definitions()[0].inputSchema.properties.path);
+
+    const denied = await gate.execute({ id: 'c1', name: 'fs.write', input: { path: 'a.txt', content: 'x' } }, { runId: 'r' });
+    assert.equal(denied.ok, false);
+    assert.match(denied.error, /not granted/);
+    assert.equal(asks.length, 0, 'no prompt for an ungranted tool');
+
+    layout = layoutWith(['bookshelf', 'workbench']);
+    assert.deepEqual(gate.definitions().map((d) => d.name), ['fs.read', 'fs.write']);
+    const written = await gate.execute({ id: 'c2', name: 'fs.write', input: { path: 'a.txt', content: 'x' } }, { runId: 'r' });
+    assert.equal(written.ok, true);
+    assert.deepEqual(asks[0], { runId: 'r', callId: 'c2', tool: 'fs.write', reason: TOOLS['fs.write'].description, input: { path: 'a.txt', content: 'x' } });
+
+    answer = false;
+    const refused = await gate.execute({ id: 'c3', name: 'fs.write', input: { path: 'b.txt', content: 'y' } }, { runId: 'r' });
+    assert.equal(refused.ok, false);
+    assert.match(refused.error, /denied by the user/);
+    await assert.rejects(fsp.stat(path.join(dir, 'b.txt')));
+
+    const read = await gate.execute({ id: 'c4', name: 'fs.read', input: { path: 'a.txt' } }, { runId: 'r' });
+    assert.deepEqual(read, { ok: true, output: 'x' });
+    assert.equal(asks.length, 2, 'fs.read never prompts');
+
+    const invalid = await gate.execute({ id: 'c5', name: 'fs.read', input: { nope: 1 } }, { runId: 'r' });
+    assert.match(invalid.error, /invalid input for fs.read/);
+    const unknown = await gate.execute({ id: 'c6', name: 'teleport', input: {} }, { runId: 'r' });
+    assert.match(unknown.error, /unknown tool/);
+    const escape = await gate.execute({ id: 'c7', name: 'fs.read', input: { path: '../../etc/passwd' } }, { runId: 'r' });
+    assert.equal(escape.ok, false);
+    assert.match(escape.error, /escapes/);
+
+    const noAsk = createToolGate({ getLayout: () => layout, agentId: 'hero', workspaceDir: dir });
+    const noChannel = await noAsk.execute({ id: 'c8', name: 'fs.write', input: { path: 'c.txt', content: 'z' } }, {});
+    assert.match(noChannel.error, /no prompt channel/);
+    assert.throws(() => createToolGate({ agentId: 'x', workspaceDir: dir }), TypeError);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('gate through the loop: the model only sees granted tools and an ungranted call still gets a result', async () => {
+  const { dir, cleanup } = await tmpWorkspace();
+  try {
+    await fsp.writeFile(path.join(dir, 'notes.txt'), 'remember the milk');
+    const layout = layoutWith(['bookshelf']);
+    const gate = createToolGate({ getLayout: () => layout, agentId: 'hero', workspaceDir: dir });
+    const provider = fakeProvider([
+      [...toolCall('c1', 'fs.read', { path: 'notes.txt' }, 0), ...toolCall('c2', 'fs.write', { path: 'out.txt', content: 'x' }, 1), end('tool_use')],
+      [text('done'), end()],
+    ]);
+    const rec = recorder();
+    const out = await runLoop({ runId: 'r', agentId: 'hero', provider, model: 'm', prompt: 'go', tools: gate, emit: rec.emit, clock: fakeClock() });
+    assert.equal(out.reason, 'completed');
+    assert.deepEqual(rec.ofType('agent.run.start')[0].payload.tools, ['fs.read']);
+    assert.deepEqual(provider.requests[0].tools.map((t) => t.name), ['fs.read']);
+    const results = rec.ofType('agent.tool_result').map((e) => e.payload);
+    assert.equal(results[0].ok, true);
+    assert.equal(results[0].output, 'remember the milk');
+    assert.equal(results[1].ok, false);
+    assert.match(results[1].error, /not granted/);
+  } finally {
+    await cleanup();
+  }
+});
