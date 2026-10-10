@@ -26,6 +26,8 @@ const SAMPLES = {
   'work.done': { workItemId: 'w1', fromAgentId: 'chief', toAgentId: 'ranger', runId: 'r1', status: 'done', reason: 'completed', deliverables: ['outbox/brief.md'], summary: 'wrote the brief', spentUsd: 0 },
   'agent.run.queued': { runId: 'r2', agentId: 'ranger', position: 0, workItemId: 'w1' },
   'plan.updated': { missionId: 'mission-1', planId: 'plan-1', version: 2, change: 'submitted', status: 'active', summary: 'two ventures', by: 'chief-ranger', runId: 'r1', ventures: [{ id: 'lantern-co', name: 'Lantern Co', budgetUsd: 3, taskCount: 4, summary: 'lanterns' }] },
+  'budget.threshold': { scope: 'venture', id: 'lantern-co', budgetUsd: 3, spentUsd: 2.5, threshold: 0.8, fraction: 0.8333 },
+  'reflection.posted': { reflectionId: 'reflection-2026-10-10-abc123', reason: 'scheduled', status: 'posted', missionId: 'mission-1', provider: 'anthropic', model: 'claude-opus-5-5', usd: 0.02, reconciled: true, portfolio: 'On track.', ventures: [{ id: 'lantern-co', planStillRight: true, spentUsd: 2.5, budgetUsd: 3, itemsDone: 2, itemsFailed: 0 }], briefings: ['research'], path: 'chief-ranger/outbox/reflection.md' },
   'crew.agent': { agentId: 'scout-1', change: 'created', agent: { id: 'scout-1', name: 'Scout', roomId: 'research', x: 1, y: 1, role: 'ranger' }, by: 'chief-ranger' },
   'judge.verdict': { agentId: 'ranger', runId: 'r1', turn: 2, verdict: 'revise', scope: 'action', provider: 'anthropic', model: 'claude-sonnet-5-5', usd: 0.004, reconciled: true, notes: 'quote first', tools: ['pay.supplier'] },
 };
@@ -95,6 +97,9 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('judge.verdict', { ...SAMPLES['judge.verdict'], verdict: 'shrug' });
   bad('crew.agent', { agentId: 'x', change: 'cloned' });
   bad('plan.updated', { missionId: 'm', change: 'dreamt' });
+  bad('budget.threshold', { scope: 'galaxy', id: 'x', budgetUsd: 1, spentUsd: 1, threshold: 1 });
+  bad('reflection.posted', { reflectionId: 'r', reason: 'x', status: 'dreamt' });
+  assert.equal(validate_('reflection.posted', { reflectionId: 'r', reason: 'manual', status: 'skipped', skipReason: 'cap', usd: null, reconciled: false }).ok, true);
   bad('plan.updated', { missionId: 'm', change: 'submitted', ventures: [{ id: 'v' }] });
   bad('work.done', { ...SAMPLES['work.done'], status: 'maybe' });
   bad('agent.run.queued', { runId: 'r', agentId: 'a', position: -1 });

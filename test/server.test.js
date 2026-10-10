@@ -475,6 +475,37 @@ test('mission over HTTP: the Superintendent briefs the Chief, the plan lands in 
   }
 });
 
+test('reflection over HTTP: reflect now posts a document, lists it, and the state shows the schedule', async () => {
+  const reflectionJson = { portfolio: 'Nothing has run yet; 0 items done.', ventures: [], briefings: [{ zoneId: 'ranger-station', text: 'Start with 1 scouting task.' }] };
+  const judgeProvider = async (name, opts) => ({ provider: fakeProvider([[text(JSON.stringify(reflectionJson)), end('end_turn', { inputTokens: 200, outputTokens: 50 })]], { name }), model: opts.model, price: PRICE });
+  const srv = await startTestServer({ makeProvider: scripted([]), judgeProvider, withChief: true });
+  try {
+    const before = await srv.get('/api/state');
+    assert.equal(before.body.reflection.latest, null);
+    assert.equal(before.body.reflection.schedule.daily, '07:00');
+    assert.ok(before.body.reflection.job.nextRunAt > 0);
+    assert.deepEqual((await srv.get('/api/reflections')).body, []);
+    const stream = await srv.sse();
+    assert.equal((await srv.post('/api/reflect', { reason: 'test' })).status, 202);
+    const posted = await stream.waitFor((e) => e.type === 'reflection.posted');
+    assert.equal(posted.payload.status, 'posted');
+    assert.equal(posted.payload.reason, 'test');
+    assert.deepEqual(posted.payload.briefings, ['ranger-station']);
+    assert.equal(posted.payload.model, 'claude-opus-5-5', 'the reflect step model');
+    const list = await srv.get('/api/reflections');
+    assert.equal(list.body.length, 1);
+    const doc = await srv.get(`/api/reflections/${posted.payload.reflectionId}`);
+    assert.equal(doc.body.portfolio, reflectionJson.portfolio);
+    assert.equal((await srv.get('/api/reflections/nope')).status, 404);
+    assert.equal((await srv.get('/api/state')).body.reflection.latest.id, posted.payload.reflectionId);
+    assert.ok((await fsp.stat(path.join(srv.workspaceRoot, '_stations', 'ranger-station', 'notes'))).isDirectory());
+    assert.ok(stream.events.some((e) => e.type === 'cost.estimate' && e.payload.tier === 'judge' && e.payload.runId === posted.payload.reflectionId));
+    stream.close();
+  } finally {
+    await srv.close();
+  }
+});
+
 test('provider failure becomes agent.run.error and the run record says so; NO_KEY is a 400 before any event', async () => {
   const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([() => { const e = new Error('upstream 500'); e.code = 'HTTP_500'; throw e; }]), model: 'm', price: null }) });
   try {

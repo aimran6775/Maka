@@ -254,6 +254,34 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     runId: str,
     ventures: { type: 'array', items: { type: 'object', required: ['id', 'name'], additionalProperties: false, properties: { id: nonEmpty, name: nonEmpty, budgetUsd: num0, taskCount: int0, summary: str } } },
   }),
+  // Added v1 (phase 2 step 6): spend crossed a budget threshold. `scope` says whose budget
+  // (a venture's model spend, the mission's, or the judge's daily cap); `fraction` is
+  // spent / budget at the moment of the crossing; emitted once per threshold per scope.
+  'budget.threshold': payload(['scope', 'id', 'budgetUsd', 'spentUsd', 'threshold'], {
+    scope: { type: 'string', enum: ['venture', 'mission', 'judge'] },
+    id: nonEmpty,
+    budgetUsd: num0,
+    spentUsd: num0,
+    threshold: { type: 'number', minimum: 0 },
+    fraction: num0,
+  }),
+  // Added v1 (phase 2 step 6): the Chief Ranger's reflection ran (or could not). A posted
+  // reflection names the document, the ventures it covered and the stations briefed.
+  'reflection.posted': payload(['reflectionId', 'reason', 'status'], {
+    reflectionId: nonEmpty,
+    reason: str,
+    status: { type: 'string', enum: ['posted', 'skipped'] },
+    skipReason: str,
+    missionId: str,
+    provider: str,
+    model: str,
+    usd: { type: ['number', 'null'], minimum: 0 },
+    reconciled: bool,
+    portfolio: str,
+    ventures: { type: 'array', items: { type: 'object', required: ['id'], additionalProperties: false, properties: { id: nonEmpty, planStillRight: bool, spentUsd: num0, budgetUsd: num0, itemsDone: int0, itemsFailed: int0 } } },
+    briefings: { type: 'array', items: nonEmpty },
+    path: str,
+  }),
   // Added v1 (phase 2 step 3): an agent record was created, changed or removed. `agent` is
   // the layout record as it now stands (absent on 'removed').
   'crew.agent': payload(['agentId', 'change'], {

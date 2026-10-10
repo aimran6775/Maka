@@ -11,7 +11,7 @@ import { createLayoutState } from '../sidecar/server.js';
 import { createAgents } from '../sidecar/agents.js';
 import { CREW_TOOLS } from '../sidecar/capability/crew.js';
 import { defaultLayout, roleGrants } from '../shared/world.js';
-import { fakeProvider, fakeClock, text, toolCall, end } from './helpers/fake-provider.js';
+import { fakeProvider, fakeClock, text, toolCall, end, waitUntil } from './helpers/fake-provider.js';
 
 async function setup({ maxConcurrent = 2, scripts = {} } = {}) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-trails-'));
@@ -64,13 +64,13 @@ test('run manager: one run per agent, global cap, FIFO start, cancel of queued a
     assert.equal(h.events.filter((e) => e.type === 'agent.run.queued').length, 2);
     assert.equal((await h.store.loadRun(r2.runId)).status, 'queued');
     assert.equal(h.runs.cancel(r2.runId), true, 'cancel a queued run');
-    await new Promise((r) => setTimeout(r, 10));
+    await waitUntil(() => h.events.some((e) => e.type === 'agent.run.end' && e.payload.runId === r2.runId));
     assert.equal(h.events.at(-1).type, 'agent.run.end');
     assert.equal(h.events.at(-1).payload.runId, r2.runId);
     assert.equal(h.runs.queued().length, 1);
     holds.forEach((r) => r());
     await r1.done;
-    await new Promise((r) => setTimeout(r, 10));
+    await waitUntil(() => h.events.some((e) => e.type === 'agent.run.start' && e.payload.runId === r4.runId));
     assert.ok(h.runs.active().some((r) => r.runId === r4.runId) || h.events.some((e) => e.type === 'agent.run.start' && e.payload.runId === r4.runId), 'the queued jr run started when a slot freed');
     holds.splice(0).forEach((r) => r());
     await h.runs.waitForIdle();
@@ -126,8 +126,7 @@ test('trails: delegation rules, briefs, work.handoff → run → work.done with 
     assert.match(start.payload.prompt, /Deadline: Friday/);
     assert.deepEqual(h.trails.inTransit().map((it) => it.id), [item.id]);
     // Allow the write (permission prompt) so the deliverable lands.
-    await new Promise((r) => setTimeout(r, 5));
-    const prompt = h.events.find((e) => e.type === 'permission.prompt' && e.payload.runId === item.runId);
+    const prompt = await waitUntil(() => h.events.find((e) => e.type === 'permission.prompt' && e.payload.runId === item.runId));
     h.runs.answer({ promptId: prompt.payload.promptId, runId: item.runId, allow: true });
     await h.runs.waitForIdle();
     const done = h.events.find((e) => e.type === 'work.done');
@@ -145,8 +144,7 @@ test('trails: delegation rules, briefs, work.handoff → run → work.done with 
     assert.equal(out.status, 'running');
     const refused = await CREW_TOOLS.delegate.run({ toAgentId: 'mark', brief: 'x' }, ctx('jr'));
     assert.match(refused.error, /cannot delegate/);
-    await new Promise((r) => setTimeout(r, 5));
-    const prompt2 = h.events.find((e) => e.type === 'permission.prompt' && e.payload.runId === out.runId);
+    const prompt2 = await waitUntil(() => h.events.find((e) => e.type === 'permission.prompt' && e.payload.runId === out.runId));
     h.runs.answer({ promptId: prompt2.payload.promptId, runId: out.runId, allow: false });
     await h.runs.waitForIdle();
     const mine = JSON.parse((await CREW_TOOLS['work.check'].run({}, ctx('mark'))).output);

@@ -112,6 +112,9 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     const m = s.mission || {};
     const mission = m.mission || null;
     const plan = m.plan || null;
+    const refl = s.reflection || {};
+    const latest = refl.latest || null;
+    const alerts = s.budgetAlerts.slice(-5).reverse();
     return [
       el('div', { class: 'muted small', text: 'The control centre: the Chief Ranger\'s mission and plan, the Gate queue, spend. Connector ledgers and the reflection cycle arrive in later steps.' }),
       row('mission', mission ? `${mission.status}${mission.reason ? ` (${mission.reason})` : ''} · ${(mission.text || '').slice(0, 160)}` : 'none yet: brief the Chief below'),
@@ -119,6 +122,12 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       row('ventures', plan && plan.ventures && plan.ventures.length ? plan.ventures.map((v) => `${v.name} ($${(v.budgetUsd || 0).toFixed(2)}, ${v.taskCount ?? (v.tasks ? v.tasks.length : 0)} task(s))`).join('; ') : 'no ventures yet'),
       plan && plan.needsSuperintendent && plan.needsSuperintendent.length ? row('needs you', plan.needsSuperintendent.join('; ')) : null,
       missionForm,
+      row('reflection', latest ? `${latest.status}${latest.skipReason ? ` (${latest.skipReason})` : ''} · ${new Date(latest.at).toLocaleString()} · ${latest.reason}` : 'none yet'),
+      latest && latest.portfolio ? el('div', { class: 'small', text: latest.portfolio.slice(0, 400) }) : null,
+      latest && latest.ventures && latest.ventures.length ? row('ventures', latest.ventures.map((v) => `${v.id}: plan ${v.planStillRight === false ? 'needs revision' : 'still right'}${v.morale ? ` · ${v.morale.slice(0, 80)}` : ''}`).join('; ')) : null,
+      row('next reflection', refl.job && refl.job.nextRunAt ? `${new Date(refl.job.nextRunAt).toLocaleString()} (daily at ${refl.schedule && refl.schedule.daily ? refl.schedule.daily : '?'})` : 'not scheduled'),
+      el('div', { class: 'row' }, el('button', { class: 'btn', text: 'Reflect now', onclick: async () => { const r = await api.post('/api/reflect', { reason: 'manual' }); missionNotice.textContent = r.ok ? 'Reflection started; it posts here when done.' : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } })),
+      alerts.length ? row('budget', alerts.map((a) => `${a.scope} ${a.id}: ${(a.fraction * 100).toFixed(0)} % ($${a.spentUsd.toFixed(2)} of $${a.budgetUsd.toFixed(2)})`).join('; ')) : null,
       row('gate queue', `${pendingGate(s).length} waiting`),
       row('judge today', s.judge ? `${fmtUsd(s.judge.today.usd)} of $${s.judge.caps.judgeUsdPerDay} cap · ${s.judge.today.calls} call(s) · ${s.judge.provider}/${s.judge.model || 'default'}` : 'no judge wired'),
       row('spend', `${fmtUsd(s.spend.totalUsd)} reconciled${s.spend.unreconciledTurns ? ` · ${s.spend.unreconciledTurns} unpriced turn(s)` : ''}`),

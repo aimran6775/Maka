@@ -12,6 +12,8 @@ import { createJudge } from '../../sidecar/judge.js';
 import { createAgents } from '../../sidecar/agents.js';
 import { createTrails } from '../../sidecar/trails.js';
 import { createChief } from '../../sidecar/chief.js';
+import { createScheduler } from '../../sidecar/scheduler.js';
+import { createReflect } from '../../sidecar/reflect.js';
 import { TOOLS } from '../../sidecar/capability/tools.js';
 import { CREW_TOOLS } from '../../sidecar/capability/crew.js';
 import { createRouter, defaultPolicy } from '../../sidecar/router.js';
@@ -55,6 +57,8 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   toolContext.trails = trails;
   const chief = await createChief({ bus, store, runs, agents, trails, ledger, router: createRouter(policy || defaultPolicy()), getLayout: layoutState.get, clock, workspaceRoot, log: { error() {} } }).init();
   Object.assign(registry, chief.tools);
+  const scheduler = await createScheduler({ store, clock, tickMs: 60_000, log: { error() {} } }).init();
+  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, log: { error() {} } }).init();
   await workspace.check();
   const app = createApp({
     bus,
@@ -67,6 +71,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     agents,
     trails,
     chief,
+    reflect,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -93,6 +98,8 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     agents,
     trails,
     chief,
+    scheduler,
+    reflect,
     workspace,
     async get(p) {
       const res = await fetch(url + p);

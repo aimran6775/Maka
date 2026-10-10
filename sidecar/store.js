@@ -12,6 +12,8 @@
 //   work-items.json        delegated work items (trails)
 //   mission.json           the Superintendent's mission to the Chief Ranger
 //   plan.json              the Chief Ranger's current plan (every version kept)
+//   scheduler.json         last run / next run per scheduled job
+//   reflections/<id>.json  reflection documents (the Peak's history)
 //   runs/<runId>.json      one record per run: metadata + every event + final messages
 
 import { promises as fsp } from 'node:fs';
@@ -67,6 +69,8 @@ export function createStore({ root, fs = fsp }) {
   const workFile = path.join(root, 'work-items.json');
   const missionFile = path.join(root, 'mission.json');
   const planFile = path.join(root, 'plan.json');
+  const schedulerFile = path.join(root, 'scheduler.json');
+  const reflectionsDir = path.join(root, 'reflections');
   const runsDir = path.join(root, 'runs');
 
   const runFile = (runId) => {
@@ -78,6 +82,30 @@ export function createStore({ root, fs = fsp }) {
     root,
     async init() {
       await fs.mkdir(runsDir, { recursive: true });
+      await fs.mkdir(reflectionsDir, { recursive: true });
+    },
+    loadScheduler: (fallback) => readJson(schedulerFile, fallback, { fs }),
+    saveScheduler: (state) => writeJsonAtomic(schedulerFile, state, { fs }),
+    saveReflection: (doc) => {
+      if (!RUN_ID_RE.test(doc.id)) throw new Error(`bad reflection id ${doc.id}`);
+      return writeJsonAtomic(path.join(reflectionsDir, `${doc.id}.json`), doc, { fs });
+    },
+    loadReflection: (id) => (RUN_ID_RE.test(id) ? readJson(path.join(reflectionsDir, `${id}.json`), null, { fs }) : Promise.resolve(null)),
+    async listReflections() {
+      let names = [];
+      try {
+        names = await fs.readdir(reflectionsDir);
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+      const out = [];
+      for (const name of names) {
+        if (!name.endsWith('.json') || name.startsWith('.')) continue;
+        const doc = await readJson(path.join(reflectionsDir, name), null, { fs });
+        if (doc) out.push({ id: doc.id, at: doc.at, reason: doc.reason, status: doc.status, missionId: doc.missionId || null, portfolio: (doc.portfolio || '').slice(0, 300), ventures: (doc.ventures || []).map((v) => v.id), usd: doc.usd ?? null });
+      }
+      out.sort((a, b) => b.at - a.at);
+      return out;
     },
     loadLayout: (fallback) => readJson(layoutFile, fallback, { fs }),
     saveLayout: (layout) => writeJsonAtomic(layoutFile, layout, { fs }),

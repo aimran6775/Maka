@@ -21,6 +21,8 @@ export function initialState() {
     agents: [], // agent records from the snapshot (zone, reports, grants, resolved leash)
     mission: null, // { mission, plan, chief, caps, judgeToday } from the snapshot; status/plan kept current by plan.updated
     planUpdates: [], // plan.updated payloads this session, oldest first
+    reflection: null, // { latest, schedule, job } from the snapshot; latest kept current by reflection.posted
+    budgetAlerts: [], // budget.threshold payloads this session, oldest first
     leash: null, // leash policy from the snapshot (shared/leash.js shape)
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
@@ -78,6 +80,7 @@ export function applySnapshot(state, snap) {
   next.judge = snap.judge || null;
   next.agents = snap.agents || [];
   next.mission = snap.mission || null;
+  next.reflection = snap.reflection || null;
   next.leash = snap.leash || null;
   next.workspace = snap.workspace || null;
   next.keystore = snap.keystore || { path: '', problem: null };
@@ -310,6 +313,15 @@ export function applyEvent(state, event) {
       if (!m.mission || m.mission.id !== p.missionId) m.mission = { id: p.missionId, text: m.mission && m.mission.id === p.missionId ? m.mission.text : p.change === 'status' && p.summary ? p.summary : '', status: p.status || 'planning', reason: p.reason || '', budgetUsd: null, horizon: '' };
       if (p.change === 'submitted') m.plan = { ...(m.plan || {}), id: p.planId, missionId: p.missionId, version: p.version, summary: p.summary || '', ventures: p.ventures || [], by: p.by, runId: p.runId, submittedAt: event.ts };
       next.mission = m;
+      break;
+    }
+    case 'reflection.posted': {
+      const latest = { id: p.reflectionId, at: event.ts, reason: p.reason, status: p.status, skipReason: p.skipReason || null, missionId: p.missionId || null, model: p.model || null, usd: typeof p.usd === 'number' ? p.usd : null, portfolio: p.portfolio || '', ventures: p.ventures || [], briefings: p.briefings || [], path: p.path || null };
+      next.reflection = { ...(next.reflection || {}), latest };
+      break;
+    }
+    case 'budget.threshold': {
+      next.budgetAlerts = [...next.budgetAlerts, { ...p, ts: event.ts }];
       break;
     }
     case 'crew.agent': {

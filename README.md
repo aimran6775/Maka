@@ -100,6 +100,12 @@ plans on `claude-opus-5-5`, submits a plan the harness checks (ventures, roles, 
 budgets, what needs you), hires Rangers by specialty into department camps, and delegates
 the first tasks; the plan is written to its outbox and shown at the Peak. Finished items
 bring the Chief back to decide the next move, within the judge's daily cap.
+Step 6, the reflection cycle: every day at `reflectAt` (07:00, `config.json`), and when a
+venture or the mission spends 100 % of its budget, the Chief reflects on real recorded
+data per venture (runs, spend, work items, Gate decisions; revenue is "unknown" until a
+connector is wired), posts a document at the Peak and in its outbox, writes a briefing to
+each department's notes, and comes back to revise the plan. "Reflect now" on the Peak
+card runs it on demand. Morale notes must cite a number from the data.
 The park still draws one body; the crew walking its trails is step 7.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 

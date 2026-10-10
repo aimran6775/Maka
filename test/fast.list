@@ -17,3 +17,5 @@ test/judge.test.js
 test/agents.test.js
 test/trails.test.js
 test/chief.test.js
+test/scheduler.test.js
+test/reflect.test.js

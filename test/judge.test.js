@@ -14,7 +14,7 @@ import { TOOLS } from '../sidecar/capability/tools.js';
 import { runLoop } from '../sidecar/loop.js';
 import { defaultLeash } from '../shared/leash.js';
 import { defaultLayout } from '../shared/world.js';
-import { fakeProvider, fakeClock, text, toolCall, end } from './helpers/fake-provider.js';
+import { fakeProvider, fakeClock, text, toolCall, end, waitUntil } from './helpers/fake-provider.js';
 
 const PRICE = { inputPerMTok: 2, outputPerMTok: 10 };
 const verdictTurn = (verdict, notes = '', usage = { inputTokens: 1000, outputTokens: 100 }) => [text(`Sure. ${JSON.stringify({ verdict, notes })}`), end('end_turn', usage)];
@@ -133,7 +133,7 @@ test('judge is silent for research and draft-level calls; at the daily USD cap i
     // Through the loop the escalated call waits at the Gate as a pending item.
     const worker = fakeProvider([[...toolCall('c3', 'social.post', { text: 'c' }), end('tool_use')], [text('ok'), end()]]);
     const run = runLoop({ runId: 'run-1', agentId: 'ranger', provider: worker, model: 'w', prompt: 'b', tools: h.gate, emit: (e) => h.bus.emit(e), clock: h.clock, review });
-    await new Promise((r) => setTimeout(r, 20));
+    await waitUntil(() => h.queue.pending().length === 1);
     const pending = h.queue.pending();
     assert.equal(pending.length, 1);
     assert.equal(pending[0].reason, 'judge daily cap reached: $0.00 of $0.001');

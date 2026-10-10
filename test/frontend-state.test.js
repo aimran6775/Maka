@@ -260,3 +260,20 @@ test('plan.updated keeps the mission status and the latest plan at the Peak', ()
   assert.equal(fresh.mission.mission.id, 'm2');
   assert.equal(fresh.mission.mission.text, 'new mission text');
 });
+
+test('reflection.posted and budget.threshold reach the Peak view', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ reflection: { latest: null, schedule: { daily: '07:00' }, job: { nextRunAt: 5 } } }));
+  assert.equal(s.reflection.job.nextRunAt, 5);
+  s = reduce(s, [
+    ev('budget.threshold', { scope: 'mission', id: 'm1', budgetUsd: 5, spentUsd: 4, threshold: 0.8, fraction: 0.8 }),
+    ev('reflection.posted', { reflectionId: 'reflection-1', reason: 'scheduled', status: 'posted', portfolio: 'Fine.', ventures: [{ id: 'v1', planStillRight: false }], briefings: ['research'], usd: 0.01, reconciled: true }),
+  ]);
+  assert.equal(s.budgetAlerts.length, 1);
+  assert.equal(s.reflection.latest.id, 'reflection-1');
+  assert.equal(s.reflection.latest.ventures[0].planStillRight, false);
+  assert.equal(s.reflection.schedule.daily, '07:00', 'the schedule survives an update');
+  s = reduce(s, [ev('reflection.posted', { reflectionId: 'reflection-2', reason: 'manual', status: 'skipped', skipReason: 'cap' })]);
+  assert.equal(s.reflection.latest.status, 'skipped');
+  assert.equal(s.reflection.latest.skipReason, 'cap');
+});

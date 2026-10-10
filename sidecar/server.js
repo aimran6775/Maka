@@ -20,6 +20,8 @@
 //   POST /api/gate/:id         { decision: approve|revise|reject, notes? } → gate.item
 //   GET  /api/mission          { mission, plan, chief, caps, judgeToday }
 //   POST /api/mission          { text, budgetUsd, horizon? } → the Chief plans (202 { mission, runId })
+//   GET  /api/reflections      reflection summaries, newest first; /api/reflections/:id the document
+//   POST /api/reflect          run the reflection now (202 { started }) — the result is reflection.posted
 //   GET  /api/agents           every agent record with zone, reports, grants, resolved leash
 //   POST /api/agents           { name, role?, zoneId, parentAgentId?, venture?, specialty?, persona?, policy? }
 //   GET  /api/agents/:id
@@ -162,7 +164,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -221,6 +223,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         agents: agents ? agents.list() : null,
         work: trails ? { inTransit: trails.inTransit(), recent: trails.list().slice(0, 20) } : null,
         mission: chief ? chief.state() : null,
+        reflection: reflect ? reflect.state() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -309,6 +312,23 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);
         throw err;
       }
+    }
+    if (p === '/api/reflections' && method === 'GET') {
+      if (!reflect) throw new HttpError(404, 'no reflection cycle');
+      return sendJson(res, 200, await reflect.list());
+    }
+    if (p.startsWith('/api/reflections/') && method === 'GET') {
+      if (!reflect) throw new HttpError(404, 'no reflection cycle');
+      const doc = await reflect.get(decodeURIComponent(p.slice('/api/reflections/'.length)));
+      if (!doc) throw new HttpError(404, 'no such reflection');
+      return sendJson(res, 200, doc);
+    }
+    if (p === '/api/reflect' && method === 'POST') {
+      if (!reflect) throw new HttpError(404, 'no reflection cycle');
+      const body = await readJsonBody(req);
+      const running = reflect.reflect({ reason: typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'manual' });
+      running.catch((err) => console.error('reflection failed:', err));
+      return sendJson(res, 202, { started: true });
     }
     if (p === '/api/agents' && method === 'GET') {
       if (!agents) throw new HttpError(404, 'no agents registry');

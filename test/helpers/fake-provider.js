@@ -91,3 +91,15 @@ export function fakeTools(impls = {}) {
     },
   };
 }
+
+// Polls `pred` until it returns a truthy value (returned) or the timeout passes (throws).
+// For tests that wait on background runs: a fixed sleep flakes when suites run in parallel.
+export async function waitUntil(pred, { timeoutMs = 5000, stepMs = 5 } = {}) {
+  const start = Date.now();
+  while (true) {
+    const v = await pred();
+    if (v) return v;
+    if (Date.now() - start > timeoutMs) throw new Error('waitUntil timed out');
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
+}

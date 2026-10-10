@@ -11,6 +11,7 @@ browser (frontend/, vanilla JS, canvas)
    ▼
 sidecar (one Node process, no dependencies)
    ├─ chief       mission → plan (schema-checked) → hire → delegate; follow-ups on work.done
+   ├─ reflect     daily and on budget breach: actuals per venture → document + briefings
    ├─ runs        N runs at once, one per Ranger, queued past the cap
    ├─ trails      work items between zones: handoff → receiver run → done
    ├─ loop        the agentic while-loop; every transition is an event
@@ -37,6 +38,15 @@ Three ideas carry everything:
    stay small.
 
 ## Current state
+
+Phase 2 step 6 done: the reflection cycle. A persisted cron-like scheduler runs the
+reflection daily (`reflectAt`, 07:00 by default) and a budget watcher runs it when a
+venture or the mission crosses 100 % of its model-spend budget (80 % and 100 % are
+`budget.threshold` events). The reflection gathers only recorded facts per venture, asks
+the Chief's model for a JSON document, grounds every morale note in a number, stores the
+document, writes it to the Chief's outbox and a briefing to each department's notes
+store, emits `reflection.posted`, and hands the Chief a follow-up to revise the plan. At
+the judge cap it is recorded as skipped with the reason.
 
 Phase 2 step 5 done: Chief Ranger planning. `POST /api/mission` (or the form on the
 Peak card) gives the Chief a mission with a budget and horizon; the Chief runs on the

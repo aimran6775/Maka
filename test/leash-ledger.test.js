@@ -11,7 +11,7 @@ import { createToolGate, summarizeCall } from '../sidecar/capability/gate.js';
 import { TOOLS } from '../sidecar/capability/tools.js';
 import { defaultLeash, withAgentLeash, resolveLeash } from '../shared/leash.js';
 import { defaultLayout } from '../shared/world.js';
-import { fakeClock } from './helpers/fake-provider.js';
+import { fakeClock, waitUntil } from './helpers/fake-provider.js';
 
 async function tmpHome() {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-ledger-'));
@@ -221,7 +221,7 @@ test('gate enforcement: observe refuses, draft waits at the Gate, act_capped run
 
     // act_capped over the cap: a Gate item; approve runs it and counts it
     const over = gate.execute({ id: 'c3', name: 'pay.supplier', input: { usd: 8 } }, { runId: 'run-1', turn: 2 });
-    await new Promise((r) => setImmediate(r));
+    await waitUntil(() => queue.pending().length === 1);
     const pending = queue.pending();
     assert.equal(pending.length, 1);
     assert.match(pending[0].reason, /daily cap for money_out is \$10/);
@@ -233,13 +233,13 @@ test('gate enforcement: observe refuses, draft waits at the Gate, act_capped run
     // draft (research stays act_free by default; switch money_out to draft): reject and revise
     await leashState.update((l) => ({ ...l, domains: { ...l.domains, money_out: { level: 'draft' } } }));
     const rej = gate.execute({ id: 'c4', name: 'pay.supplier', input: { usd: 1 } }, { runId: 'run-1', turn: 3 });
-    await new Promise((r) => setImmediate(r));
+    await waitUntil(() => queue.pending().length === 1);
     await queue.resolve(queue.pending()[0].itemId, { decision: 'reject', notes: 'not this supplier' });
     const rejected = await rej;
     assert.equal(rejected.code, 'GATE_REJECT');
     assert.match(rejected.error, /rejected at the Entrance Gate: not this supplier/);
     const rev = gate.execute({ id: 'c5', name: 'pay.supplier', input: { usd: 1 } }, { runId: 'run-1', turn: 4 });
-    await new Promise((r) => setImmediate(r));
+    await waitUntil(() => queue.pending().length === 1);
     await queue.resolve(queue.pending()[0].itemId, { decision: 'revise', notes: 'ask for a quote first' });
     assert.match((await rev).error, /sent back for revision at the Entrance Gate: ask for a quote first/);
     assert.deepEqual(ledger.spentToday('money_out'), { usd: 12, actions: 2 }, 'nothing ran');

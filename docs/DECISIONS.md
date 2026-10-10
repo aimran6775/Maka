@@ -435,3 +435,27 @@ Each `work.done` for an item the Chief delegated starts one follow-up run. Witho
 a flaky Ranger could keep the Chief planning all day, so `maxFollowUps` (20) pauses the
 mission with the reason; a new mission or a manual re-brief resumes it. Follow-ups run
 with a small budget and turn count because they decide, they do not research.
+
+## D53. The reflection reads the ledgers; the model only interprets them
+
+Every number in a reflection comes from `gather()`: runs and reconciled spend, work items
+and deliverables, Gate decisions, judge spend. The model's per-venture counts are replaced
+by the harness's own, ventures it invents are dropped, briefings for zones that do not
+exist are dropped, and a morale note with no digit in it is replaced by a plain "no
+grounded note". Revenue, orders and ad results read "unknown (no connector wired)" until
+Part C syncs them. A reflection never changes the plan itself: it hands the Chief a
+follow-up so the plan is revised through `plan.submit`, with the reflection as evidence.
+
+## D54. Budget thresholds are per scope, once each, and only 100 % reflects
+
+`budget.threshold` fires at 80 % and 100 % for each venture, the mission and the judge's
+day, once per threshold (the crossed set is kept in memory and spend is re-seeded from
+persisted runs at boot, so a restart cannot re-fire a day's alerts for the same spend).
+Only a venture or mission crossing 100 % triggers a reflection; the judge's own cap does
+not, because the reflection would be skipped at that cap anyway.
+
+## D55. Scheduled jobs that were due while the sidecar was down run on the first tick
+
+The scheduler persists each job's next run. A job whose next run is in the past at boot
+runs on the first tick with reason `missed`, then reschedules from that run, so a Mac that
+was asleep at 07:00 still gets its reflection, labelled as late.
