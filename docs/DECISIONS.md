@@ -1025,3 +1025,32 @@ on its own. The shell's menu bar item keeps the token from its own `/api/state` 
 The Resend webhook is the one exempt route: it comes from outside, carries no token and
 is checked by its svix signature. Test fakes get the token from the app, as the page
 does; nothing in the sidecar turns the checks off.
+
+## D117. The mail kind is derived, and a first contact is a campaign (safety M5)
+
+The kind of a message decided its leash domain, its hourly ceilings and whether the
+unsubscribe footer went on, and the kind was whatever the sender declared: a
+"notification" to 5,000 addresses went out under outbound_messages with no footer. One
+policy function now decides the kind from facts the park holds: more than one recipient
+is a campaign; one recipient answering a message the park has (an In-Reply-To that
+matches a stored, non-draft Message-ID, or a thread with real mail in it) is a reply;
+everything else is a campaign. A declared `campaign` is honoured because it only
+tightens; a declared `reply` or `notification` is ignored. The review's rule is taken
+literally, so a one-off first contact to a single address is a campaign too: publishing,
+the footer, the campaign recipient ceiling, the Gate at the default leash. That is
+stricter than calling it a "notification" and costs a transactional one-to-one message
+an unsubscribe line it did not need; the alternative, trusting any word for "not a
+campaign", is the hole the review found. The `notification` kind stays in the data model
+for what was stored before and is not derived any more. The tool's `domain()` uses the
+same function with a named draft loaded from the store's index (synchronously, which is
+why the index now carries `inReplyTo`), so the Gate and the send agree; an unknown draft
+is judged as a campaign and refused at send. A message names at most 50 recipients; a
+larger audience is many messages, each under the ceilings.
+
+## D118. A draft is not mail history (safety M6)
+
+Drafts are stored outbound with `status: 'draft'`, and the policy read every outbound
+record as an exchange: a Ranger could draft to a new address first and send to it
+afterwards without the judge's "new external recipient" review. `isNewExternal`,
+`sentLastHour`, `judgeAtDraft` and the known-thread check now ignore drafts. A draft is
+the Ranger's own note; only mail that was received or sent is history.

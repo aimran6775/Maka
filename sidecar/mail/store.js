@@ -68,7 +68,7 @@ export function createMailStore({ root, clock = { now: () => Date.now() } } = {}
     saving = saving.then(() => writeJsonAtomic(file, data)).catch((err) => console.error('mail store save failed:', err));
     return saving;
   };
-  const summaryOf = (m) => ({ id: m.id, threadId: m.threadId, direction: m.direction, from: m.from, to: m.to, subject: m.subject, date: m.date, messageId: m.messageId || null, station: m.station, venture: m.venture || null, agentId: m.agentId || null, kind: m.kind || null, resendId: m.resendId || null, status: m.status || null, labels: m.labels || [], attachments: (m.attachments || []).length, classification: m.classification || null, snippet: (m.text || '').replace(/\s+/g, ' ').slice(0, SNIPPET) });
+  const summaryOf = (m) => ({ id: m.id, threadId: m.threadId, direction: m.direction, from: m.from, to: m.to, subject: m.subject, date: m.date, messageId: m.messageId || null, inReplyTo: m.inReplyTo || null, station: m.station, venture: m.venture || null, agentId: m.agentId || null, kind: m.kind || null, resendId: m.resendId || null, status: m.status || null, labels: m.labels || [], attachments: (m.attachments || []).length, classification: m.classification || null, snippet: (m.text || '').replace(/\s+/g, ' ').slice(0, SNIPPET) });
 
   return {
     root,
@@ -141,6 +141,10 @@ export function createMailStore({ root, clock = { now: () => Date.now() } } = {}
       return record;
     },
     get: (id) => (/^[A-Za-z0-9_-]{1,80}$/.test(id) ? readJson(path.join(messagesDir, `${id}.json`), null) : Promise.resolve(null)),
+    // The index entry (sync): what the policy needs to judge a draft's kind without a read.
+    summary: (id) => index.find((m) => m.id === id) || null,
+    // Is this a thread the park has mail in (sync)? Drafts do not make a thread known.
+    hasThread: (threadId) => Boolean(threadId) && index.some((m) => m.threadId === threadId && m.status !== 'draft'),
     byMessageId: (mid) => index.find((m) => m.messageId === mid) || null,
     byResendId: (rid) => index.find((m) => m.resendId === rid) || null,
     list({ station, venture, threadId, direction, label, agentId, limit = 50 } = {}) {

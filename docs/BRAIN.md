@@ -61,7 +61,11 @@ no longer switch the judge off, borrow the Chief's planning step or replace the 
 prompt. M4 done: every mutating `/api` request needs the per-boot token from
 `/api/state` in `x-maka-token`, a same-origin Origin when a browser sends one, and
 `application/json`; the park page and the menu bar item carry the token, the Resend
-webhook keeps its signature instead.
+webhook keeps its signature instead. M5 and M6 done: a message's kind is derived from
+its recipients and the thread, never declared (one recipient answering mail the park
+holds is a reply; everything else is a campaign under publishing with the footer and the
+recipient ceiling), a send names at most 50 recipients, and drafts are not mail history
+for the new-recipient judge trigger or the hourly ceilings.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

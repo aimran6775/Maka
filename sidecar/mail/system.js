@@ -48,7 +48,8 @@ export function createMailSystem({ bus, store, scheduler = null, getLayout, env 
   const policy = createMailPolicy({ mailStore, addresses, sync, getLayout, clock, domain, ceilings });
   // The tools act on this system through toolContext.mail; mail.send asks the judge for
   // sends to new external recipients even at Draft (policy.judgeAtDraft).
-  const tools = { ...MAIL_TOOLS, 'mail.send': { ...MAIL_TOOLS['mail.send'], judgeAtDraft: (input) => policy.judgeAtDraft(input) } };
+  // The domain of a send follows the derived kind with the draft loaded (safety M5).
+  const tools = { ...MAIL_TOOLS, 'mail.send': { ...MAIL_TOOLS['mail.send'], domain: (input) => policy.domainForSend(input), judgeAtDraft: (input) => policy.judgeAtDraft(input) } };
   const classifier = router && classify ? createClassifier({ router, makeProvider, ledger, bus, env, keystorePath, fetch: fetchImpl, clock, log }) : null;
   const classifyState = { queued: 0, done: 0, lastError: null };
   let classifying = Promise.resolve();

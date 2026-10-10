@@ -661,7 +661,7 @@ test('mail over HTTP: station addresses from boot, alias CRUD, sync pulls receiv
     // The Superintendent sends from a station address; policy refuses a foreign from.
     const sent = await srv.post('/api/mail/send', { from: 'visitors@makapark.com', to: 'buyer@example.com', subject: 'Welcome', text: 'Thanks for writing.' });
     assert.equal(sent.status, 201);
-    assert.equal(sent.body.kind, 'notification');
+    assert.equal(sent.body.kind, 'campaign', 'a first contact is a campaign, whoever sends it (safety review M5)');
     assert.equal(sent.body.station, 'visitor-center');
     assert.equal(rs.state.emails.length, 1);
     assert.equal((await srv.post('/api/mail/send', { from: 'nobody@elsewhere.com', to: 'x@example.com', subject: 's', text: 't' })).status, 403);

@@ -50,8 +50,10 @@ test('allowed from-addresses per principal; kinds map to leash domains', async (
     assert.ok(!h.policy.allowedFrom('chief-ranger').includes('unsubscribe@makapark.com'));
     assert.ok(h.policy.allowedFrom('superintendent').includes('gate@makapark.com'));
     assert.deepEqual(h.policy.allowedFrom('ghost'), []);
-    assert.equal(h.policy.kindOf({ inReplyTo: '<x>' }), 'reply');
-    assert.equal(h.policy.kindOf({ to: 'a@x' }), 'notification');
+    // the kind is derived (safety review M5, test/safety.test.js): a reply answers a message the park holds; anything else is a campaign
+    assert.equal(h.policy.kindOf({ to: 'a@x', inReplyTo: '<x>' }), 'campaign', 'no such message in the store');
+    assert.equal(h.policy.kindOf({ to: 'a@x' }), 'campaign');
+    assert.equal(h.policy.kindOf({ to: 'a@x', kind: 'notification' }), 'campaign', 'the sender\'s word does not count');
     assert.equal(h.policy.kindOf({ to: ['a@x', 'b@y'] }), 'campaign');
     assert.equal(h.policy.kindOf({ kind: 'campaign', to: 'a@x' }), 'campaign');
     assert.deepEqual(KIND_DOMAINS, { reply: 'outbound_messages', notification: 'outbound_messages', campaign: 'publishing' });
@@ -69,11 +71,11 @@ test('validate and send: from rule, suppression, new external recipients, ceilin
     await assert.rejects(h.policy.validate({ from: 'rangers@makapark.com', to: 'x@example.com', subject: 's' }, { by: 'ada' }), (e) => e.status === 403 && /may not send from/.test(e.message));
     await assert.rejects(h.policy.validate({ from: 'support@makapark.com', subject: 's' }, { by: 'ada' }), /from, to and subject/);
     const v = await h.policy.validate({ from: 'Support <SUPPORT-lantern-co@makapark.com>', to: 'new@example.com', subject: 'Hi' }, { by: 'ada' });
-    assert.deepEqual([v.kind, v.domain, v.station, v.venture, v.agentId, v.newExternal], ['notification', 'outbound_messages', 'ops', 'lantern-co', 'ada', ['new@example.com']]);
+    assert.deepEqual([v.kind, v.domain, v.station, v.venture, v.agentId, v.newExternal], ['campaign', 'publishing', 'ops', 'lantern-co', 'ada', ['new@example.com']], 'a first contact is a campaign (M5)');
     assert.equal(h.policy.judgeAtDraft({ to: 'new@example.com' }), true);
     assert.equal(h.policy.judgeAtDraft({ to: 'rangers@makapark.com' }), false, 'on-domain is never external');
     // After one exchange the address is known.
-    await h.mailStore.add({ direction: 'in', from: 'Known <known@example.com>', to: ['support@makapark.com'], subject: 'q', text: 'q', station: 'ops', resendId: 'r1' });
+    await h.mailStore.add({ direction: 'in', from: 'Known <known@example.com>', to: ['support@makapark.com'], subject: 'q', text: 'q', station: 'ops', resendId: 'r1', messageId: '<x@example.com>' });
     assert.equal(h.policy.isNewExternal('known@example.com'), false);
     assert.equal(h.policy.judgeAtDraft({ to: ['known@example.com', 'new@example.com'] }), true, 'any new recipient counts');
     // Sends count toward the ceilings: Ada may send 2 per hour; her station 3.

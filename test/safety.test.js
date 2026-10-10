@@ -27,6 +27,9 @@ import { startFakeMetaAds } from './helpers/fake-meta-ads.js';
 import { startFakeGoogleAds } from './helpers/fake-google-ads.js';
 import { fakeClock, waitUntil, fakeProvider, text, end } from './helpers/fake-provider.js';
 import { startTestServer } from './helpers/test-server.js';
+import { createAgents } from '../sidecar/agents.js';
+import { createMailSystem } from '../sidecar/mail/system.js';
+import { startFakeResend } from './helpers/fake-resend.js';
 
 // A Ranger in a Marketing camp with a Notice board, the ad connectors against the fakes,
 // and a gate over the connector tools (the shape of test/ads.test.js, kept small).
@@ -636,3 +639,110 @@ test('M4 a cross-origin or token-less request cannot mutate the sidecar: the per
   }
 });
 
+// ---------- M5 / M6: the mail kind is derived, recipients are bounded, drafts are not history ----------
+
+async function mailHarness() {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-safety-mail-'));
+  const store = createStore({ root: path.join(dir, 'home') });
+  await store.init();
+  const bus = createEventBus();
+  const events = [];
+  bus.listen((e) => events.push(e));
+  const clock = fakeClock(1_700_000_000_000);
+  const layout = defaultLayout();
+  layout.rooms.push({ id: 'ops', name: 'Support', kind: 'operations_support', x: 31, y: 1, w: 8, h: 6 });
+  layout.objects.push({ id: 'tower', kind: 'radio_tower', roomId: 'ops', x: 33, y: 2 });
+  layout.agents.push({ id: 'ada', name: 'Ada', roomId: 'ops', x: 31, y: 1, role: 'ranger', venture: 'lantern-co', specialty: 'support' });
+  const layoutState = createLayoutState({ initial: layout, store, bus, clock });
+  const agents = createAgents({ layoutState, bus, clock });
+  const ledger = await createLeashLedger({ store, clock }).init();
+  const leashState = createLeashState({ initial: defaultLeash(), store });
+  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
+  const rs = await startFakeResend();
+  const mail = await createMailSystem({ bus, store, getLayout: layoutState.get, env: { RESEND_API_KEY: rs.apiKey }, clock, workspaceRoot: path.join(dir, 'ws'), resendBaseUrl: rs.url, classify: false, log: { error() {} } }).init();
+  const registry = { ...mail.tools };
+  const gate = createToolGate({ getLayout: layoutState.get, agentId: 'ada', workspaceDir: path.join(dir, 'ws', 'ada'), registry, grants: allGrantsFor, toolContext: { agents, mail }, getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId: 'run-1', agentId: 'ada' }), log: (item) => gateQueue.log({ ...item, runId: 'run-1', agentId: 'ada' }) } });
+  await fsp.mkdir(path.join(dir, 'ws', 'ada'), { recursive: true });
+  const call = (id, name, input) => gate.execute({ id, name, input }, { runId: 'run-1' });
+  return { dir, events, clock, leashState, gateQueue, rs, mail, gate, call, cleanup: async () => { await fsp.rm(dir, { recursive: true, force: true }); await rs.close(); } };
+}
+
+test('M5 the mail kind comes from the recipients and the thread, not from the sender\'s word: more than one recipient or no known thread is a campaign under publishing with the footer; the draft is loaded for the domain; recipients are bounded', async () => {
+  const h = await mailHarness();
+  try {
+    const { policy } = h.mail;
+    h.rs.receive({ id: 'r1', from: 'Buyer <buyer@example.com>', to: ['support@makapark.com'], subject: 'Broken lantern', text: 'broken', messageId: '<m1@example.com>' });
+    await h.mail.poll();
+    const inbound = h.mail.mailStore.byResendId('r1');
+    // the policy's one function
+    assert.equal(policy.kindOf({ to: ['new@example.com'] }), 'campaign', 'a first contact is not a "notification" because the sender says so');
+    assert.equal(policy.kindOf({ to: ['new@example.com'], kind: 'notification' }), 'campaign');
+    assert.equal(policy.kindOf({ to: ['a@example.com', 'b@example.com'], kind: 'notification' }), 'campaign', 'more than one recipient is a campaign');
+    assert.equal(policy.kindOf({ to: ['a@example.com', 'b@example.com'], kind: 'reply', inReplyTo: '<m1@example.com>' }), 'campaign', 'a reply-all is a campaign');
+    assert.equal(policy.kindOf({ to: ['buyer@example.com'], kind: 'notification', inReplyTo: '<nobody@example.com>' }), 'campaign', 'a reply to a message the park never saw is not a reply');
+    assert.equal(policy.kindOf({ to: ['buyer@example.com'], inReplyTo: '<m1@example.com>' }), 'reply');
+    assert.equal(policy.kindOf({ to: ['buyer@example.com'], threadId: inbound.threadId }), 'reply');
+    assert.equal(policy.kindOf({ to: ['buyer@example.com'], threadId: 'thread-nope' }), 'campaign');
+    assert.equal(policy.domainFor('campaign'), 'publishing');
+    // the tool's domain uses the same function, with the draft loaded
+    assert.equal(h.gate.leashFor('mail.send', { kind: 'notification', to: ['a@example.com', 'b@example.com'], subject: 'x', text: 'y' }).domain, 'publishing');
+    assert.equal(h.gate.leashFor('mail.send', { kind: 'notification', to: ['new@example.com'], subject: 'x', text: 'y' }).domain, 'publishing');
+    assert.equal(h.gate.leashFor('mail.send', { to: ['buyer@example.com'], inReplyTo: '<m1@example.com>', subject: 'x', text: 'y' }).domain, 'outbound_messages');
+    const draft = JSON.parse((await h.call('d1', 'mail.draft', { to: ['one@example.com', 'two@example.com'], subject: 'News', text: 'Look!', kind: 'notification' })).output);
+    assert.equal(draft.kind, 'campaign', 'the draft is stored with the derived kind');
+    assert.equal(h.gate.leashFor('mail.send', { draftId: draft.draftId }).domain, 'publishing', 'the draft is loaded for the domain');
+    const reply = JSON.parse((await h.call('d2', 'mail.draft', { to: ['buyer@example.com'], subject: 'Re: Broken lantern', text: 'Sorry', inReplyTo: '<m1@example.com>', kind: 'campaign' })).output);
+    assert.equal(reply.kind, 'campaign', 'declaring a campaign only tightens');
+    assert.equal(h.gate.leashFor('mail.send', { draftId: reply.draftId }).domain, 'publishing');
+    const trueReply = JSON.parse((await h.call('d3', 'mail.draft', { to: ['buyer@example.com'], subject: 'Re: Broken lantern', text: 'Sorry', inReplyTo: '<m1@example.com>' })).output);
+    assert.equal(trueReply.kind, 'reply');
+    assert.equal(h.gate.leashFor('mail.send', { draftId: trueReply.draftId }).domain, 'outbound_messages');
+    assert.equal(h.gate.leashFor('mail.send', { draftId: 'nope' }).domain, 'publishing', 'an unknown draft is judged as a campaign');
+    // outbound_messages at Act freely, publishing at Draft: the "notification" to 5,000 addresses does not slip through
+    await h.leashState.update((l) => ({ ...l, domains: { ...l.domains, outbound_messages: { level: 'act_free' } } }));
+    const many = Array.from({ length: 51 }, (_, i) => `v${i}@example.com`);
+    const refused = await h.call('s0', 'mail.send', { to: many, subject: 'Hello', text: 'x', kind: 'notification' });
+    assert.equal(refused.ok, false);
+    assert.match(refused.error, /invalid input|maxItems|at most/);
+    await assert.rejects(policy.validate({ from: 'support@makapark.com', to: many, subject: 'Hello' }, { by: 'ada' }), (e) => e.code === 'BAD_REQUEST' && /50/.test(e.message));
+    const pending = h.call('s1', 'mail.send', { to: ['one@example.com', 'two@example.com'], subject: 'Hello', text: 'x', kind: 'notification' });
+    const item = await waitUntil(() => h.gateQueue.pending()[0]);
+    assert.equal(item.domain, 'publishing');
+    await h.gateQueue.resolve(item.itemId, { decision: 'approve' });
+    const sent = JSON.parse((await pending).output);
+    assert.equal(sent.kind, 'campaign');
+    assert.match(h.rs.state.emails.at(-1).text, /UNSUBSCRIBE/, 'the footer is on');
+    assert.ok(h.rs.state.emails.at(-1).headers['List-Unsubscribe']);
+    assert.equal((await h.mail.mailStore.get(sent.messageId)).kind, 'campaign');
+    // a real reply at act_free goes out as outbound_messages, no footer
+    const r = await h.call('s2', 'mail.send', { to: ['buyer@example.com'], subject: 'Re: Broken lantern', text: 'Sorry', inReplyTo: '<m1@example.com>', kind: 'notification' });
+    assert.equal(r.ok, true, r.error);
+    assert.equal(JSON.parse(r.output).kind, 'reply');
+    assert.doesNotMatch(h.rs.state.emails.at(-1).text, /UNSUBSCRIBE/);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('M6 a draft is not mail history: drafting to a new address first does not make it known, and drafts do not count toward the hourly ceilings', async () => {
+  const h = await mailHarness();
+  try {
+    const { policy } = h.mail;
+    assert.equal(policy.isNewExternal('new@example.com'), true);
+    const draft = JSON.parse((await h.call('d1', 'mail.draft', { to: ['new@example.com'], subject: 'Hi', text: 'x' })).output);
+    assert.equal((await h.mail.mailStore.get(draft.draftId)).status, 'draft');
+    assert.equal(policy.isNewExternal('new@example.com'), true, 'a draft to an address is not an exchange with it');
+    assert.equal(policy.judgeAtDraft({ to: ['new@example.com'] }), true, 'the judge still sees a new external recipient');
+    assert.equal(h.gate.tool('mail.send').judgeAtDraft({ draftId: draft.draftId }), true, 'with the draft loaded too');
+    for (let i = 0; i < 40; i++) await h.call(`d${i + 2}`, 'mail.draft', { to: [`v${i}@example.com`], subject: 'Hi', text: 'x' });
+    assert.deepEqual(policy.sentLastHour({ agentId: 'ada', station: 'ops' }), { agent: 0, station: 0, campaignRecipients: 0 }, 'drafts are not sends');
+    assert.equal(policy.checkCeiling({ agentId: 'ada', station: 'ops', kind: 'campaign', recipients: 1 }).ok, true);
+    // a real exchange makes the address known
+    h.rs.receive({ id: 'r1', from: 'New <new@example.com>', to: ['support@makapark.com'], subject: 'Hello', text: 'hi', messageId: '<n1@example.com>' });
+    await h.mail.poll();
+    assert.equal(policy.isNewExternal('new@example.com'), false);
+    assert.equal(h.gate.tool('mail.send').judgeAtDraft({ draftId: draft.draftId }), false);
+  } finally {
+    await h.cleanup();
+  }
+});

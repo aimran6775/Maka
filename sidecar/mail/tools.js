@@ -7,6 +7,7 @@
 // (sidecar/mail/system.js) and the agents registry.
 
 import { SPECIALTIES } from '../../shared/world.js';
+import { MAX_RECIPIENTS } from './send.js';
 
 function noMail(ctx) {
   return !ctx.mail ? { ok: false, error: 'the mail system is not available in this run' } : null;
@@ -97,11 +98,11 @@ export const mailDraft = {
     additionalProperties: false,
     properties: {
       from: { type: 'string', description: 'One of your addresses; defaults to your station address' },
-      to: { type: 'array', items: { type: 'string' }, minItems: 1 },
+      to: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: MAX_RECIPIENTS },
       subject: { type: 'string', minLength: 1 },
       text: { type: 'string', minLength: 1 },
       inReplyTo: { type: 'string', description: 'Message-ID being answered (from mail.read)' },
-      kind: { type: 'string', enum: ['reply', 'notification', 'campaign'] },
+      kind: { type: 'string', enum: ['reply', 'notification', 'campaign'], description: 'Only "campaign" is taken at its word; otherwise the kind follows the recipients and the thread' },
     },
   },
   confirm: false,
@@ -111,7 +112,8 @@ export const mailDraft = {
     const scope = scopeFor(ctx);
     const from = input.from || defaultFrom(ctx, scope);
     if (!from) return { ok: false, error: 'you have no address to send from (no station address)' };
-    const d = await ctx.mail.mailStore.add({ direction: 'out', from, to: input.to, subject: input.subject, text: input.text, inReplyTo: input.inReplyTo || null, kind: input.kind || (input.inReplyTo ? 'reply' : 'notification'), station: scope.station || 'unknown', venture: scope.venture, agentId: scope.agentId, status: 'draft', labels: ['draft'] });
+    const kind = ctx.mail.policy.kindOf({ to: input.to, inReplyTo: input.inReplyTo, kind: input.kind });
+    const d = await ctx.mail.mailStore.add({ direction: 'out', from, to: input.to, subject: input.subject, text: input.text, inReplyTo: input.inReplyTo || null, kind, station: scope.station || 'unknown', venture: scope.venture, agentId: scope.agentId, status: 'draft', labels: ['draft'] });
     return { ok: true, output: JSON.stringify({ draftId: d.id, threadId: d.threadId, from, to: d.to, kind: d.kind }) };
   },
 };
@@ -124,23 +126,27 @@ function defaultFrom(ctx, scope) {
 
 export const mailSend = {
   name: 'mail.send',
-  description: 'Send mail from one of your addresses through the park\'s mail system: a reply (keeps the thread), a notification (one-to-one, transactional) or a campaign (bulk; an unsubscribe footer is added). Pass draftId to send a saved draft, or the fields directly. Sends follow the leash: replies and notifications are outbound messages, campaigns are publishing; suppressed recipients are dropped; hourly ceilings apply.',
+  description: 'Send mail from one of your addresses through the park\'s mail system. The kind is decided by the park, not by you: a reply (one recipient, answering a message the park holds, keeps the thread) is an outbound message; anything else, more than one recipient included, is a campaign (publishing; an unsubscribe footer is added). Pass draftId to send a saved draft, or the fields directly. At most 50 recipients; suppressed recipients are dropped; hourly ceilings apply.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
     properties: {
       draftId: { type: 'string' },
       from: { type: 'string' },
-      to: { type: 'array', items: { type: 'string' } },
+      to: { type: 'array', items: { type: 'string' }, maxItems: MAX_RECIPIENTS },
       subject: { type: 'string' },
       text: { type: 'string' },
       html: { type: 'string' },
       inReplyTo: { type: 'string' },
-      kind: { type: 'string', enum: ['reply', 'notification', 'campaign'] },
+      kind: { type: 'string', enum: ['reply', 'notification', 'campaign'], description: 'Only "campaign" is taken at its word; otherwise the kind follows the recipients and the thread' },
     },
   },
   confirm: false,
-  domain: (input) => (input && input.kind === 'campaign' ? 'publishing' : 'outbound_messages'),
+  // The domain follows the derived kind (safety M5). The mail system replaces this with
+  // the policy's own function, which loads a named draft; this stand-in, used only when
+  // the tool is registered without the system, can take no draft and judges the strict
+  // way: a campaign unless one recipient answers a known message.
+  domain: (input) => (input && !input.draftId && Array.isArray(input.to) && input.to.length === 1 && input.inReplyTo && input.kind !== 'campaign' ? 'outbound_messages' : 'publishing'),
   amountUsd: () => 0,
   summarize: (input) => `send ${input.kind || (input.inReplyTo ? 'reply' : 'mail')} to ${(input.to || []).join(', ') || (input.draftId ? `draft ${input.draftId}` : '?')}: "${(input.subject || '').slice(0, 60)}"`,
   judgeAtDraft: null, // set by the mail system (policy.judgeAtDraft) when wired

@@ -66,7 +66,7 @@ test('the Radio tower grants the mail tools; domains per tool; the chief and ran
     const gate = h.gateFor('ada');
     assert.deepEqual(gate.definitions().map((d) => d.name), ['mail.create_address', 'mail.draft', 'mail.read', 'mail.search', 'mail.send'], 'this registry holds the phase 1 and mail tools');
     assert.equal(gate.leashFor('mail.send', { kind: 'campaign' }).domain, 'publishing');
-    assert.equal(gate.leashFor('mail.send', { kind: 'reply' }).domain, 'outbound_messages');
+    assert.equal(gate.leashFor('mail.send', { kind: 'reply' }).domain, 'publishing', 'a declared "reply" to no known message is a campaign (safety review M5; a real reply is covered in test/safety.test.js)');
     assert.equal(gate.leashFor('mail.search').domain, 'research');
     assert.equal(gate.leashFor('mail.create_address').domain, 'account_creation');
     assert.equal(h.gateFor('ranger').definitions().some((d) => d.name === 'mail.search'), false, 'no tower in the Ranger Station');
@@ -130,11 +130,10 @@ test('draft, send (reply through the leash: draft waits at the Gate; act_free se
     // Policy refusals come back as tool errors.
     const foreign = await gate.execute({ id: 's3', name: 'mail.send', input: { from: 'rangers@makapark.com', to: ['x@example.com'], subject: 'x', text: 'y', kind: 'campaign' } }, { runId: 'run-1' });
     assert.match(foreign.error, /may not send from/);
-    // A bad draft id is still an outbound_messages action at Draft: it waits at the Gate first.
-    const bad = gate.execute({ id: 's4', name: 'mail.send', input: { draftId: 'nope' } }, { runId: 'run-1', turn: 3 });
-    await waitUntil(() => h.gateQueue.pending().length === 1);
-    await h.gateQueue.resolve(h.gateQueue.pending()[0].itemId, { decision: 'approve' });
-    assert.match((await bad).error, /no draft/);
+    // A bad draft id is judged as a campaign (publishing, loosened to act_free above): the tool answers at once.
+    assert.equal(gate.leashFor('mail.send', { draftId: 'nope' }).domain, 'publishing');
+    const bad = await gate.execute({ id: 's4', name: 'mail.send', input: { draftId: 'nope' } }, { runId: 'run-1', turn: 3 });
+    assert.match(bad.error, /no draft/);
     // create_address: account_creation is at Draft → Gate; approve creates the alias.
     const creating = gate.execute({ id: 'a1', name: 'mail.create_address', input: { venture: 'Lantern Co' } }, { runId: 'run-1', turn: 3 });
     await waitUntil(() => h.gateQueue.pending().length === 1);
