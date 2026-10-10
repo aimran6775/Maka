@@ -185,8 +185,10 @@ trailhead whose trails run to the camps that serve it; the same Marketing Ranger
 several ventures, and the park shows which trail they are on.
 
 ### Email: Maka runs its own mail (owner decisions 2026-10-10: domain on Cloudflare, Fastmail)
-Rangers create and operate their own addresses. The Superintendent's Maka domain is managed
-in Cloudflare; the mail provider is Fastmail. Mechanics:
+Rangers create and operate their own addresses. The Maka domain is makapark.com, managed in
+Cloudflare; the mail provider is Fastmail. Ranger addresses take the form
+<role>-<venture>@makapark.com; the Superintendent's own address on the domain is never
+used by Rangers. Mechanics:
 - DNS: the sidecar sets MX, SPF, DKIM and DMARC for the domain through the Cloudflare API
   (an API token scoped to Zone:DNS:Edit on that one zone). This is a one-time, Gate-approved
   setup step with a dry-run preview of the records.
@@ -200,7 +202,7 @@ in Cloudflare; the mail provider is Fastmail. Mechanics:
 - Secrets involved, all held in Keychain in the app and in environment secrets for cloud
   test sessions, never in chat or git: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_DNS_TOKEN
   (Zone:DNS:Edit), R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, FASTMAIL_API_TOKEN.
-A Ranger requests an address (e.g. sales-<venture>@maka-domain); creation is an
+A Ranger requests an address (e.g. sales-<venture>@makapark.com); creation is an
 account_creation leash action; the mailbox then belongs to that Ranger's workspace. The
 sidecar runs the mail system: IMAP/JMAP sync into a local store, threading, classification
 (customer / supplier / platform notice / spam), drafting, scheduled sends, and a shared
@@ -291,7 +293,8 @@ account_creation, browser_control, research.
   CDP browser control with handoff, workspace root on the external drive.
 
 ## Phase 3 (the macOS app)
-Tauri 2 shell, Keychain secrets, signed and notarized build, auto-update, first-run flow:
+Tauri 2 shell, Keychain secrets, signed and notarized build, auto-update served from
+makapark.com (download page and update manifest on the same domain), first-run flow:
 paste a key or sign in, a Ranger is already standing at the Ranger Station, say what the
 business is.
 

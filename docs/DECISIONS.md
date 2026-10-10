@@ -215,3 +215,5 @@ model, and the rule that every visual state maps to a real event. Awaiting the n
   JMAP for mailbox/alias creation, sync and sending. Cloudflare R2 as optional encrypted
   offsite backup only. Secret names: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_DNS_TOKEN,
   R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, FASTMAIL_API_TOKEN.
+- Domain: makapark.com (Cloudflare). Ranger mail is <role>-<venture>@makapark.com; the .dmg
+  download page and update manifest are served from makapark.com in phase 3.
