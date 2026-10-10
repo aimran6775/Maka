@@ -40,7 +40,17 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 6 done: the release
+Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
+gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release
+tag and the tree is clean, then runs `test:fast`, the phase 2 demo and the shell check,
+builds, notarizes, launches the built app once with a fresh home
+(`scripts/release-smoke.mjs`: the park answers from the bundle, the first-run card is
+due, secrets go through the Keychain broker, SIGTERM stops app and sidecar together) and
+assembles the site. `docs/RELEASE_RUNBOOK.md` has the exact Mac commands, the one-time
+setup, the clean-account launch to observe by hand, publishing, the updater end to end
+and rollback; a test keeps it naming every script, variable and gate. What this Linux
+build environment cannot run (Xcode, the Keychain, Gatekeeper) is scripted and written
+down, not claimed. Step 6 done: the release
 scripts (`scripts/release*.mjs`). `release-bump` sets one version in three files and
 tags; `release-node` downloads the official Node binary and verifies it against
 nodejs.org's checksums before Tauri bundles it; `release-build` runs `cargo tauri build`

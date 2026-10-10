@@ -918,3 +918,20 @@ and renders what is there (version, date, the `.dmg` link, its size and SHA-256)
 "no release is published yet" when the file is missing, and labels a dry-run manifest.
 Publishing a release is therefore uploading new files under `releases/`, nothing else,
 and the updater's `latest.json` lives beside them on the same origin as the brief asks.
+
+## D109. The smoke launch is scripted; the clean-account launch is observed by hand
+
+`release-smoke.mjs` runs the built bundle under the owner's own session with a fresh
+`MAKA_HOME` and checks what a process can check: the shell announces the park, the
+sidecar answers from the bundle with the contract, the first-run flag, the Keychain
+broker, the vendored renderer, and a clean stop. A launch under a freshly created macOS
+user cannot be scripted from another user's shell (the Keychain and the window server
+need that user's GUI session), so the runbook makes it a manual step with the exact
+commands and the exact things to observe, and a failed observation blocks the publish.
+
+## D110. The runbook is tested for drift
+
+A runbook that names a script that was renamed, or forgets a variable the scripts read,
+is worse than none. `test/release.test.js` reads `docs/RELEASE_RUNBOOK.md` and fails
+when a `scripts/release*.mjs`, a `SIGNING_ENV` variable, a gate command or the bundled
+Node version is missing from it, so the document and the scripts move together.

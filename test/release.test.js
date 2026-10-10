@@ -206,3 +206,48 @@ test('release --dry-run: the exact sequence (gates, Node, build, notarize, stapl
     await fsp.rm(root, { recursive: true, force: true });
   }
 });
+
+test('smoke: launches the bundle\'s binary with a fresh home, checks the sidecar from the bundle, stops it; dry-run only plans', async () => {
+  const { smoke, findMainBinary } = await import('../scripts/release-smoke.mjs');
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-smoke-app-'));
+  const app = path.join(dir, 'Maka.app');
+  const macos = path.join(app, 'Contents', 'MacOS');
+  await fsp.mkdir(macos, { recursive: true });
+  // A stand-in for the shell: announces the park like src-tauri/src/lib.rs does, then runs the real sidecar.
+  await fsp.writeFile(path.join(macos, 'node'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  await fsp.writeFile(path.join(macos, 'Maka'), `#!/bin/sh\necho "maka: park at http://127.0.0.1:$MAKA_PORT/"\nexec env PORT=$MAKA_PORT HOST=127.0.0.1 MAKA_WORKSPACE="$MAKA_HOME/ws" ${process.execPath} ${path.join(REPO_ROOT, 'sidecar', 'index.js')}\n`, { mode: 0o755 });
+  const log = { info() {}, warn() {} };
+  try {
+    assert.equal(await findMainBinary(app), path.join(macos, 'Maka'));
+    const dry = await smoke({ app, dryRun: true, log, env: {} });
+    assert.deepEqual([dry.ok, dry.dryRun], [true, true]);
+    const r = await smoke({ app, log, env: { ...process.env }, expectBroker: false, timeoutMs: 60_000 });
+    assert.equal(r.ok, true);
+    const names = r.checks.map((c) => c.check);
+    assert.ok(names.includes('first run on a fresh home'), names.join(', '));
+    assert.ok(names.includes('the vendored renderer is served'));
+    assert.ok(names.includes('the sidecar stopped with the app'));
+    assert.ok(r.checks.every((c) => c.ok));
+    assert.equal(await fsp.access(r.home).then(() => true, () => false), false, 'the temporary home is removed');
+    // A bundle whose sidecar never answers fails plainly, with the app's output.
+    await fsp.writeFile(path.join(macos, 'Maka'), '#!/bin/sh\necho "maka: nothing"\nsleep 30\n', { mode: 0o755 });
+    await assert.rejects(smoke({ app, log, env: {}, timeoutMs: 1500 }), /no \/api\/state on http:\/\/127\.0\.0\.1:\d+ within/);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('the runbook names every release script, every signing variable, the gates and the Node version it bundles', async () => {
+  const runbook = await fsp.readFile(path.join(REPO_ROOT, 'docs', 'RELEASE_RUNBOOK.md'), 'utf8');
+  const { SIGNING_ENV, NODE_VERSION } = await import('../scripts/release-lib.mjs');
+  const scripts = (await fsp.readdir(path.join(REPO_ROOT, 'scripts'))).filter((f) => /^release.*\.mjs$/.test(f) && f !== 'release-lib.mjs');
+  assert.ok(scripts.length >= 6, scripts.join(', '));
+  for (const s of scripts) assert.ok(runbook.includes(s), `runbook mentions ${s}`);
+  for (const k of Object.keys(SIGNING_ENV)) assert.ok(runbook.includes(k), `runbook mentions ${k}`);
+  for (const cmd of ['npm run test:fast', 'npm run demo', 'npm run shell:check', 'npm run release:dry', 'npm run release', 'cargo tauri signer generate', 'xcrun notarytool store-credentials', 'node scripts/park-check.mjs', 'sysadminctl -addUser']) assert.ok(runbook.includes(cmd), `runbook has ${cmd}`);
+  assert.ok(runbook.includes(NODE_VERSION), 'the bundled Node version');
+  assert.ok(runbook.includes('releases/latest.json') && runbook.includes('releases/download.json'));
+  const pkg = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+  assert.equal(pkg.scripts.release, 'node scripts/release.mjs');
+  assert.equal(pkg.scripts['release:dry'], 'node scripts/release.mjs --dry-run');
+});

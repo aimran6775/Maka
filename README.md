@@ -201,8 +201,8 @@ which needs a Field office in the camp), `web.read` (a page as an article), `web
 brief with sourced evidence, real costs, a revenue model, risks and a go / no-go that the
 judge reviews. Briefs land in the Scout's outbox and are listed at the Peak; the Chief
 decides within the mission budget.
-All of phase 2 (`docs/PHASE2_BRIEF.md`) is in this build; phase 3 (the macOS app) is in
-progress below.
+All of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (`docs/PHASE3_BRIEF.md`, the macOS
+app, below) are in this build.
 `npm run demo` walks the whole chain against the fakes (mission → plan → delegation →
 tools → a refund at the Gate → the report in the outbox → the ledger → the reflection) and
 checks every link from recorded events; `docs/LIVE_TEST.md` is the runbook for the same
@@ -264,8 +264,16 @@ nodejs.org), builds and signs the app with the Developer ID, notarizes and stapl
 `.app` and the `.dmg`, signs the updater artifact, and assembles `dist/site/`: the
 version-free download page from `website/`, `releases/latest.json` for the app's
 updater and `releases/download.json` for the page. `npm run release:dry` prints the exact
-command sequence and writes it to `dist/release/plan.sh` without building anything. The
-runbook with the Mac commands is step 7 (`docs/RELEASE_RUNBOOK.md`).
+command sequence and writes it to `dist/release/plan.sh` without building anything.
+
+Step 7, the gates and the runbook: the release refuses to start off the tag or on a
+dirty tree, runs `test:fast`, the demo and the shell check first, launches the built app
+once with a fresh home and checks it from the outside (`scripts/release-smoke.mjs`), and
+`docs/RELEASE_RUNBOOK.md` has every Mac command: one-time setup, bump, build, the
+clean-account launch, publishing, the updater, rollback. All seven steps of
+`docs/PHASE3_BRIEF.md` are in this build; the Mac-only parts (the build, signing,
+notarization, the Keychain, Gatekeeper) are scripted and documented here, verified on
+the owner's Mac.
 
 ## License
 
