@@ -200,3 +200,14 @@ Relayed on 2026-10-10 after the 2D park was working end to end: the owner wants 
 Work stopped on a hold; the 2D slice is committed as WIP. What carries over regardless of
 renderer: the event contract, the frontend reducer and SSE client, the inspector's data
 model, and the rule that every visual state maps to a real event. Awaiting the new spec.
+- Mountain Peak replaces the Lookout Tower as the control centre: Chief Ranger's post,
+  all channels report back, scheduled judge-tier reflection cycle with grounded briefings.
+- Departments as zones: Sales, Marketing, Finance, Operations & Support, Research, Product &
+  Listings. Ventures are trailheads.
+- Mail: Maka-owned domain + provider API for mailbox/alias creation; sidecar runs the mail
+  system (sync, threading, classification, drafting, sends) under leashes.
+- Browser: Chromium over CDP from the sidecar (core modules only), per-Ranger profiles,
+  human handoff for login/2FA/captcha/payment, browser_control leash, traced.
+- Hardware: 16 GB Apple Silicon Mac → one ~7-8B 4-bit worker model; workspace root on the
+  LaCie external drive with an offline-pause state. Apple Developer account available.
+- Leash domains add account_creation and browser_control.

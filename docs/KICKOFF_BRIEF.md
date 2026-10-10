@@ -44,7 +44,9 @@ recorded in NOTICE.md. Maka must not be mistakable for StarNet visually or by na
 | Ranger Station | HQ zone: orchestration, task briefs, the daily plan |
 | Visitor Center | comms zone: inbox, customer messages, the outbox counter |
 | Campground | an agent's working area; one campsite per active run |
-| Lookout Tower | monitoring: live runs, spend, alerts, what needs the Superintendent |
+| Mountain Peak | the control centre: the Chief Ranger's post. Every venture and channel reports back here; the portfolio, real ledgers, the daily plan, the reflection cycle, and what needs the Superintendent |
+| Department camps | Sales, Marketing, Finance, Operations & Support, Research (Scout), Product & Listings: each a zone with its own Rangers and fixtures |
+| Trailheads | one per venture (a business); its trails run to the department camps that serve it |
 | Trail | a handoff lane between zones; work items travel along it |
 | Entrance Gate | the consent and spend rail; nothing with money or outbound effect passes without a grant |
 | Fixtures (grants) | Trailhead sign = web fetch; Supply cache = filesystem; Radio tower = email/channels; Park Store = commerce connectors (Shopify/Stripe); Notice board = social/publishing; Fee booth = payments; Ledger desk = accounting |
@@ -62,7 +64,7 @@ smoothly on Apple Silicon in a webview. Weather is cosmetic and never encodes st
 - Defaults for a new park: everything at "Draft for review" except read-only research,
   which is "Act freely". Money out starts with a hard per-day cap even at "Act with cap".
 - Away mode (the owner's "free of touch"): the Superintendent sets leashes, leaves, and
-  every action taken while away is logged with evidence and shown at the Lookout Tower on
+  every action taken while away is logged with evidence and shown at the Mountain Peak on
   return. Nothing is hidden, and any action can be rolled back where the connector allows.
 
 ## Business scope (owner decision 2026-10-10): every online business
@@ -122,8 +124,9 @@ The park is a full interface, not a picture. Everything visible is live and clic
   Build mode places or removes fixtures right there.
 - Click a fixture: what it grants, which Rangers used it today, the last 20 actions through it.
 - Click a trail: the work items in transit, with brief and deadline.
-- Click the Lookout Tower: the portfolio: every venture, real revenue and spend from
-  connectors, the Chief Ranger's current plan, and the items waiting on you.
+- Click the Mountain Peak: the control centre: every venture, real revenue and spend from
+  connectors, the Chief Ranger's current plan, the latest reflection, and the items waiting
+  on you.
 - Click the Entrance Gate: the approval queue.
 - Click the Visitor Center: inbox and outbox, customer threads, deliverables.
 - Camera: pan, zoom, follow-a-Ranger. Day/night from the real clock. Rangers walk between
@@ -161,6 +164,64 @@ the park actually uses, keep the total under 25 MB):
 Rules: CC0 or CC-BY only (CC-BY credited in-app under About), nothing AI-generated of
 unknown provenance, nothing resembling StarNet. Original Maka assets (logo, zone signage,
 the Chief Ranger's distinct model variant) are made in-house.
+
+## Operating systems inside Maka (owner decisions 2026-10-10)
+
+### Mountain Peak: control centre and reflection cycle
+The Chief Ranger sits at the Peak. All channels report back here: every connector sync,
+every Ranger's end-of-task report, every ledger entry. On a schedule (daily by default, plus
+on any budget or KPI breach) the Chief Ranger runs a judge-tier REFLECTION: for each
+venture, actuals vs targets from real data, what worked, what did not, whether the plan is
+still right, and a revised plan with reassignments. The reflection is shown at the Peak and
+sent to each department camp as a briefing. Rangers receive direction and a grounded
+morale note (what they achieved, in numbers); never invented praise, never a fake pep talk.
+The Superintendent can ask the Peak anything about the portfolio and gets an answer with
+evidence links.
+
+### Departments
+Sales, Marketing, Finance, Operations & Support, Research (Scout), Product & Listings. Each is
+a zone (camp) with its own Rangers, fixtures, leashes and sub-budget. A venture is a
+trailhead whose trails run to the camps that serve it; the same Marketing Ranger may serve
+several ventures, and the park shows which trail they are on.
+
+### Email: Maka runs its own mail
+Rangers create and operate their own addresses. Mechanics: the Superintendent owns one Maka
+domain and connects a mail provider whose API allows programmatic mailbox or alias creation
+(candidates: Fastmail via JMAP, Google Workspace via the Admin SDK, or Cloudflare Email
+Routing for inbound plus a transactional sender such as Postmark or Resend for outbound).
+A Ranger requests an address (e.g. sales-<venture>@maka-domain); creation is an
+account_creation leash action; the mailbox then belongs to that Ranger's workspace. The
+sidecar runs the mail system: IMAP/JMAP sync into a local store, threading, classification
+(customer / supplier / platform notice / spam), drafting, scheduled sends, and a shared
+view at the Visitor Center. Outbound mail is under the outbound_messages leash. Every sent
+message is signed off by the Ranger role and logged. Platform signups that demand a phone
+number, identity, or payment card are Gate items for the Superintendent, always.
+
+### Browser: full control when needed
+A real Chromium controlled from the sidecar over the Chrome DevTools Protocol (WebSocket,
+Node core modules only; no Playwright dependency). One isolated browser profile per Ranger,
+stored in the workspace. Rangers can navigate, read, fill, click, upload, and download.
+Logins, 2FA, captchas, and payment pages trigger a BROWSER HANDOFF: the window comes to
+the front for the Superintendent, who completes the step and hands it back; the session
+cookie then stays with that Ranger's profile. Browser actions are under the browser_control
+leash and recorded as a step-by-step trace with screenshots at the Peak. Official platform
+APIs are preferred over browser automation wherever an API exists (product law 7).
+
+### Hardware and storage (owner's machine)
+- Mac with 16 GB unified memory, Apple Silicon. Worker model budget: one ~7-8B model at
+  4-bit (about 5-6 GB resident) so the app, the browser, and the OS fit; the router keeps
+  context windows modest and leans on the judge for long reasoning. A second small model
+  for classification only if memory allows. Record actual memory headroom in diagnostics.
+- A LaCie external drive, 1 TB or more: the Maka WORKSPACE ROOT lives there, configurable.
+  Everything per venture (transcripts, mail store, browser profiles, deliverables, ledgers,
+  local model files) is under it. If the drive is unmounted, Maka pauses all runs with a
+  plain "workspace offline" state at the Peak, never writes elsewhere, and resumes when it
+  returns. Atomic writes already protect against a mid-write disconnect.
+- Apple Developer account: available. Phase 3 signs and notarizes the .dmg with it.
+
+### Leash domains (final for phase 1 data model)
+outbound_messages, publishing, money_out, money_in, data_deletion, account_settings,
+account_creation, browser_control, research.
 
 ## Model strategy (owner decision 2026-10-10): local workers, Claude as judge
 - Two tiers. WORKER models are local open-weight models served by Ollama (or any
@@ -215,6 +276,8 @@ the Chief Ranger's distinct model variant) are made in-house.
   behind leashes. MCP client for everything else.
 - Task briefs, the daily plan at the Ranger Station, the Lookout Tower with real ledgers.
 - Away mode with the evidence log.
+- The Peak reflection cycle, department camps, the mail system (provider API + local store),
+  CDP browser control with handoff, workspace root on the external drive.
 
 ## Phase 3 (the macOS app)
 Tauri 2 shell, Keychain secrets, signed and notarized build, auto-update, first-run flow:
