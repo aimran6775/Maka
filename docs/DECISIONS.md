@@ -82,3 +82,14 @@ sprites are theme data in the frontend.
 Maka is local-first and the user is the only principal, so there is no SSRF boundary to
 defend in phase 1. Non-http schemes are refused, the method is GET only, and responses are
 capped and timed out.
+
+## D14. The run record is the event list
+
+`runs/<runId>.json` stores the run's metadata, every event with its `seq`, and the final
+messages array. There is no separate transcript format: what the UI showed is what is on
+disk. Token events are flushed on a short debounce; everything else flushes immediately.
+
+## D15. The sidecar binds to 127.0.0.1 and has no authentication
+
+Phase 1 is a local tool for one user. `HOST` can widen the bind, but nothing on the API
+is protected, so it should not be. Auth is a prerequisite for channels (not phase 1).

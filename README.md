@@ -18,11 +18,27 @@ Status: pre-alpha. See [docs/KICKOFF_BRIEF.md](docs/KICKOFF_BRIEF.md) for the ph
 
 ## Run from source
 
+Requires Node 22+. No dependencies to install.
+
 ```bash
-node sidecar/index.js
+export ANTHROPIC_API_KEY=sk-ant-...   # or OPENROUTER_API_KEY; or use the keystore below
+npm start                             # node sidecar/index.js
 ```
 
-Then open <http://localhost:8790>. (Not yet implemented.)
+Then open <http://127.0.0.1:8790>. Without a key the sidecar still runs and the UI shows the
+provider as "not wired"; a run request answers `400 NO_KEY`.
+
+Environment: `PORT` (8790), `HOST` (127.0.0.1), `MAKA_HOME` (`./.maka`, data and keystore),
+`MAKA_WORKSPACE` (`./workspace`, one directory per agent; deliverables land in `outbox/`).
+
+Keystore alternative to env vars: `$MAKA_HOME/keystore.json` containing
+`{ "anthropic": "sk-ant-...", "openrouter": "..." }` with file mode `0600`. The sidecar
+refuses to read a keystore with looser permissions.
+
+```bash
+npm run test:fast   # the merge gate
+npm test            # everything under test/
+```
 
 ## License
 

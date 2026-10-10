@@ -29,9 +29,9 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 1, step 5: skeleton, event contract, loop, providers, and the capability gate. There is no runnable
-sidecar yet. The README's run instructions are marked not yet implemented and will be
-unmarked when `sidecar/index.js` lands (step 6).
+Phase 1, step 6: the sidecar runs end to end (`npm start`). Loop, providers, capability
+gate, HTTP + SSE and atomic persistence are in place and tested over real HTTP. The
+frontend is a placeholder page until step 7.
 
 ### The event contract (`shared/events.js`)
 

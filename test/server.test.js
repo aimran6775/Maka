@@ -1,0 +1,239 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { promises as fsp } from 'node:fs';
+import { startTestServer } from './helpers/test-server.js';
+import { fakeProvider, text, toolCall, end } from './helpers/fake-provider.js';
+import { validateEvent } from '../shared/events.js';
+import { boot } from '../sidecar/index.js';
+import os from 'node:os';
+
+const PRICE = { inputPerMTok: 1, outputPerMTok: 2 };
+const scripted = (turns) => async () => ({ provider: fakeProvider(turns), model: 'fake-model', price: PRICE });
+
+test('state, layout placement rules, events replay, static files', async () => {
+  const srv = await startTestServer({ makeProvider: scripted([]) });
+  try {
+    const state = await srv.get('/api/state');
+    assert.equal(state.status, 200);
+    assert.equal(state.body.contractVersion, 1);
+    assert.equal(state.body.providers.anthropic.configured, false);
+    assert.equal(state.body.activeRun, null);
+    assert.deepEqual(state.body.layout.objects, []);
+    assert.ok(state.body.objectKinds.bookshelf);
+
+    const bad = await srv.post('/api/layout/place', { kind: 'piano', roomId: 'atelier', x: 2, y: 2 });
+    assert.equal(bad.status, 400);
+    const outside = await srv.post('/api/layout/place', { kind: 'bookshelf', roomId: 'atelier', x: 99, y: 2 });
+    assert.equal(outside.status, 400);
+    const onAgent = await srv.post('/api/layout/place', { kind: 'bookshelf', roomId: 'atelier', x: 3, y: 4 });
+    assert.equal(onAgent.status, 409);
+    const placed = await srv.post('/api/layout/place', { kind: 'bookshelf', roomId: 'atelier', x: 2, y: 2 });
+    assert.equal(placed.status, 201);
+    assert.equal(placed.body.kind, 'bookshelf');
+    const dup = await srv.post('/api/layout/place', { kind: 'window', roomId: 'atelier', x: 2, y: 2 });
+    assert.equal(dup.status, 409);
+    const withId = await srv.post('/api/layout/place', { kind: 'window', roomId: 'atelier', x: 5, y: 5, objectId: 'win-1' });
+    assert.equal(withId.status, 201);
+    assert.equal((await srv.post('/api/layout/place', { kind: 'window', roomId: 'atelier', x: 6, y: 5, objectId: 'win-1' })).status, 409);
+    assert.equal((await srv.post('/api/layout/place', { kind: 'window', roomId: 'atelier', x: 6, y: 5, objectId: '' })).status, 201, 'empty id falls back to generated');
+
+    const layout = await srv.get('/api/layout');
+    assert.equal(layout.body.objects.length, 3);
+    assert.deepEqual(JSON.parse(await fsp.readFile(path.join(srv.home, 'layout.json'), 'utf8')).objects.length, 3, 'persisted');
+
+    const reclaimed = await srv.post('/api/layout/reclaim', { objectId: 'win-1' });
+    assert.equal(reclaimed.status, 200);
+    assert.equal((await srv.post('/api/layout/reclaim', { objectId: 'win-1' })).status, 404);
+
+    const stream = await srv.sse(0);
+    const ev = await stream.waitFor((e) => e.type === 'object.reclaim');
+    assert.equal(ev.payload.objectId, 'win-1');
+    assert.deepEqual(stream.events.map((e) => e.type), ['object.place', 'object.place', 'object.place', 'object.reclaim']);
+    for (const e of stream.events) assert.equal(validateEvent(e).ok, true);
+    assert.deepEqual(stream.events.map((e) => e.seq), [1, 2, 3, 4]);
+    stream.close();
+    const partial = await srv.sse(3);
+    await partial.waitFor((e) => e.seq === 4);
+    assert.equal(partial.events.length, 1);
+    partial.close();
+
+    const put = await srv.put('/api/layout', { version: 1, rooms: [], objects: [], agents: [] });
+    assert.equal(put.status, 200);
+    assert.equal((await srv.put('/api/layout', { version: 2 })).status, 400);
+
+    const html = await fetch(`${srv.url}/`);
+    assert.equal(html.status, 200);
+    assert.match(html.headers.get('content-type'), /text\/html/);
+    const shared = await fetch(`${srv.url}/shared/events.js`);
+    assert.equal(shared.status, 200);
+    assert.match(shared.headers.get('content-type'), /javascript/);
+    assert.equal((await fetch(`${srv.url}/shared/../package.json`)).status, 404);
+    assert.equal((await fetch(`${srv.url}/..%2fpackage.json`)).status, 404);
+    assert.equal((await fetch(`${srv.url}/api/nope`)).status, 404);
+    assert.equal((await fetch(`${srv.url}/api/run`, { method: 'POST', body: '{not json' })).status, 400);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('run lifecycle over HTTP: events stream, persistence, spend, 409 while active, cancel', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const makeProvider = async () => ({
+    provider: fakeProvider([
+      [text('thinking '), async () => { await gate; }, text('done'), end('end_turn', { inputTokens: 1000, outputTokens: 500 })],
+    ]),
+    model: 'fake-model',
+    price: PRICE,
+  });
+  const srv = await startTestServer({ makeProvider });
+  try {
+    assert.equal((await srv.post('/api/run', {})).status, 400);
+    assert.equal((await srv.post('/api/run', { prompt: 'x', agentId: 'ghost' })).status, 400);
+    const stream = await srv.sse();
+    const started = await srv.post('/api/run', { prompt: 'say done', budgetUsd: 0.5 });
+    assert.equal(started.status, 202);
+    const { runId } = started.body;
+    assert.match(runId, /^run-/);
+    const again = await srv.post('/api/run', { prompt: 'again' });
+    assert.equal(again.status, 409);
+    assert.equal(again.body.code, 'RUN_ACTIVE');
+    const state = await srv.get('/api/state');
+    assert.equal(state.body.activeRun.runId, runId);
+    await stream.waitFor((e) => e.type === 'agent.token');
+    release();
+    const endEv = await stream.waitFor((e) => e.type === 'agent.run.end');
+    assert.equal(endEv.payload.reason, 'completed');
+    assert.equal(endEv.payload.finalText, 'thinking done');
+    const types = stream.events.map((e) => e.type);
+    assert.deepEqual(types, ['agent.run.start', 'agent.token', 'agent.token', 'cost.estimate', 'agent.run.end']);
+    const cost = stream.events.find((e) => e.type === 'cost.estimate').payload;
+    assert.equal(cost.usd, (1000 * 1 + 500 * 2) / 1e6);
+    assert.equal(cost.reconciled, true);
+
+    await srv.runs.waitForIdle();
+    const after = await srv.get('/api/state');
+    assert.equal(after.body.activeRun, null);
+    assert.equal(after.body.spend.totalUsd, cost.usd);
+    assert.equal(after.body.spend.reconciledTurns, 1);
+    assert.equal(after.body.runs[0].runId, runId);
+    assert.equal(after.body.runs[0].status, 'ended');
+    const rec = await srv.get(`/api/runs/${runId}`);
+    assert.equal(rec.status, 200);
+    assert.equal(rec.body.events.length, 5);
+    assert.equal(rec.body.reason, 'completed');
+    assert.equal(rec.body.spentUsd, cost.usd);
+    assert.equal(rec.body.messages.length, 2);
+    assert.equal((await srv.get('/api/runs/nope')).status, 404);
+    assert.ok((await fsp.stat(path.join(srv.workspaceRoot, 'hero', 'outbox'))).isDirectory());
+    stream.close();
+
+    // Cancel a second run mid-stream.
+    const hold = new Promise(() => {});
+    const srv2 = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([[text('a'), async () => { await hold; }]]), model: 'm', price: PRICE }) });
+    try {
+      const s2 = await srv2.sse();
+      const r2 = await srv2.post('/api/run', { prompt: 'hang' });
+      await s2.waitFor((e) => e.type === 'agent.token');
+      assert.deepEqual((await srv2.post('/api/cancel', { runId: 'wrong' })).body, { cancelled: false });
+      assert.deepEqual((await srv2.post('/api/cancel', { runId: r2.body.runId })).body, { cancelled: true });
+      const e2 = await s2.waitFor((e) => e.type === 'agent.run.end');
+      assert.equal(e2.payload.reason, 'cancelled');
+      s2.close();
+    } finally {
+      await srv2.close();
+    }
+  } finally {
+    await srv.close();
+  }
+});
+
+test('permission round trip over HTTP: fs.write prompts, the answer gates the write; timeout denies', async () => {
+  const layout = (await import('../shared/world.js')).defaultLayout();
+  layout.objects.push({ id: 'wb', kind: 'workbench', roomId: 'atelier', x: 2, y: 2 });
+  const turns = [
+    [...toolCall('c1', 'fs.write', { path: 'outbox/hello.txt', content: 'hi' }), end('tool_use')],
+    [...toolCall('c2', 'fs.write', { path: 'outbox/denied.txt', content: 'no' }), end('tool_use')],
+    [...toolCall('c3', 'fs.write', { path: 'outbox/late.txt', content: 'late' }), end('tool_use')],
+    [text('finished'), end()],
+  ];
+  const srv = await startTestServer({ layout, makeProvider: scripted(turns), permissionTimeoutMs: 150 });
+  try {
+    const stream = await srv.sse();
+    const { body: { runId } } = await srv.post('/api/run', { prompt: 'write hello' });
+    const p1 = await stream.waitFor((e) => e.type === 'permission.prompt');
+    assert.equal(p1.payload.tool, 'fs.write');
+    assert.deepEqual(p1.payload.input, { path: 'outbox/hello.txt', content: 'hi' });
+    assert.deepEqual((await srv.get('/api/state')).body.pendingPrompts, [{ promptId: p1.payload.promptId, runId }]);
+    assert.equal((await srv.post('/api/permission', { promptId: p1.payload.promptId, allow: true })).status, 400, 'schema validated');
+    assert.equal((await srv.post('/api/permission', { promptId: 'nope', runId, allow: true })).status, 404);
+    assert.equal((await srv.post('/api/permission', { promptId: p1.payload.promptId, runId, allow: true })).status, 200);
+    const r1 = await stream.waitFor((e) => e.type === 'agent.tool_result' && e.payload.callId === 'c1');
+    assert.equal(r1.payload.ok, true);
+    assert.equal(await fsp.readFile(path.join(srv.workspaceRoot, 'hero', 'outbox', 'hello.txt'), 'utf8'), 'hi');
+
+    const p2 = await stream.waitFor((e) => e.type === 'permission.prompt' && e.payload.callId === 'c2');
+    await srv.post('/api/permission', { promptId: p2.payload.promptId, runId, allow: false });
+    const r2 = await stream.waitFor((e) => e.type === 'agent.tool_result' && e.payload.callId === 'c2');
+    assert.equal(r2.payload.ok, false);
+    assert.match(r2.payload.error, /denied/);
+    await assert.rejects(fsp.stat(path.join(srv.workspaceRoot, 'hero', 'outbox', 'denied.txt')));
+
+    const r3 = await stream.waitFor((e) => e.type === 'agent.tool_result' && e.payload.callId === 'c3');
+    assert.equal(r3.payload.ok, false, 'unanswered prompt times out as a denial');
+    const endEv = await stream.waitFor((e) => e.type === 'agent.run.end');
+    assert.equal(endEv.payload.reason, 'completed');
+    const responses = stream.events.filter((e) => e.type === 'permission.response').map((e) => e.payload.allow);
+    assert.deepEqual(responses, [true, false]);
+    stream.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+test('provider failure becomes agent.run.error and the run record says so; NO_KEY is a 400 before any event', async () => {
+  const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([() => { const e = new Error('upstream 500'); e.code = 'HTTP_500'; throw e; }]), model: 'm', price: null }) });
+  try {
+    const stream = await srv.sse();
+    const { body: { runId } } = await srv.post('/api/run', { prompt: 'x' });
+    const err = await stream.waitFor((e) => e.type === 'agent.run.error');
+    assert.equal(err.payload.code, 'HTTP_500');
+    await srv.runs.waitForIdle();
+    const rec = await srv.get(`/api/runs/${runId}`);
+    assert.equal(rec.body.status, 'error');
+    assert.equal(rec.body.error.message, 'upstream 500');
+    assert.equal(stream.events.some((e) => e.type === 'agent.run.end'), false);
+    stream.close();
+  } finally {
+    await srv.close();
+  }
+  const real = await startTestServer({ env: {} });
+  try {
+    const r = await real.post('/api/run', { prompt: 'x' });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.code, 'NO_KEY');
+    assert.equal((await real.post('/api/run', { prompt: 'x', provider: 'bogus' })).body.code, 'UNKNOWN_PROVIDER');
+    assert.equal(real.bus.seq, 0);
+  } finally {
+    await real.close();
+  }
+});
+
+test('boot() starts the real entry point on an ephemeral port with its own data dir', async () => {
+  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-boot-'));
+  const logs = [];
+  const log = { info: (m) => logs.push(m), warn: (m) => logs.push(m), error: (m) => logs.push(m) };
+  const app = await boot({ env: { MAKA_HOME: path.join(tmp, 'home'), MAKA_WORKSPACE: path.join(tmp, 'ws'), PORT: '0' }, port: 0, log });
+  try {
+    const res = await fetch(`${app.url}/api/state`);
+    const state = await res.json();
+    assert.equal(state.layout.rooms[0].id, 'atelier');
+    assert.equal(state.home, path.join(tmp, 'home'));
+    assert.ok(logs.some((l) => /not wired/.test(l)));
+    assert.ok((await fsp.stat(path.join(tmp, 'home', 'runs'))).isDirectory());
+  } finally {
+    await app.close();
+    await fsp.rm(tmp, { recursive: true, force: true });
+  }
+});
