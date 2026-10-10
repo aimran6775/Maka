@@ -18,6 +18,8 @@
 //   POST /api/permission       { promptId, runId, allow } → emits permission.response
 //   GET  /api/gate             { pending, recent, ledger } the Entrance Gate queue
 //   POST /api/gate/:id         { decision: approve|revise|reject, notes? } → gate.item
+//   GET  /api/mission          { mission, plan, chief, caps, judgeToday }
+//   POST /api/mission          { text, budgetUsd, horizon? } → the Chief plans (202 { mission, runId })
 //   GET  /api/agents           every agent record with zone, reports, grants, resolved leash
 //   POST /api/agents           { name, role?, zoneId, parentAgentId?, venture?, specialty?, persona?, policy? }
 //   GET  /api/agents/:id
@@ -160,7 +162,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -218,6 +220,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         gate: gateQueue ? { pending: gateQueue.pending(), recent: gateQueue.recent(20) } : null,
         agents: agents ? agents.list() : null,
         work: trails ? { inTransit: trails.inTransit(), recent: trails.list().slice(0, 20) } : null,
+        mission: chief ? chief.state() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -290,6 +293,22 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         return sendJson(res, 200, item);
       }
       throw new HttpError(405, 'method not allowed');
+    }
+    if (p === '/api/mission' && method === 'GET') {
+      if (!chief) throw new HttpError(404, 'no Chief Ranger');
+      return sendJson(res, 200, chief.state());
+    }
+    if (p === '/api/mission' && method === 'POST') {
+      if (!chief) throw new HttpError(404, 'no Chief Ranger');
+      const body = await readJsonBody(req);
+      try {
+        return sendJson(res, 202, await chief.mission(body));
+      } catch (err) {
+        if (err.status) throw new HttpError(err.status, err.message, err.code);
+        if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST'].includes(err.code)) throw new HttpError(400, err.message, err.code);
+        if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);
+        throw err;
+      }
     }
     if (p === '/api/agents' && method === 'GET') {
       if (!agents) throw new HttpError(404, 'no agents registry');

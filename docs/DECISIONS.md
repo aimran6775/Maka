@@ -417,3 +417,21 @@ other Rangers (a Marketing Ranger can hand listings to the Listings Ranger); a J
 never delegates; nobody delegates to the Chief (the Chief is briefed by the Superintendent
 and by reflections). The Superintendent may delegate to anyone through `POST /api/work`
 (the item then starts at the Entrance Gate's zone id for the trail).
+
+## D51. The Chief plans inside a real run, through tools, and is not judged
+
+The plan could have been one model call parsed from prose. Running the Chief as an agent
+with `plan.submit`, `crew.hire` and `delegate` instead means the plan is validated by the
+gate against a schema (a bad plan is a tool error the Chief sees and fixes, not a silent
+retry), every decision is an event in a transcript the Peak can show, the hires and
+handoffs are the same calls any Ranger makes, and spend is the same `cost.estimate`. The
+Chief already runs on the judge tier, so its runs skip the judge's review: a judge judging
+the judge is spend without a decision. Its cost events are counted as judge spend in the
+ledger, and the judge daily cap pauses the mission rather than silently skipping the Chief.
+
+## D52. Follow-ups are bounded per mission
+
+Each `work.done` for an item the Chief delegated starts one follow-up run. Without a bound
+a flaky Ranger could keep the Chief planning all day, so `maxFollowUps` (20) pauses the
+mission with the reason; a new mission or a manual re-brief resumes it. Follow-ups run
+with a small budget and turn count because they decide, they do not research.

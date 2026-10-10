@@ -242,3 +242,21 @@ test('concurrent runs: queued runs, several active runs, and work items from han
   s = reduce(s, [ev('agent.run.error', { runId: 'r0', turn: 1, message: 'boom' })]);
   assert.equal(s.activeRun, null);
 });
+
+test('plan.updated keeps the mission status and the latest plan at the Peak', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ mission: { mission: { id: 'm1', text: 'sell lanterns', status: 'planning', budgetUsd: 5, horizon: '30 days' }, plan: null } }));
+  s = reduce(s, [ev('plan.updated', { missionId: 'm1', change: 'submitted', planId: 'p1', version: 1, status: 'active', summary: 'one venture', by: 'chief-ranger', runId: 'r', ventures: [{ id: 'lantern-co', name: 'Lantern Co', budgetUsd: 4, taskCount: 2 }] })]);
+  assert.equal(s.mission.mission.status, 'active');
+  assert.equal(s.mission.mission.text, 'sell lanterns');
+  assert.equal(s.mission.plan.version, 1);
+  assert.equal(s.mission.plan.ventures[0].name, 'Lantern Co');
+  s = reduce(s, [ev('plan.updated', { missionId: 'm1', planId: 'p1', version: 1, change: 'status', status: 'paused', reason: 'judge cap' })]);
+  assert.equal(s.mission.mission.status, 'paused');
+  assert.equal(s.mission.mission.reason, 'judge cap');
+  assert.equal(s.mission.plan.version, 1, 'a status change keeps the plan');
+  assert.equal(s.planUpdates.length, 2);
+  const fresh = reduce(applySnapshot(initialState(), snapshot()), [ev('plan.updated', { missionId: 'm2', change: 'status', status: 'planning', summary: 'new mission text' })]);
+  assert.equal(fresh.mission.mission.id, 'm2');
+  assert.equal(fresh.mission.mission.text, 'new mission text');
+});

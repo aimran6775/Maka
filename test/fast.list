@@ -16,3 +16,4 @@ test/leash-ledger.test.js
 test/judge.test.js
 test/agents.test.js
 test/trails.test.js
+test/chief.test.js

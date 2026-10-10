@@ -94,7 +94,13 @@ Step 4, concurrency and trails: several Rangers run at once (one run each, up to
 each other with the `delegate` tool (the Superintendent with `POST /api/work`): the item
 travels the trail between the two zones (`work.handoff`), the receiver runs with the brief,
 budget, deadline and evidence requirements, and `work.done` names the files that landed in
-its outbox. The park still draws one body; the crew walking its trails is step 7.
+its outbox. Step 5, the Chief plans: click the Mountain Peak and brief the Chief with a mission, a
+model-spend budget and a horizon (or `POST /api/mission`). With an Anthropic key the Chief
+plans on `claude-opus-5-5`, submits a plan the harness checks (ventures, roles, tasks,
+budgets, what needs you), hires Rangers by specialty into department camps, and delegates
+the first tasks; the plan is written to its outbox and shown at the Peak. Finished items
+bring the Chief back to decide the next move, within the judge's daily cap.
+The park still draws one body; the crew walking its trails is step 7.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

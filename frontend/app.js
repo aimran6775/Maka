@@ -68,7 +68,7 @@ const comms = createComms({ parent: ui, getState, api, x: 16, y: 16, w: 440 });
 const spend = createSpend({ parent: ui, getState, x: window.innerWidth - 300, y: 16, w: 270 });
 const build = createBuild({ parent: ui, getState, world: { setBuild() { render(); } }, x: window.innerWidth - 300, y: 190, w: 270 });
 const permission = createPermission({ parent: ui, getState, api });
-const inspect = createInspect({ parent: ui, getState, x: window.innerWidth - 300, y: 420, w: 270 });
+const inspect = createInspect({ parent: ui, getState, api, x: window.innerWidth - 300, y: 420, w: 270 });
 
 // Camera and park controls (a small bar under the status line).
 const cameraBar = el('div', { class: 'camera-bar' });

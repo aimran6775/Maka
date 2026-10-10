@@ -14,9 +14,11 @@
 // in arrival order. The model and provider are resolved when the run is queued, so a
 // missing key or an unreachable Ollama is still a 400 before anything is emitted.
 //
-// Model choice: an explicit { provider, model } in start() wins; then the agent's own
+// Model choice: an explicit { provider, model } in start() wins; then `step` (a router step
+// kind such as 'plan', used for the Chief Ranger's judge-tier runs); then the agent's own
 // policy.worker; otherwise the router picks the worker tier. The tier is recorded on every
-// cost event. The gate for every run reads the live leash policy, checks daily caps against
+// cost event. Every cost.estimate on the bus, whatever emitted it, updates spend.json
+// once (the per-run record keeps its own copy). The gate for every run reads the live leash policy, checks daily caps against
 // the ledger and parks draft-level actions in the Gate queue; when the run ends, its
 // pending Gate items expire. `judge` supplies the loop's review hook per run.
 
@@ -116,18 +118,28 @@ export function createRunManager({
     }
   }
 
-  async function applySpend(event) {
+  let spendChain = Promise.resolve();
+  function applySpend(event) {
     const p = event.payload;
-    const spend = await store.loadSpend();
-    if (p.reconciled && typeof p.usd === 'number') {
-      spend.totalUsd += p.usd;
-      spend.reconciledTurns += 1;
-      spend.byRun[p.runId] = (spend.byRun[p.runId] || 0) + p.usd;
-    } else {
-      spend.unreconciledTurns += 1;
-    }
-    await store.saveSpend(spend);
+    spendChain = spendChain
+      .then(async () => {
+        const spend = await store.loadSpend();
+        if (p.reconciled && typeof p.usd === 'number') {
+          spend.totalUsd += p.usd;
+          spend.reconciledTurns += 1;
+          spend.byRun[p.runId] = (spend.byRun[p.runId] || 0) + p.usd;
+        } else {
+          spend.unreconciledTurns += 1;
+        }
+        await store.saveSpend(spend);
+      })
+      .catch((err) => console.error('spend update failed:', err));
+    return track(spendChain);
   }
+  // One global listener: spend is a fact about the park, not about one run.
+  bus.listen((event) => {
+    if (event.type === 'cost.estimate') applySpend(event);
+  });
 
   // Starts queued runs while slots are free and their agents are idle.
   function pump() {
@@ -162,7 +174,7 @@ export function createRunManager({
     activeFor: (agentId) => api.active().find((r) => r.agentId === agentId) || null,
     pending: () => [...pendingPrompts.entries()].map(([promptId, p]) => ({ promptId, runId: p.runId })),
 
-    async start({ agentId = 'ranger', prompt, provider: providerName, model, maxTurns = DEFAULT_MAX_TURNS, budgetUsd = DEFAULT_BUDGET_USD, workItemId = null, system = null } = {}) {
+    async start({ agentId = 'ranger', prompt, provider: providerName, model, step = null, maxTurns = DEFAULT_MAX_TURNS, budgetUsd = DEFAULT_BUDGET_USD, workItemId = null, system = null, review: wantReview = true } = {}) {
       if (typeof prompt !== 'string' || !prompt.trim()) throw fail('BAD_REQUEST', 'prompt is required');
       if (!workspaceOnline()) throw fail('WORKSPACE_OFFLINE', `workspace root ${workspaceRoot} is offline; runs are paused until it is back`);
       const layout = getLayout();
@@ -174,8 +186,8 @@ export function createRunManager({
       // Explicit provider/model wins; then the agent's own worker policy; otherwise the
       // router's worker tier. Throws NO_KEY / NO_MODEL / OLLAMA_UNREACHABLE /
       // UNKNOWN_PROVIDER before anything is persisted or emitted.
-      const routed = router.route({ kind: 'turn' });
-      const own = agentRecord.policy && agentRecord.policy.worker;
+      const routed = router.route({ kind: step || 'turn' });
+      const own = !step && agentRecord.policy && agentRecord.policy.worker;
       const tier = providerName ? null : routed.tier;
       const wantProvider = providerName || (own && own.provider) || routed.provider;
       const wantModel = model || (providerName ? undefined : (own && own.model) || routed.model || undefined);
@@ -192,6 +204,7 @@ export function createRunManager({
         provider: provider.name,
         model: chosenModel,
         tier,
+        step: step || 'turn',
         prompt,
         maxTurns,
         budgetUsd,
@@ -231,10 +244,7 @@ export function createRunManager({
           const p = event.payload;
           if (!p || p.runId !== runId) return;
           record.events.push(event);
-          if (event.type === 'cost.estimate') {
-            if (p.reconciled && typeof p.usd === 'number') record.spentUsd += p.usd;
-            track(applySpend(event).catch((err) => console.error('spend update failed:', err)));
-          }
+          if (event.type === 'cost.estimate' && p.reconciled && typeof p.usd === 'number') record.spentUsd += p.usd;
           if (event.type === 'agent.token') scheduleFlush();
           else flush();
         });
@@ -264,7 +274,9 @@ export function createRunManager({
           ledger,
           submit: gateQueue ? { submit: (item) => gateQueue.submit({ ...item, runId, agentId }), log: (item) => gateQueue.log({ ...item, runId, agentId }) } : null,
         });
-        const review = judge ? judge.forRun({ runId, agentId, gate, brief: prompt }) : null;
+        // The Chief plans on the judge tier already; a judge reviewing the judge is spend
+        // without a decision (docs/DECISIONS.md D51), so the Chief's runs skip review.
+        const review = judge && wantReview && (agentRecord.role || 'ranger') !== 'chief_ranger' ? judge.forRun({ runId, agentId, gate, brief: prompt }) : null;
         const active = { runId, agentId, abort: () => ac.abort(), record, flush };
         running.set(runId, active);
 

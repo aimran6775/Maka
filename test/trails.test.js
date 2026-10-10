@@ -100,7 +100,7 @@ test('trails: delegation rules, briefs, work.handoff → run → work.done with 
     },
   });
   try {
-    assert.deepEqual(roleGrants('chief_ranger'), ['crew.spawn_junior', 'delegate', 'work.check']);
+    assert.deepEqual(roleGrants('chief_ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'crew.hire']);
     await assert.rejects(h.trails.delegate({ toAgentId: 'mark', brief: 'x' }, {}), /needs a delegating agent/);
     await assert.rejects(h.trails.delegate({ toAgentId: 'mark', brief: '' }, { by: 'chief-ranger' }), /brief is required/);
     await assert.rejects(h.trails.delegate({ toAgentId: 'ghost', brief: 'x' }, { by: 'chief-ranger' }), /unknown receiver/);

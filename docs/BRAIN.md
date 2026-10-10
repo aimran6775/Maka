@@ -10,6 +10,7 @@ browser (frontend/, vanilla JS, canvas)
    │  HTTP + SSE, JSON events validated against shared/events.js
    ▼
 sidecar (one Node process, no dependencies)
+   ├─ chief       mission → plan (schema-checked) → hire → delegate; follow-ups on work.done
    ├─ runs        N runs at once, one per Ranger, queued past the cap
    ├─ trails      work items between zones: handoff → receiver run → done
    ├─ loop        the agentic while-loop; every transition is an event
@@ -36,6 +37,15 @@ Three ideas carry everything:
    stay small.
 
 ## Current state
+
+Phase 2 step 5 done: Chief Ranger planning. `POST /api/mission` (or the form on the
+Peak card) gives the Chief a mission with a budget and horizon; the Chief runs on the
+judge tier's planning model and must call `plan.submit` with a schema-checked plan
+(ventures, roles, tasks, budgets, risks, what needs the owner), then `crew.hire` to staff
+department camps (created on demand) and `delegate` to start tasks. Every version is
+stored and written to the Chief's outbox; `plan.updated` keeps the Peak current; a
+finished delegated item brings the Chief back for a bounded follow-up. The judge daily
+cap and a per-mission follow-up cap pause the mission rather than spend past them.
 
 Phase 2 step 4 done: concurrency and handoffs. The run manager runs several Rangers at
 once (one run per Ranger, a global cap from `config.json`), queues the rest in arrival

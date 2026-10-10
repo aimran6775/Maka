@@ -10,6 +10,8 @@
 //   leash-ledger.json      daily per-domain action totals, approval streaks, judge spend
 //   gate-items.json        the Entrance Gate queue (recent items, pending first)
 //   work-items.json        delegated work items (trails)
+//   mission.json           the Superintendent's mission to the Chief Ranger
+//   plan.json              the Chief Ranger's current plan (every version kept)
 //   runs/<runId>.json      one record per run: metadata + every event + final messages
 
 import { promises as fsp } from 'node:fs';
@@ -63,6 +65,8 @@ export function createStore({ root, fs = fsp }) {
   const ledgerFile = path.join(root, 'leash-ledger.json');
   const gateFile = path.join(root, 'gate-items.json');
   const workFile = path.join(root, 'work-items.json');
+  const missionFile = path.join(root, 'mission.json');
+  const planFile = path.join(root, 'plan.json');
   const runsDir = path.join(root, 'runs');
 
   const runFile = (runId) => {
@@ -87,6 +91,10 @@ export function createStore({ root, fs = fsp }) {
     saveGateItems: (items) => writeJsonAtomic(gateFile, items, { fs }),
     loadWorkItems: (fallback) => readJson(workFile, fallback, { fs }),
     saveWorkItems: (items) => writeJsonAtomic(workFile, items, { fs }),
+    loadMission: (fallback) => readJson(missionFile, fallback, { fs }),
+    saveMission: (mission) => writeJsonAtomic(missionFile, mission, { fs }),
+    loadPlan: (fallback) => readJson(planFile, fallback, { fs }),
+    savePlan: (plan) => writeJsonAtomic(planFile, plan, { fs }),
     saveRun: async (record) => writeJsonAtomic(runFile(record.runId), record, { fs }),
     loadRun: async (runId) => readJson(runFile(runId), null, { fs }),
     async listRuns() {

@@ -54,7 +54,7 @@ export const SPECIALTY_NAMES = deepFreeze(Object.keys(SPECIALTIES));
 // unions these with the fixture grants of the agent's zone.
 export const ROLE_GRANTS = deepFreeze({
   superintendent: [],
-  chief_ranger: ['crew.spawn_junior', 'delegate', 'work.check'],
+  chief_ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'crew.hire'],
   ranger: ['crew.spawn_junior', 'delegate', 'work.check'],
   junior_ranger: [],
 });
@@ -79,6 +79,34 @@ export const ZONE_KINDS = deepFreeze([
   'research',
   'product_listings',
 ]);
+
+// Display names for zone kinds (the park's signage and the Chief's zone creation).
+export const ZONE_LABELS = deepFreeze({
+  ranger_station: 'Ranger Station',
+  entrance_gate: 'Entrance Gate',
+  mountain_peak: 'Mountain Peak',
+  visitor_center: 'Visitor Center',
+  trailhead: 'Trailhead',
+  sales: 'Sales Camp',
+  marketing: 'Marketing Camp',
+  finance: 'Finance Camp',
+  operations_support: 'Operations & Support Camp',
+  research: 'Research Camp',
+  product_listings: 'Product & Listings Camp',
+});
+
+// A rectangle for a new zone that overlaps no existing room: rooms are laid out on a grid
+// of (w + 2) × (h + 2) cells, left to right, then the next row.
+export function freeZoneRect(layout, { w = 8, h = 6 } = {}) {
+  const overlaps = (r) => layout.rooms.some((o) => r.x < o.x + o.w + 1 && o.x < r.x + r.w + 1 && r.y < o.y + o.h + 1 && o.y < r.y + r.h + 1);
+  for (let row = 0; row < 20; row++) {
+    for (let col = 0; col < 20; col++) {
+      const r = { x: 1 + col * (w + 2), y: 1 + row * (h + 2), w, h };
+      if (!overlaps(r)) return r;
+    }
+  }
+  return null;
+}
 
 export const LAYOUT_SCHEMA = deepFreeze({
   type: 'object',

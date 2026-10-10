@@ -21,7 +21,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { makeEvent } from '../shared/events.js';
-import { AGENT_ROLES, PARENT_ROLES, SPECIALTIES, SPECIALTY_NAMES, ZONE_KINDS, LAYOUT_SCHEMA, agentOf, roomOf, childrenOf, freeTile, allGrantsFor } from '../shared/world.js';
+import { AGENT_ROLES, PARENT_ROLES, SPECIALTIES, SPECIALTY_NAMES, ZONE_KINDS, ZONE_LABELS, LAYOUT_SCHEMA, agentOf, roomOf, childrenOf, freeTile, allGrantsFor, freeZoneRect } from '../shared/world.js';
 import { validate } from '../shared/schema.js';
 import { resolveAllLeash, withAgentLeash, validateLeash, DOMAINS } from '../shared/leash.js';
 
@@ -95,9 +95,27 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
     return peak;
   }
 
+  // The first room of a kind, created on the layout grid when none exists (department
+  // camps for the Chief's staffing, the Visitor Center, trailheads).
+  async function ensureZone(kind, { name, id } = {}) {
+    if (!ZONE_KINDS.includes(kind)) throw fail('BAD_REQUEST', `unknown zone kind "${kind}"`);
+    if (kind === 'mountain_peak') return ensurePeak();
+    const l = layout();
+    const existing = l.rooms.find((r) => r.kind === kind && (!id || r.id === id));
+    if (existing) return existing;
+    const rect = freeZoneRect(l);
+    if (!rect) throw fail('CONFLICT', 'no room left on the layout grid', 409);
+    const roomId = id || kind.replace(/_/g, '-');
+    if (l.rooms.some((r) => r.id === roomId)) throw fail('CONFLICT', `room "${roomId}" exists with another kind`, 409);
+    const room = { id: roomId, name: name || ZONE_LABELS[kind] || kind, kind, ...rect };
+    await layoutState.replace({ ...l, rooms: [...l.rooms, room] });
+    return room;
+  }
+
   return {
     PEAK_ROOM_ID,
     CHIEF_ID,
+    ensureZone,
     list: () => layout().agents.map(view),
     get: (id) => {
       const a = agentOf(layout(), id);

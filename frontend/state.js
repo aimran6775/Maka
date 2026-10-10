@@ -19,6 +19,8 @@ export function initialState() {
     policy: null, // router policy from the snapshot (worker / judge tiers)
     judge: null, // { provider, model, caps, today: { usd, calls }, wired } from the snapshot
     agents: [], // agent records from the snapshot (zone, reports, grants, resolved leash)
+    mission: null, // { mission, plan, chief, caps, judgeToday } from the snapshot; status/plan kept current by plan.updated
+    planUpdates: [], // plan.updated payloads this session, oldest first
     leash: null, // leash policy from the snapshot (shared/leash.js shape)
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
@@ -75,6 +77,7 @@ export function applySnapshot(state, snap) {
   next.policy = snap.policy || null;
   next.judge = snap.judge || null;
   next.agents = snap.agents || [];
+  next.mission = snap.mission || null;
   next.leash = snap.leash || null;
   next.workspace = snap.workspace || null;
   next.keystore = snap.keystore || { path: '', problem: null };
@@ -298,6 +301,15 @@ export function applyEvent(state, event) {
         ...run,
         items: [...run.items, { kind: 'judge', turn: p.turn, scope: p.scope, verdict: p.verdict, notes: p.notes || '', reason: p.reason || '', provider: p.provider || '', model: p.model || '', usd: typeof p.usd === 'number' ? p.usd : null, reconciled: Boolean(p.reconciled), tools: p.tools || [] }],
       }));
+      break;
+    }
+    case 'plan.updated': {
+      next.planUpdates = [...next.planUpdates, { ...p, ts: event.ts }];
+      const m = next.mission ? { ...next.mission } : { mission: null, plan: null };
+      if (m.mission && m.mission.id === p.missionId && p.status) m.mission = { ...m.mission, status: p.status, reason: p.reason || '' };
+      if (!m.mission || m.mission.id !== p.missionId) m.mission = { id: p.missionId, text: m.mission && m.mission.id === p.missionId ? m.mission.text : p.change === 'status' && p.summary ? p.summary : '', status: p.status || 'planning', reason: p.reason || '', budgetUsd: null, horizon: '' };
+      if (p.change === 'submitted') m.plan = { ...(m.plan || {}), id: p.planId, missionId: p.missionId, version: p.version, summary: p.summary || '', ventures: p.ventures || [], by: p.by, runId: p.runId, submittedAt: event.ts };
+      next.mission = m;
       break;
     }
     case 'crew.agent': {

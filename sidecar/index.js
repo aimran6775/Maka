@@ -21,6 +21,9 @@ import { createGateQueue } from './gate-queue.js';
 import { createJudge } from './judge.js';
 import { createAgents } from './agents.js';
 import { createTrails } from './trails.js';
+import { createChief } from './chief.js';
+import { TOOLS } from './capability/tools.js';
+import { CREW_TOOLS } from './capability/crew.js';
 import { createRouter } from './router.js';
 import { createApp, createHttpServer, createLayoutState } from './server.js';
 import { providerStatus } from './providers/provider.js';
@@ -66,9 +69,13 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const agents = createAgents({ layoutState, leashState, bus, activeRunFor: (id) => (runs ? runs.activeFor(id) : null) });
   await agents.ensureChief(); // the Chief Ranger is a singleton at the Mountain Peak (D45)
   const toolContext = {};
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online });
+  const registry = { ...TOOLS, ...CREW_TOOLS }; // chief tools join below; the gate reads it at call time
+  const router = createRouter(policy);
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online });
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, workspaceRoot }).init();
   toolContext.trails = trails;
+  const chief = await createChief({ bus, store, runs, agents, trails, ledger, router, getLayout: layoutState.get, workspaceRoot, log }).init();
+  Object.assign(registry, chief.tools);
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -86,6 +93,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     gateQueue,
     agents,
     trails,
+    chief,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -125,7 +133,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await new Promise((resolve) => server.close(resolve));
   }
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, close };
 }
 
 function validateConfig(data) {

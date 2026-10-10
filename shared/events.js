@@ -238,6 +238,22 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     position: int0,
     workItemId: str,
   }),
+  // Added v1 (phase 2 step 5): the Chief Ranger's plan changed. `change` is 'submitted'
+  // (a new version from plan.submit), or 'status' (the mission's status moved: planning,
+  // active, paused, done, with `reason`). Ventures are summarised; the full plan is in
+  // GET /api/mission.
+  'plan.updated': payload(['missionId', 'change'], {
+    missionId: nonEmpty,
+    planId: str,
+    version: int0,
+    change: { type: 'string', enum: ['submitted', 'status'] },
+    status: { type: 'string', enum: ['planning', 'active', 'paused', 'done'] },
+    reason: str,
+    summary: str,
+    by: str,
+    runId: str,
+    ventures: { type: 'array', items: { type: 'object', required: ['id', 'name'], additionalProperties: false, properties: { id: nonEmpty, name: nonEmpty, budgetUsd: num0, taskCount: int0, summary: str } } },
+  }),
   // Added v1 (phase 2 step 3): an agent record was created, changed or removed. `agent` is
   // the layout record as it now stands (absent on 'removed').
   'crew.agent': payload(['agentId', 'change'], {

@@ -107,3 +107,5 @@ body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--sans); ov
 .item.judge { font-family: var(--mono); font-size: 11px; color: var(--accent); border-left: 2px solid var(--accent); padding-left: 6px; }
 .item.judge.revise, .item.judge.reject { color: var(--warn); border-color: var(--warn); }
 .item.judge.skipped { color: var(--muted); border-color: var(--muted); }
+.mission-form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.mission-form .prompt { width: 100%; box-sizing: border-box; }

@@ -326,7 +326,7 @@ test('agents over HTTP: CRUD with the hierarchy rules, the Chief at the Peak, pe
     seen.push({ name, model: opts.model });
     return { provider: fakeProvider([[text('hello'), end()]], { name }), model: opts.model || 'picked', price: null };
   };
-  const srv = await startTestServer({ makeProvider, chief: true });
+  const srv = await startTestServer({ makeProvider, withChief: true });
   try {
     const list = await srv.get('/api/agents');
     assert.equal(list.status, 200);
@@ -386,7 +386,7 @@ test('concurrency and trails over HTTP: two Rangers run at once under the cap, t
   layout.objects.push({ id: 'sc2', kind: 'supply_cache', roomId: 'research', x: 22, y: 2 });
   layout.agents.push({ id: 'scout', name: 'Scout', roomId: 'research', x: 20, y: 1, role: 'ranger', policy: { worker: { provider: 'ollama', model: 'scout-model' } } });
   layout.agents[0].policy = { worker: { provider: 'ollama', model: 'ranger-model' } };
-  const srv = await startTestServer({ layout, makeProvider, chief: true, maxConcurrent: 2 });
+  const srv = await startTestServer({ layout, makeProvider, withChief: true, maxConcurrent: 2 });
   try {
     const stream = await srv.sse();
     assert.equal((await srv.get('/api/state')).body.maxConcurrent, 2);
@@ -438,6 +438,37 @@ test('concurrency and trails over HTTP: two Rangers run at once under the cap, t
     assert.equal((await srv.get('/api/work')).body[0].id, w.body.id);
     assert.equal((await srv.get('/api/work/nope')).status, 404);
     assert.equal((await srv.post(`/api/work/${w.body.id}/cancel`)).status, 409);
+    stream.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+test('mission over HTTP: the Superintendent briefs the Chief, the plan lands in the state and plan.updated streams', async () => {
+  const plan = { summary: 'One venture.', ventures: [{ id: 'v1', name: 'Venture One', summary: 'sells things', budgetUsd: 1, roles: [], tasks: [] }] };
+  const chiefProvider = fakeProvider([[...toolCall('p1', 'plan.submit', plan), end('tool_use', { inputTokens: 100, outputTokens: 10 })], [text('planned'), end()]], { name: 'anthropic' });
+  const makeProvider = async (name, opts) => (name === 'anthropic' ? { provider: chiefProvider, model: opts.model, price: PRICE } : { provider: fakeProvider([[text('x'), end()]], { name }), model: 'w', price: null });
+  const srv = await startTestServer({ makeProvider });
+  try {
+    assert.equal((await srv.get('/api/mission')).body.mission, null);
+    assert.equal((await srv.post('/api/mission', { text: '', budgetUsd: 1 })).status, 400);
+    const stream = await srv.sse();
+    const r = await srv.post('/api/mission', { text: 'Sell lanterns.', budgetUsd: 2, horizon: '2 weeks' });
+    assert.equal(r.status, 202);
+    assert.equal(r.body.mission.status, 'planning');
+    assert.ok(r.body.runId);
+    assert.equal((await srv.post('/api/mission', { text: 'again', budgetUsd: 1 })).status, 409, 'the Chief is busy');
+    const submitted = await stream.waitFor((e) => e.type === 'plan.updated' && e.payload.change === 'submitted');
+    assert.equal(submitted.payload.ventures[0].name, 'Venture One');
+    await stream.waitFor((e) => e.type === 'agent.run.end' && e.payload.runId === r.body.runId);
+    await srv.runs.waitForIdle();
+    const state = await srv.get('/api/state');
+    assert.equal(state.body.mission.mission.status, 'active');
+    assert.equal(state.body.mission.plan.version, 1);
+    assert.equal(state.body.mission.chief.role, 'chief_ranger');
+    assert.equal((await srv.get('/api/mission')).body.plan.ventures[0].id, 'v1');
+    assert.ok(state.body.layout.rooms.some((room) => room.kind === 'mountain_peak'));
+    assert.ok(state.body.spend.totalUsd > 0, 'the Chief\'s judge-tier spend is in spend.json');
     stream.close();
   } finally {
     await srv.close();

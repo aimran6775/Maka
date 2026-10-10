@@ -4,7 +4,7 @@ import { el, createWindow, setChildren, fmtUsd } from './windows.js';
 import { grantedTools, toolUses, lastModel, pendingGate, recentGate, judgeVerdicts, workInTransit, workFor } from '../state.js';
 import { LEASH_LEVEL_LABELS, resolveAllLeash } from '../../shared/leash.js';
 
-export function createInspect({ parent, getState, x, y, w }) {
+export function createInspect({ parent, getState, api, x, y, w }) {
   const { body, setTitle } = createWindow({ id: 'inspect', title: 'INSPECT', x, y, w, parent });
   let selection = null;
 
@@ -89,12 +89,36 @@ export function createInspect({ parent, getState, x, y, w }) {
     ];
   }
 
+  const missionText = el('textarea', { class: 'prompt', rows: 3, placeholder: 'Mission for the Chief Ranger (what business, what matters, what not to do)' });
+  const missionBudget = el('input', { class: 'inp num', type: 'number', min: 0, step: 1, value: 5, title: 'model-spend budget USD' });
+  const missionHorizon = el('input', { class: 'inp', value: '30 days', title: 'horizon' });
+  const missionNotice = el('div', { class: 'notice' });
+  async function briefChief() {
+    const text = missionText.value.trim();
+    if (!text) return (missionNotice.textContent = 'Write the mission first.');
+    missionNotice.textContent = 'Briefing the Chief…';
+    const r = await api.post('/api/mission', { text, budgetUsd: Number(missionBudget.value) || 0, horizon: missionHorizon.value.trim() || '30 days' });
+    missionNotice.textContent = r.ok ? `Mission ${r.body.mission.id} briefed; the Chief is ${r.body.queued ? 'queued' : r.body.runId ? 'planning' : 'paused (' + (r.body.mission.reason || 'see Peak') + ')'}.` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`;
+  }
+  const missionForm = el('div', { class: 'mission-form' },
+    missionText,
+    el('div', { class: 'row' }, el('label', { text: 'budget $' }), missionBudget, el('label', { text: 'horizon' }), missionHorizon, el('button', { class: 'btn primary', text: 'Brief the Chief', onclick: briefChief })),
+    missionNotice,
+  );
+
   function renderPeak(s) {
     setTitle('INSPECT · Mountain Peak');
     const runs = s.runOrder.map((id) => s.runs[id]).reverse();
+    const m = s.mission || {};
+    const mission = m.mission || null;
+    const plan = m.plan || null;
     return [
-      el('div', { class: 'muted small', text: 'The control centre. Phase 1 shows what the harness has done this session; ventures, the Chief Ranger and connector ledgers arrive in phase 2.' }),
-      row('ventures', 'no ventures yet'),
+      el('div', { class: 'muted small', text: 'The control centre: the Chief Ranger\'s mission and plan, the Gate queue, spend. Connector ledgers and the reflection cycle arrive in later steps.' }),
+      row('mission', mission ? `${mission.status}${mission.reason ? ` (${mission.reason})` : ''} · ${(mission.text || '').slice(0, 160)}` : 'none yet: brief the Chief below'),
+      plan ? row('plan', `v${plan.version} · ${(plan.summary || '').slice(0, 200)}`) : row('plan', 'no plan submitted yet'),
+      row('ventures', plan && plan.ventures && plan.ventures.length ? plan.ventures.map((v) => `${v.name} ($${(v.budgetUsd || 0).toFixed(2)}, ${v.taskCount ?? (v.tasks ? v.tasks.length : 0)} task(s))`).join('; ') : 'no ventures yet'),
+      plan && plan.needsSuperintendent && plan.needsSuperintendent.length ? row('needs you', plan.needsSuperintendent.join('; ')) : null,
+      missionForm,
       row('gate queue', `${pendingGate(s).length} waiting`),
       row('judge today', s.judge ? `${fmtUsd(s.judge.today.usd)} of $${s.judge.caps.judgeUsdPerDay} cap · ${s.judge.today.calls} call(s) · ${s.judge.provider}/${s.judge.model || 'default'}` : 'no judge wired'),
       row('spend', `${fmtUsd(s.spend.totalUsd)} reconciled${s.spend.unreconciledTurns ? ` · ${s.spend.unreconciledTurns} unpriced turn(s)` : ''}`),
