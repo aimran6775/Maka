@@ -240,6 +240,13 @@ not, with a Start button and the install hint; one model sized to half the machi
 memory offered as a pull with real progress) and the mission for the Chief, who is
 already at the Peak. Done or Later closes it; `POST /api/setup/reset` brings it back.
 
+Step 4, Ollama management: the Peak card shows the local worker as it is: Ollama found
+or not (with the install hint and a Start button), each pulled model with its size, an
+estimated resident footprint and the headroom against half the machine's memory, a
+Remove button, and one recommended pull with real progress. Without a reachable worker a
+run is refused with `OLLAMA_UNREACHABLE` and the message says what to do; nothing falls
+back to a paid provider unless `policy.json` says so.
+
 The signed, notarized `.dmg` and the download page come with steps 6 and 7
 (`docs/RELEASE_RUNBOOK.md`).
 

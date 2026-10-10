@@ -836,3 +836,21 @@ model, a mission), with Done and Later at the bottom. A step-by-step wizard woul
 the park and block on steps the owner may want to skip (no key yet, Ollama later); the
 card sits over the park and everything on it is also on the Peak card, so skipping
 loses nothing.
+
+## D100. Degrading honestly means the same refusal with a better message
+
+Step 4 asks for a router that "degrades honestly when the worker is unavailable". D19
+and D71 already decide the behaviour: no silent fallback to a paid provider, the hosted
+worker only by a written opt-in. So step 4 changes no routing. It makes the refusal
+useful: `OLLAMA_UNREACHABLE` and `NO_MODEL` name the Peak's Start and Pull buttons and
+`ollama serve` / `ollama pull`, the Peak shows the worker line the sidecar computed
+("ready: model", "no model pulled", "not reachable"), and the first-run card and the
+Peak share one module so the two never disagree.
+
+## D101. Memory headroom is an estimate and is labelled one
+
+A model's resident footprint is not something the sidecar can measure before it runs
+(Ollama loads lazily and the context size varies), so the Peak shows 1.3 × the file
+size as "about … resident" with the factor printed, and the headroom against half the
+machine's memory. Total and free memory are the OS's own figures. Nothing in the line is
+a measurement dressed up as one.

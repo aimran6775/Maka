@@ -30,6 +30,10 @@ export const CANDIDATES = Object.freeze([
   Object.freeze({ name: 'qwen2.5:3b', approxBytes: 1.9 * GB, needsBytes: 3 * GB, parameters: '3B' }),
   Object.freeze({ name: 'qwen2.5:1.5b', approxBytes: 1.0 * GB, needsBytes: 1.6 * GB, parameters: '1.5B' }),
 ]);
+// A model needs its weights plus context in memory; 1.3× the file size is the rule of
+// thumb the headroom diagnostics use (shown as such, never as a measurement).
+export const RESIDENT_FACTOR = 1.3;
+export const STALE_PROBE_MS = 30_000;
 export const INSTALL_HINTS = Object.freeze({
   darwin: 'Install Ollama from https://ollama.com/download (the Ollama.app) or `brew install ollama`, then start it.',
   linux: 'Install Ollama with `curl -fsSL https://ollama.com/install.sh | sh`, then `ollama serve`.',
@@ -79,6 +83,7 @@ export function createOllama({ env = process.env, fetch: fetchImpl = globalThis.
   let last = { at: 0, reachable: false, version: null, models: [], problem: 'not probed yet' };
   let pulling = null; // { model, status, completed, total, startedAt }
   let installed = null;
+  let refreshing = null;
   const emit = (type, payload) => bus && bus.emit(makeEvent(type, payload, { ts: clock.now() }));
 
   async function getJson(path, { timeoutMs = probeTimeoutMs } = {}) {
@@ -119,21 +124,29 @@ export function createOllama({ env = process.env, fetch: fetchImpl = globalThis.
       if (!installed) installed = await whichOllama({ env, fs, platform });
       return api.summary();
     },
-    // The last probe without a new one (for /api/state, which already probes elsewhere).
+    // The last probe without a new one (for /api/state, which already probes elsewhere);
+    // a probe older than STALE_PROBE_MS is refreshed in the background for the next read.
     summary() {
+      if (clock.now() - last.at > STALE_PROBE_MS && !refreshing) {
+        refreshing = probe().catch(() => {}).finally(() => { refreshing = null; });
+      }
       const mem = memory();
       const chosen = (env.OLLAMA_MODEL || '').trim() || (last.models[0] ? last.models[0].name : null);
+      const models = last.models.map((m) => {
+        const residentBytes = Math.round(m.sizeBytes * RESIDENT_FACTOR);
+        return { ...m, residentBytes, headroomBytes: Math.round(mem.budgetBytes - residentBytes), fits: residentBytes <= mem.budgetBytes };
+      });
       return {
         host,
         reachable: last.reachable,
         version: last.version,
         problem: last.problem,
         probedAt: last.at,
-        models: last.models,
+        models,
         chosen,
         installed: installed || { binary: null, app: null },
         installHint: INSTALL_HINTS[platform] || INSTALL_HINTS.linux,
-        memory: mem,
+        memory: { ...mem, residentFactor: RESIDENT_FACTOR },
         pulling: pulling ? { ...pulling } : null,
         // Honest summary line for the UI: what the worker tier will do right now.
         worker: last.reachable ? (chosen ? `ready: ${chosen}` : 'reachable, no model pulled: runs answer NO_MODEL') : 'not reachable: runs answer OLLAMA_UNREACHABLE (no silent fallback)',

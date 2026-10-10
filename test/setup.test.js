@@ -278,3 +278,37 @@ test('over HTTP: the first-run state, the routes, a pull streaming ollama.pull, 
     await check.close();
   }
 });
+
+test('step 4 diagnostics: every pulled model carries its resident estimate and headroom, a stale probe refreshes itself, and the worker errors say what to do', async () => {
+  const fake = await startFakeOllama({ models: [{ name: 'qwen2.5:7b', size: 4.7 * GB }, { name: 'qwen2.5:14b', size: 9 * GB }] });
+  let now = 1_000_000;
+  const clock = { now: () => now };
+  const mgr = createOllama({ env: { OLLAMA_HOST: fake.url, PATH: '/nowhere' }, osImpl: fakeOs(16, 2), fs: { stat: async () => { throw Object.assign(new Error('nope'), { code: 'ENOENT' }); } }, platform: 'linux', clock, log: { error() {} } });
+  try {
+    await mgr.status();
+    const sum = mgr.summary();
+    assert.equal(sum.memory.residentFactor, 1.3);
+    const seven = sum.models.find((m) => m.name === 'qwen2.5:7b');
+    assert.equal(seven.residentBytes, Math.round(4.7 * GB * 1.3));
+    assert.equal(seven.fits, true);
+    assert.equal(seven.headroomBytes, Math.round(8 * GB - 4.7 * GB * 1.3));
+    const fourteen = sum.models.find((m) => m.name === 'qwen2.5:14b');
+    assert.equal(fourteen.fits, false);
+    assert.ok(fourteen.headroomBytes < 0);
+    // Stale: a summary older than 30 s re-probes in the background for the next read.
+    fake.models.push({ name: 'qwen2.5:3b', size: 1.9 * GB });
+    assert.equal(mgr.summary().models.length, 2, 'not stale yet: the cached probe');
+    now += 31_000;
+    mgr.summary();
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(mgr.summary().models.length, 3, 'refreshed');
+    await fake.close();
+    const { createProvider } = await import('../sidecar/providers/provider.js');
+    await assert.rejects(createProvider('ollama', { env: { OLLAMA_HOST: fake.url } }), (e) => e.code === 'OLLAMA_UNREACHABLE' && /Start Ollama/.test(e.message) && /no silent|nowhere else/.test(e.message));
+    const empty = await startFakeOllama({ models: [] });
+    await assert.rejects(createProvider('ollama', { env: { OLLAMA_HOST: empty.url } }), (e) => e.code === 'NO_MODEL' && /Peak card/.test(e.message));
+    await empty.close();
+  } finally {
+    await fake.close().catch(() => {});
+  }
+});

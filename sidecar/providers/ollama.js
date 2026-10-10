@@ -39,7 +39,7 @@ export async function listModels({ fetch: fetchImpl = globalThis.fetch, host = O
     const data = await res.json();
     return (Array.isArray(data.models) ? data.models : []).map((m) => m.name || m.model).filter(Boolean);
   } catch (err) {
-    const e = new Error(`ollama not reachable at ${host}: ${err && err.message ? err.message : err}`);
+    const e = new Error(`ollama not reachable at ${host}: ${err && err.message ? err.message : err}. Start Ollama (the Peak card's "Start Ollama", the Ollama app, or \`ollama serve\`); routine turns run nowhere else unless policy.json opts into a hosted fallback`);
     e.code = 'OLLAMA_UNREACHABLE';
     throw e;
   } finally {

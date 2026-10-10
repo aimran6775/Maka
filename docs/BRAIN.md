@@ -40,7 +40,16 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 3 done: the first
+Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 4 done: Ollama
+management on the Peak as well as at first run, from one shared module
+(`frontend/ui/worker.js` over `sidecar/ollama.js`): found or not with the install hint
+and a Start button, the pulled models each with their file size, a resident estimate
+(1.3 × the file, said as a rule of thumb), the headroom against half the machine's
+memory or "over the budget", a remove button, the recommended pull with Ollama's own
+progress. The router does not change: without a reachable worker a run answers
+`OLLAMA_UNREACHABLE` (now saying what to do), without a model `NO_MODEL`, and nothing
+runs on a paid provider unless `policy.json` opts into the hosted fallback (D71). Step 3
+done: the first
 run. A card over the park (`frontend/ui/firstrun.js`, state from `sidecar/setup.js`)
 walks the Superintendent through four steps, each true to what the sidecar found: the
 workspace root (the LaCie at `/Volumes/LaCie/Maka/workspace` is the default when it is

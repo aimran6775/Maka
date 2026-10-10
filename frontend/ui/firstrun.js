@@ -5,8 +5,7 @@
 // found or not with the models it really has and a pull's real byte counts, and the
 // mission goes to the Chief who is already standing at the Peak.
 import { el, setChildren } from './windows.js';
-
-const gb = (n) => `${(n / 1024 ** 3).toFixed(1)} GB`;
+import { workerLines } from './worker.js';
 
 export function createFirstRun({ parent, getState, api, onRefresh }) {
   const host = el('div', { class: 'firstrun-host', hidden: true });
@@ -80,21 +79,10 @@ export function createFirstRun({ parent, getState, api, onRefresh }) {
   function workerStep(s, st) {
     const w = st.worker || s.ollama || null;
     const done = Boolean(w && w.reachable && w.chosen);
-    const pull = s.ollamaPull;
-    const mem = w && w.memory ? w.memory : null;
-    const rec = mem && mem.recommended;
-    const recRow = mem && mem.candidates ? mem.candidates.find((c) => c.name === rec) : null;
-    const pullLine = pull && !pull.done ? `${pull.model}: ${pull.status}${pull.total ? ` · ${gb(pull.completed || 0)} of ${gb(pull.total)}` : ''}` : pull && pull.done ? `${pull.model}: ${pull.error ? `failed (${pull.error})` : 'pulled'}` : '';
     return el('div', { class: 'fr-step' },
       stepHead(3, 'The worker: a local model in Ollama', done),
       el('div', { class: 'muted small', text: 'Routine turns run on a local open-weight model at no marginal cost, 24/7. The model must support tool calling; the judge catches errors, it does not make a weak worker strong.' }),
-      w ? el('div', { class: 'small', text: `Ollama at ${w.host}: ${w.reachable ? `reachable${w.version ? ` (v${w.version})` : ''}` : `not reachable (${w.problem || 'unknown'})`}` }) : el('div', { class: 'small muted', text: 'Ollama status not loaded yet.' }),
-      w && !w.reachable ? el('div', { class: 'small', text: w.installed && (w.installed.app || w.installed.binary) ? `Installed at ${w.installed.app || w.installed.binary}.` : w.installHint || '' }) : null,
-      w && !w.reachable ? el('div', { class: 'row' }, el('button', { class: 'btn', text: 'Start Ollama', disabled: busy, onclick: () => act('worker', 'Start', () => api.post('/api/ollama/start', {})) }), el('button', { class: 'btn', text: 'Check again', disabled: busy, onclick: () => act('worker', 'Check', () => api.get('/api/ollama')) })) : null,
-      w && w.reachable ? el('div', { class: 'small', text: w.models.length ? `models: ${w.models.map((m) => `${m.name} (${gb(m.sizeBytes)})`).join(', ')} · the run uses ${w.chosen}` : 'no model pulled yet' }) : null,
-      mem ? el('div', { class: 'small muted', text: `memory: ${gb(mem.totalBytes)} total, ${gb(mem.freeBytes)} free as the OS reports it · ${mem.note}` }) : null,
-      w && w.reachable && rec && !w.models.some((m) => m.name === rec) ? el('div', { class: 'row' }, el('button', { class: 'btn primary', text: `Pull ${rec} (about ${gb(recRow.approxBytes)} download)`, disabled: busy || Boolean(w.pulling), onclick: () => act('worker', 'Pull', () => api.post('/api/ollama/pull', { model: rec })) })) : null,
-      pullLine ? el('div', { class: `small ${pull.error ? 'warn' : ''}`, text: pullLine }) : null,
+      ...workerLines({ s, w, api, act, busy }),
       el('div', { class: 'notice', text: notes.worker }),
     );
   }

@@ -68,7 +68,7 @@ export async function createProvider(name, { model, env = process.env, keystoreP
     let chosen = model || (env.OLLAMA_MODEL || '').trim();
     if (!chosen) {
       const models = await listModels({ fetch: fetchImpl, host }); // throws OLLAMA_UNREACHABLE
-      if (!models.length) throw fail('NO_MODEL', `ollama at ${host} has no models installed; run \`ollama pull <model>\``);
+      if (!models.length) throw fail('NO_MODEL', `ollama at ${host} has no models installed; pull one from the Peak card (sized to this machine's memory) or run \`ollama pull <model>\``);
       chosen = models[0];
     }
     return { provider: createOllamaProvider({ fetch: fetchImpl, host }), model: chosen, price: null };

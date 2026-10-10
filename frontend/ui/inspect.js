@@ -1,6 +1,7 @@
 // INSPECT window: the card for whatever was clicked in the park. Shows only what the
 // harness has emitted this session: no projections, no placeholders for phase 2 features.
 import { el, createWindow, setChildren, fmtUsd } from './windows.js';
+import { workerLines } from './worker.js';
 import { grantedTools, toolUses, lastModel, pendingGate, pendingHandoffs, recentGate, judgeVerdicts, workInTransit, workFor } from '../state.js';
 import { LEASH_LEVEL_LABELS, LEASH_LEVELS, DOMAINS, resolveAllLeash, resolveLeash } from '../../shared/leash.js';
 
@@ -362,6 +363,20 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     ];
   }
 
+  // The Peak's worker actions (step 4): the outcome shows under the lines, then the
+  // snapshot is re-read so the models and memory lines are the sidecar's, not ours.
+  const workerNotice = { text: '' };
+  async function peakAct(step, label, req) {
+    workerNotice.text = `${label}…`;
+    if (selectionRefresh) selectionRefresh();
+    const r = await req();
+    workerNotice.text = r.ok ? `${label}: ok${r.body && r.body.how ? ` (${r.body.how})` : ''}` : `${label}: ${r.body.code || r.status}: ${r.body.error || 'failed'}`;
+    const snap = await fetch('/api/state');
+    if (snap.ok && window.maka && window.maka.refresh) await window.maka.refresh(await snap.json());
+    if (selectionRefresh) selectionRefresh();
+    return r;
+  }
+
   function renderPeak(s) {
     setTitle('INSPECT · Mountain Peak');
     const runs = s.runOrder.map((id) => s.runs[id]).reverse();
@@ -398,6 +413,9 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ...briefsSection(s),
       s.browser ? row('browser', `${s.browser.wired ? `${s.browser.chromium}${s.browser.headless ? ' (headless)' : ''}` : 'not wired: no Chromium found (browser.chromiumPath or CHROMIUM)'} · ${(s.browser.sessions || []).length} open · ${pendingHandoffs(s).length} handoff(s) waiting`) : null,
       row('judge today', s.judge ? `${fmtUsd(s.judge.today.usd)} of $${s.judge.caps.judgeUsdPerDay} cap · ${s.judge.today.calls} call(s) · ${s.judge.provider}/${s.judge.model || 'default'}` : 'no judge wired'),
+      s.ollama ? el('div', { class: 'k', text: 'worker (local model, Ollama)' }) : null,
+      ...(s.ollama ? workerLines({ s, w: s.ollama, api, act: peakAct, busy: false, step: 'worker', showRemove: true }) : []),
+      s.ollama ? el('div', { class: 'notice', text: workerNotice.text }) : null,
       row('spend', `${fmtUsd(s.spend.totalUsd)} reconciled${s.spend.unreconciledTurns ? ` · ${s.spend.unreconciledTurns} unpriced turn(s)` : ''}`),
       row('workspace', s.workspace ? (s.workspace.online ? `online · ${s.workspace.root}` : `OFFLINE (${s.workspace.reason || 'unreachable'}) · ${s.workspace.root}`) : '—'),
       row('runs', runs.length ? `${runs.length} this session` : 'none this session'),

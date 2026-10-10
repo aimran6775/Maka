@@ -195,5 +195,6 @@ main().catch((err) => {
   status.textContent = `failed to load: ${err.message}`;
 });
 
-// Diagnostics hook for scripts/park-check.mjs (read-only: state and the park handle).
-window.maka = { getState, park: () => park };
+// Diagnostics hook for scripts/park-check.mjs (read-only: state and the park handle), and
+// `refresh(snapshot)` for panels that want the sidecar's snapshot applied after an action.
+window.maka = { getState, park: () => park, refresh: async (snap) => setState(applySnapshot(state, snap)) };
