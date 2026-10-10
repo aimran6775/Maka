@@ -2,3 +2,4 @@
 # These suites are the merge gate: `npm run test:fast` must be green before every push.
 test/schema.test.js
 test/events.test.js
+test/loop.test.js

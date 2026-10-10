@@ -29,7 +29,7 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 1, step 2: skeleton plus the event contract in `shared/`. There is no runnable
+Phase 1, step 3: skeleton, event contract in `shared/`, and the loop in `sidecar/loop.js`. There is no runnable
 sidecar yet. The README's run instructions are marked not yet implemented and will be
 unmarked when `sidecar/index.js` lands (step 6).
 
@@ -40,6 +40,16 @@ An event is `{ v, id, type, ts, seq?, payload }`. Payload schemas are strict
 `cost.estimate.reconciled` is the single flag the spend readout trusts: a cost event is
 reconciled only when the token counts came from the provider's own usage report and the
 model has a known price.
+
+### The loop (`sidecar/loop.js`)
+
+One turn = one provider call + the tool calls it asked for. Before every provider call the
+loop checks, in order: cancelled, max turns reached, spend at or over budget. The provider
+streams normalized chunks (`text_delta`, `tool_use_start`, `tool_input_delta`,
+`message_end`); the loop accumulates them by content-block index, then answers every
+`tool_use` block with exactly one `tool_result`, even for a thrown tool, unparsable input
+JSON, or a cancel that lands between two tool calls. Spend only counts reconciled cost, so
+an unpriced model cannot be budget-capped (the UI shows its tokens as unreconciled).
 
 ## Reading order once code exists
 
