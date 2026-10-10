@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+*.key
+secrets/
+.maka/
+workspace/
+dist/
+.DS_Store
