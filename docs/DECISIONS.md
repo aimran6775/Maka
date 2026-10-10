@@ -152,3 +152,11 @@ brief's "the judge never silently rewrites a worker's output". Phase 1 passes no
 Both live in `MAKA_HOME`, are validated at boot, and fall back to defaults with a logged
 warning when invalid. Editing them from the park is phase 2 (the Lookout Tower and the
 Entrance Gate settings).
+- Hierarchy: Superintendent (owner) → Chief Ranger (lead agent, judge-tier, owns the
+  portfolio, decides and delegates) → Rangers → Junior Rangers (one level only). Humans
+  approve only Gate items: cap raises, money-out above leash, new accounts/logins,
+  irreversible deletes, legal/identity, Chief Ranger escalations.
+- Live park UI: everything clickable and live (Ranger, zone, fixture, trail, Tower, Gate,
+  Visitor Center); animation states driven only by real events; sidecar owns layout state.
+- Assets: CC0/CC-BY only, recorded in NOTICE.md. Verified: Kenney Tiny Town, Kenney
+  Roguelike/RPG pack, Shade Puny Characters, inkBubi forest sample.

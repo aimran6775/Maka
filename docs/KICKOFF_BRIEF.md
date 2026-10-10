@@ -91,6 +91,62 @@ Stripe, Meta Ads, Google Ads are the first candidates.
    Entrance Gate under the leash model, with a hard daily cap that only the Superintendent
    can raise.
 
+## Hierarchy and decision model (owner decision 2026-10-10)
+Maka is the owner's business hub for everything. It finds, launches, and grows businesses
+on its own; the owner approves only what genuinely needs a human.
+- Superintendent (the owner): sets the mission, budgets, and leashes; approves items that
+  reach the Entrance Gate; everything else is informational.
+- Chief Ranger (lead agent, judge-tier model): owns the portfolio. Reads the Scout's venture
+  briefs, decides go/no-go within budget, creates and staffs ventures, assigns Rangers,
+  sets each Ranger's task briefs and sub-budgets, reviews results, reallocates, and
+  escalates to the Superintendent only when a leash or a budget says so.
+- Rangers (worker-tier models, judge consulted per the Model strategy): own a venture or a
+  function inside it and can spawn Junior Rangers for bounded subtasks (one trail hop down,
+  no deeper, so the tree stays legible).
+- Delegation is a real handoff: a work item travels a trail from one zone to another with
+  its brief, budget, deadline, and evidence requirements attached. The park shows it move.
+- What needs the human, and nothing else: raising a cap, a money-out action above the leash,
+  a new platform account or connector login, an irreversible deletion, a legal or identity
+  document, and anything the Chief Ranger flags as "I would not do this without you".
+  Approvals arrive as cards at the Gate with the evidence attached and one-tap approve /
+  revise / reject, and are mirrored to the owner's phone in phase 3.
+
+## Live park UI (owner requirement 2026-10-10)
+The park is a full interface, not a picture. Everything visible is live and clickable.
+- Click a Ranger: their card slides in with current task, live transcript stream, model in
+  use, spend today, leash levels, venture, and the trail of recent handoffs. You can brief
+  them, pause them, or reassign them from the card.
+- Click a zone: its roster, queue depth, budget burn, and the fixtures (grants) it holds.
+  Build mode places or removes fixtures right there.
+- Click a fixture: what it grants, which Rangers used it today, the last 20 actions through it.
+- Click a trail: the work items in transit, with brief and deadline.
+- Click the Lookout Tower: the portfolio: every venture, real revenue and spend from
+  connectors, the Chief Ranger's current plan, and the items waiting on you.
+- Click the Entrance Gate: the approval queue.
+- Click the Visitor Center: inbox and outbox, customer threads, deliverables.
+- Camera: pan, zoom, follow-a-Ranger. Day/night from the real clock. Rangers walk between
+  zones when work hands off; idle Rangers idle visibly; a Ranger waiting on you stands at
+  the Gate. Every animation state is driven by a real event; nothing plays on a timer.
+- Layout authority is the sidecar. The frontend renders; it never owns state.
+
+## Art and assets (licensed sources, verified 2026-10-10)
+Use openly licensed packs, record each in NOTICE.md with license and URL, and keep all
+assets under frontend/assets/ with a manifest. Verified fits:
+- Kenney "Tiny Town", 16x16, CC0, 130 tiles: overworld terrain, trees, paths, water, small
+  buildings (ranger station, visitor center, kiosks). https://kenney.nl/assets/tiny-town
+- Kenney "Roguelike/RPG pack", 16x16, CC0, ~1,700 tiles: outdoor nature, tents, campfires,
+  fences, signs, UI panels. https://kenney.nl/assets/roguelike-rpg-pack
+- Shade "Puny Characters", 16x16 on a 32x32 canvas, 8-directional, idle/walk/hurt and
+  more, CC0: the Ranger bodies. Recolor per role (hat band = role color).
+  https://opengameart.org/content/puny-characters
+- inkBubi "16x16 Pixel Forest Tileset, Top-down" sample, CC0 per listing (confirm the
+  bundled license.txt before use): denser forest for park edges.
+  https://opengameart.org/node/180257
+Rules: CC0 or CC-BY only (CC-BY gets credited in-app under About). No CC-BY-ND, no
+"free but no redistribution" packs, nothing AI-generated of unknown provenance, and nothing
+that resembles StarNet's station art. Original Maka art (logo, zone signs, the Chief
+Ranger) is drawn in-house in the same 16x16 grid.
+
 ## Model strategy (owner decision 2026-10-10): local workers, Claude as judge
 - Two tiers. WORKER models are local open-weight models served by Ollama (or any
   OpenAI-compatible local endpoint) at zero marginal cost, so Rangers can run 24/7.
@@ -125,8 +181,9 @@ Stripe, Meta Ads, Google Ads are the first candidates.
 ## Phase 1 (foundation) — steps 1-6 done, 7-8 remaining
 6b. `sidecar/providers/ollama.js` + `sidecar/router.js` per the Model strategy section, with
    tests using the fake provider; no real model needed.
-7. Frontend: canvas park with the Ranger Station zone and one Ranger whose body visibly
-   reflects real run state (idle / thinking / tool running / waiting on you / done / error),
+7. Frontend: canvas park built from the licensed packs above (download in a script,
+   never vendor unverified files), with the Ranger Station zone, the Entrance Gate, one
+   Ranger whose body visibly reflects real run state (idle / thinking / tool running / waiting on you / done / error),
    build mode to place fixtures, a COMMS window with streaming output, a spend readout fed
    only by reconciled cost events, and a permission prompt card at the Entrance Gate.
    Rename the theme data from workshop to park; keep theme data-driven.
