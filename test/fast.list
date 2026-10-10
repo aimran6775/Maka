@@ -1,0 +1,4 @@
+# One test file per line, relative to the repo root. Lines starting with # are ignored.
+# These suites are the merge gate: `npm run test:fast` must be green before every push.
+test/schema.test.js
+test/events.test.js

@@ -23,10 +23,12 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 | `docs/BRAIN.md` | Orientation: how the pieces fit, where to start reading. |
 | `docs/DECISIONS.md` | Decisions taken where the brief was ambiguous. |
 
-## `shared/` — **planned (step 2)**
+## `shared/` — loaded by both the sidecar and the frontend as ES modules
 
-Frozen event contract (`events.js`) and a tiny schema validator (`schema.js`). Loaded by
-both the sidecar and the frontend as ES modules.
+| Path | What it is |
+| --- | --- |
+| `shared/schema.js` | Tiny JSON-schema-like validator: `validate`, `assertValid`, `deepFreeze`. Supports type, properties/required/additionalProperties, items, enum, const, min/max for strings, numbers and arrays, anyOf. Nothing else. |
+| `shared/events.js` | The frozen, additive-only event contract. `EVENT_TYPES`, `PAYLOAD_SCHEMAS`, `ENVELOPE_SCHEMA`, `validateEvent`, `assertEvent`, `makeEvent`. Eleven events: `agent.run.start`, `agent.token`, `agent.tool_call`, `agent.tool_result`, `agent.run.end`, `agent.run.error`, `cost.estimate`, `permission.prompt`, `permission.response`, `object.place`, `object.reclaim`. |
 
 ## `sidecar/` — **planned (steps 3 to 6)**
 
@@ -37,9 +39,14 @@ The one Node process. Loop (`loop.js`), providers (`providers/`), capability gat
 
 Static vanilla JS canvas world and windowed UI, served by the sidecar.
 
-## `test/` — **planned (step 8, files added from step 2 on)**
+## `test/`
 
-`node --test` suites. `test/fast.list` names the suites that gate a push.
+| Path | What it is |
+| --- | --- |
+| `test/fast.list` | The suites that gate a push, one path per line. |
+| `test/run-fast.js` | Runs `node --test` over `fast.list`; fails on a missing or empty list. |
+| `test/schema.test.js` | Validator behaviour. |
+| `test/events.test.js` | Every event type validates, round-trips JSON, rejects bad shapes; contract is frozen. |
 
 ## Not in phase 1 (no code, no UI)
 

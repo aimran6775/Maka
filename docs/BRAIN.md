@@ -29,9 +29,17 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 1, step 1: repo skeleton only. There is no runnable sidecar yet. The README's run
-instructions are marked not yet implemented and will be unmarked when `sidecar/index.js`
-lands (step 6).
+Phase 1, step 2: skeleton plus the event contract in `shared/`. There is no runnable
+sidecar yet. The README's run instructions are marked not yet implemented and will be
+unmarked when `sidecar/index.js` lands (step 6).
+
+### The event contract (`shared/events.js`)
+
+An event is `{ v, id, type, ts, seq?, payload }`. Payload schemas are strict
+(`additionalProperties: false`) so a typo is a validation failure, not silent data loss.
+`cost.estimate.reconciled` is the single flag the spend readout trusts: a cost event is
+reconciled only when the token counts came from the provider's own usage report and the
+model has a known price.
 
 ## Reading order once code exists
 
