@@ -48,8 +48,10 @@ recorded in NOTICE.md. Maka must not be mistakable for StarNet visually or by na
 | Trail | a handoff lane between zones; work items travel along it |
 | Entrance Gate | the consent and spend rail; nothing with money or outbound effect passes without a grant |
 | Fixtures (grants) | Trailhead sign = web fetch; Supply cache = filesystem; Radio tower = email/channels; Park Store = commerce connectors (Shopify/Stripe); Notice board = social/publishing; Fee booth = payments; Ledger desk = accounting |
-Visual style: hand-drawn-feel pixel art, calm palette (greens, stone, sky), day/night cycle
-driven by the real clock. Weather is purely cosmetic and must never encode state.
+Visual style (owner decision 2026-10-10): a 3D game. Stylized low-poly landscapes you move
+through: valleys, forest, river, lake, ridgelines, with real-time sun by the real clock, sky,
+fog, and soft shadows. Not photoreal; think a calm, beautiful stylized park that runs
+smoothly on Apple Silicon in a webview. Weather is cosmetic and never encodes state.
 
 ## Autonomy model (how "fully autonomous" is reached safely)
 - Every Ranger has a leash level per domain: Observe → Draft for review → Act with cap →
@@ -129,23 +131,36 @@ The park is a full interface, not a picture. Everything visible is live and clic
   the Gate. Every animation state is driven by a real event; nothing plays on a timer.
 - Layout authority is the sidecar. The frontend renders; it never owns state.
 
-## Art and assets (licensed sources, verified 2026-10-10)
-Use openly licensed packs, record each in NOTICE.md with license and URL, and keep all
-assets under frontend/assets/ with a manifest. Verified fits:
-- Kenney "Tiny Town", 16x16, CC0, 130 tiles: overworld terrain, trees, paths, water, small
-  buildings (ranger station, visitor center, kiosks). https://kenney.nl/assets/tiny-town
-- Kenney "Roguelike/RPG pack", 16x16, CC0, ~1,700 tiles: outdoor nature, tents, campfires,
-  fences, signs, UI panels. https://kenney.nl/assets/roguelike-rpg-pack
-- Shade "Puny Characters", 16x16 on a 32x32 canvas, 8-directional, idle/walk/hurt and
-  more, CC0: the Ranger bodies. Recolor per role (hat band = role color).
-  https://opengameart.org/content/puny-characters
-- inkBubi "16x16 Pixel Forest Tileset, Top-down" sample, CC0 per listing (confirm the
-  bundled license.txt before use): denser forest for park edges.
-  https://opengameart.org/node/180257
-Rules: CC0 or CC-BY only (CC-BY gets credited in-app under About). No CC-BY-ND, no
-"free but no redistribution" packs, nothing AI-generated of unknown provenance, and nothing
-that resembles StarNet's station art. Original Maka art (logo, zone signs, the Chief
-Ranger) is drawn in-house in the same 16x16 grid.
+## Renderer and 3D assets (owner decision 2026-10-10: 3D game style)
+Renderer: Three.js (MIT), vendored as a pinned ES-module build under frontend/vendor/ with
+its version and sha256 recorded in frontend/assets/manifest.json and NOTICE.md. This is the
+one approved third-party frontend library; it is a rendering library, not a framework, and
+needs no build step. The sidecar stays dependency-free. If WebGPU is available in the
+Tauri webview we use the WebGPU renderer, otherwise WebGL2; both are Three.js paths.
+
+Scene: a heightmap terrain (procedural from a seed stored in the layout, so the park is the
+same every launch and can be re-rolled by the Superintendent), a river and lake with a
+simple animated water shader, scattered trees/rocks/foliage from the licensed kits placed
+by the layout, trails as splines on the terrain, zones as clearings with their buildings.
+Camera modes: free orbit, fly-over, and follow-a-Ranger (third person). Click-picking by
+raycast opens the inspector panels described in "Live park UI". Target 60 fps on an M1 with
+instanced meshes for foliage and LOD by distance.
+
+Licensed asset sources (verified 2026-10-10; record each in NOTICE.md with license + URL;
+fetch via scripts/fetch-assets.mjs with sha256 and a manifest; commit only the GLB files
+the park actually uses, keep the total under 25 MB):
+- Kenney "Nature Kit", CC0, 330 files: trees, rocks, foliage, terrain pieces, camping items.
+  GLTF included. https://kenney.nl/assets/nature-kit
+- Kenney "Survival Kit", CC0: tents, campfire, tools, crates, signs for campgrounds and
+  the Ranger Station. https://kenney.nl/assets/survival-kit
+- Kenney "Animated Characters 1" and "Animated Characters 3", CC0, rigged with idle / run
+  animations, GLTF: the Ranger bodies, recolored per role. https://kenney.nl/assets/animated-characters-1
+  and https://kenney.nl/assets/animated-characters-3
+- Quaternius "Ultimate Platformer Pack", CC0, glTF, one animated character with 18 clips:
+  fallback body if Kenney's rigs need more animation states. https://quaternius.itch.io/ultimate-platformer-pack
+Rules: CC0 or CC-BY only (CC-BY credited in-app under About), nothing AI-generated of
+unknown provenance, nothing resembling StarNet. Original Maka assets (logo, zone signage,
+the Chief Ranger's distinct model variant) are made in-house.
 
 ## Model strategy (owner decision 2026-10-10): local workers, Claude as judge
 - Two tiers. WORKER models are local open-weight models served by Ollama (or any
@@ -181,12 +196,16 @@ Ranger) is drawn in-house in the same 16x16 grid.
 ## Phase 1 (foundation) — steps 1-6 done, 7-8 remaining
 6b. `sidecar/providers/ollama.js` + `sidecar/router.js` per the Model strategy section, with
    tests using the fake provider; no real model needed.
-7. Frontend: canvas park built from the licensed packs above (download in a script,
-   never vendor unverified files), with the Ranger Station zone, the Entrance Gate, one
-   Ranger whose body visibly reflects real run state (idle / thinking / tool running / waiting on you / done / error),
-   build mode to place fixtures, a COMMS window with streaming output, a spend readout fed
-   only by reconciled cost events, and a permission prompt card at the Entrance Gate.
-   Rename the theme data from workshop to park; keep theme data-driven.
+7. Frontend, first slice of the 3D park: vendor Three.js; terrain from a seeded heightmap;
+   sky with sun position from the real clock; a river; instanced trees and rocks from the
+   Nature Kit; two clearings (Ranger Station with its building, Entrance Gate with a gate
+   model) joined by a trail spline; one Ranger from Animated Characters whose animation
+   clip is chosen only by real run state (idle / walking to a zone on handoff / working /
+   waiting at the Gate / error); orbit + follow camera; raycast click-picking that opens
+   the inspector panels (Ranger card with live transcript and per-turn model, zone card
+   with roster + fixtures + build mode, Gate approval queue with leash level, fixture card).
+   All state from sidecar events and GET endpoints. No animation on timers. The 2D canvas
+   files from the superseded step 7 are deleted, not kept.
 8. `test/fast.list` complete, README and CODE_MAP true to what exists.
 
 ## Phase 2 (the business crew)

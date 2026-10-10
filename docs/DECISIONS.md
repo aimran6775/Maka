@@ -179,3 +179,10 @@ transcript says.
 The page was driven end to end in headless Chromium over the DevTools protocol against a
 test sidecar. That script depends on a browser binary and is kept outside the repo for
 now; `test:fast` covers the reducer under Node and the sidecar over real HTTP.
+- Visual direction: 3D stylized low-poly national park rendered with Three.js (MIT),
+  vendored as a pinned ES-module build; the one approved third-party frontend library
+  (rendering library, no build step; sidecar still dependency-free). WebGPU when available,
+  else WebGL2. Seeded procedural terrain, real-clock sun, orbit/fly/follow cameras,
+  raycast picking. Assets: Kenney Nature Kit, Survival Kit, Animated Characters 1 and 3
+  (all CC0, GLTF); Quaternius Ultimate Platformer Pack (CC0, glTF) as fallback rig.
+  The 2D pixel-art plan and its assets list are superseded.
