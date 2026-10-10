@@ -28,6 +28,9 @@ const SAMPLES = {
   'plan.updated': { missionId: 'mission-1', planId: 'plan-1', version: 2, change: 'submitted', status: 'active', summary: 'two ventures', by: 'chief-ranger', runId: 'r1', ventures: [{ id: 'lantern-co', name: 'Lantern Co', budgetUsd: 3, taskCount: 4, summary: 'lanterns' }] },
   'budget.threshold': { scope: 'venture', id: 'lantern-co', budgetUsd: 3, spentUsd: 2.5, threshold: 0.8, fraction: 0.8333 },
   'reflection.posted': { reflectionId: 'reflection-2026-10-10-abc123', reason: 'scheduled', status: 'posted', missionId: 'mission-1', provider: 'anthropic', model: 'claude-opus-5-5', usd: 0.02, reconciled: true, portfolio: 'On track.', ventures: [{ id: 'lantern-co', planStillRight: true, spentUsd: 2.5, budgetUsd: 3, itemsDone: 2, itemsFailed: 0 }], briefings: ['research'], path: 'chief-ranger/outbox/reflection.md' },
+  'mail.message': { messageId: 'msg-1', threadId: 'thread-1', direction: 'in', from: 'Customer <c@example.com>', to: ['support@makapark.com'], subject: 'Order 12', station: 'operations-support', venture: 'lantern-co', kind: 'inbound', resendId: 'rcv_1', attachments: 1 },
+  'mail.event': { resendId: 'em_1', messageId: 'msg-2', event: 'bounced', address: 'gone@example.com', detail: 'Permanent Suppressed', suppressed: true },
+  'mail.address': { address: 'sales-lantern-co@makapark.com', change: 'created', kind: 'alias', station: 'sales', agentId: 'ben-1', venture: 'lantern-co', by: 'chief-ranger' },
   'mail.dns': { domain: 'makapark.com', change: 'applied', itemId: 'gate-1', create: 4, update: 1, remove: 0, unchanged: 2, errors: [], message: '5 change(s) written' },
   'away.changed': { away: true, since: 1700000000000, actions: 0, waiting: 2 },
   'away.digest': { digestId: 'digest-1', since: 1700000000000, until: 1700003600000, actions: 4, waiting: 1, spentUsd: 0.12, path: '_peak/digest-1.md', summary: '4 actions' },
@@ -103,6 +106,9 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('budget.threshold', { scope: 'galaxy', id: 'x', budgetUsd: 1, spentUsd: 1, threshold: 1 });
   bad('away.changed', { away: 'yes', since: 1 });
   bad('mail.dns', { domain: 'makapark.com', change: 'dreamt' });
+  bad('mail.message', { ...SAMPLES['mail.message'], direction: 'sideways' });
+  bad('mail.event', { resendId: 'x', event: 'vanished' });
+  bad('mail.address', { address: 'a@b', change: 'created', kind: 'royal', station: 's' });
   bad('away.digest', { digestId: 'd', since: 1, until: 2, actions: 1, waiting: 0 });
   bad('reflection.posted', { reflectionId: 'r', reason: 'x', status: 'dreamt' });
   assert.equal(validate_('reflection.posted', { reflectionId: 'r', reason: 'manual', status: 'skipped', skipReason: 'cap', usd: null, reconciled: false }).ok, true);

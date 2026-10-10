@@ -25,6 +25,16 @@
 //   GET  /api/mail/dns         keys wired?, last plan, last apply
 //   POST /api/mail/dns/plan    dry-run diff of the mail domain's DNS (Resend records vs Cloudflare)
 //   POST /api/mail/dns/apply   parks the write at the Entrance Gate (account_settings); 202 { itemId }
+//   GET  /api/mail             mail status: keys, addresses, counts, sync
+//   GET  /api/mail/addresses   routing rules; POST { local, agentId?, venture?, station } makes an alias
+//   DELETE /api/mail/addresses/:address
+//   GET  /api/mail/messages    ?station&venture&threadId&direction&label&agentId&limit (summaries)
+//   GET  /api/mail/messages/:id   the full message
+//   GET  /api/mail/threads     ?station&venture&limit
+//   GET  /api/mail/search?q=
+//   GET  /api/mail/suppressions
+//   POST /api/mail/sync        poll Resend now → { received }
+//   POST /api/mail/resend/webhook   Resend webhook (raw body, svix signature)
 //   GET  /api/away             away state (flag, since, counters, last digest)
 //   POST /api/away             { away: true|false } → away.changed (+ away.digest and the digest on return)
 //   GET  /api/away/log         the evidence log lines (JSON array)
@@ -172,7 +182,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -194,6 +204,13 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     }
     res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'content-length': data.length, 'cache-control': 'no-cache' });
     res.end(data);
+  }
+
+  async function mailStatus() {
+    if (!mailSetup && !mail) return null;
+    const setup = mailSetup ? await mailSetup.status() : {};
+    const system = mail ? await mail.status() : {};
+    return { ...setup, ...system, keys: { ...(setup.keys || {}), ...(system.keys || {}) } };
   }
 
   async function handle(req, res) {
@@ -233,7 +250,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         mission: chief ? chief.state() : null,
         reflection: reflect ? reflect.state() : null,
         away: away ? away.state() : null,
-        mail: mailSetup ? await mailSetup.status() : null,
+        mail: await mailStatus(),
         spend,
         runs: recent.slice(0, 20),
       });
@@ -322,6 +339,67 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);
         throw err;
       }
+    }
+    if (p === '/api/mail/resend/webhook' && method === 'POST') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      const rawBody = await readBody(req);
+      try {
+        return sendJson(res, 200, await mail.handleWebhook({ headers: req.headers, rawBody }));
+      } catch (err) {
+        if (err.status) throw new HttpError(err.status, err.message, err.code);
+        throw err;
+      }
+    }
+    if (p === '/api/mail' && method === 'GET') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      return sendJson(res, 200, await mail.status());
+    }
+    if (p === '/api/mail/sync' && method === 'POST') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      try {
+        return sendJson(res, 200, await mail.poll());
+      } catch (err) {
+        if (err.status) throw new HttpError(err.status, err.message, err.code);
+        if (['NETWORK', 'BAD_RESPONSE'].includes(err.code) || /^HTTP_/.test(err.code || '')) throw new HttpError(502, err.message, err.code);
+        throw err;
+      }
+    }
+    if (p === '/api/mail/addresses' && method === 'GET') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      return sendJson(res, 200, mail.addresses.list());
+    }
+    if (p === '/api/mail/addresses' && method === 'POST') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      return sendJson(res, 201, await rethrow(async () => mail.addresses.createAlias(await readJsonBody(req), { by: 'superintendent' })));
+    }
+    if (p.startsWith('/api/mail/addresses/') && method === 'DELETE') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      return sendJson(res, 200, await rethrow(() => mail.addresses.remove(decodeURIComponent(p.slice('/api/mail/addresses/'.length)), { by: 'superintendent' })));
+    }
+    if (p === '/api/mail/messages' && method === 'GET') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      const q = url.searchParams;
+      return sendJson(res, 200, mail.mailStore.list({ station: q.get('station') || undefined, venture: q.get('venture') || undefined, threadId: q.get('threadId') || undefined, direction: q.get('direction') || undefined, label: q.get('label') || undefined, agentId: q.get('agentId') || undefined, limit: Number(q.get('limit')) || 50 }));
+    }
+    if (p.startsWith('/api/mail/messages/') && method === 'GET') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      const m = await mail.mailStore.get(decodeURIComponent(p.slice('/api/mail/messages/'.length)));
+      if (!m) throw new HttpError(404, 'no such message');
+      return sendJson(res, 200, m);
+    }
+    if (p === '/api/mail/threads' && method === 'GET') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      const q = url.searchParams;
+      if (q.get('threadId')) return sendJson(res, 200, await mail.mailStore.thread(q.get('threadId')));
+      return sendJson(res, 200, mail.mailStore.threads({ station: q.get('station') || undefined, venture: q.get('venture') || undefined, limit: Number(q.get('limit')) || 50 }));
+    }
+    if (p === '/api/mail/search' && method === 'GET') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      return sendJson(res, 200, mail.mailStore.search(url.searchParams.get('q') || ''));
+    }
+    if (p === '/api/mail/suppressions' && method === 'GET') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      return sendJson(res, 200, mail.mailStore.suppressions());
     }
     if (p === '/api/mail/dns' && method === 'GET') {
       if (!mailSetup) throw new HttpError(404, 'no mail setup');

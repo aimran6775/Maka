@@ -18,6 +18,7 @@ export const ENV_VARS = Object.freeze({
   openrouter: 'OPENROUTER_API_KEY',
   cloudflare: 'CLOUDFLARE_API_TOKEN',
   resend: 'RESEND_API_KEY',
+  resendWebhook: 'RESEND_WEBHOOK_SECRET',
   huggingface: 'HF_TOKEN',
 });
 

@@ -26,6 +26,8 @@ export function initialState() {
     away: null, // { away, since, actions, waiting, spentUsd, lastDigest } from the snapshot and away.changed / away.digest
     mail: null, // { domain, keys: { resend, cloudflare }, lastPlan, lastApply } from the snapshot; dns kept current by mail.dns
     mailDns: [], // mail.dns payloads this session, oldest first
+    mailMessages: [], // mail.message payloads this session, oldest first (bounded)
+    mailEvents: [], // mail.event payloads this session, oldest first (bounded)
     leash: null, // leash policy from the snapshot (shared/leash.js shape)
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
@@ -331,6 +333,24 @@ export function applyEvent(state, event) {
     case 'reflection.posted': {
       const latest = { id: p.reflectionId, at: event.ts, reason: p.reason, status: p.status, skipReason: p.skipReason || null, missionId: p.missionId || null, model: p.model || null, usd: typeof p.usd === 'number' ? p.usd : null, portfolio: p.portfolio || '', ventures: p.ventures || [], briefings: p.briefings || [], path: p.path || null };
       next.reflection = { ...(next.reflection || {}), latest };
+      break;
+    }
+    case 'mail.message': {
+      next.mailMessages = [...next.mailMessages, { ...p, ts: event.ts }].slice(-500);
+      if (next.mail && next.mail.counts) {
+        const byStation = { ...(next.mail.counts.byStation || {}) };
+        byStation[p.station] = { ...(byStation[p.station] || { in: 0, out: 0 }) };
+        byStation[p.station][p.direction] += 1;
+        next.mail = { ...next.mail, counts: { ...next.mail.counts, messages: (next.mail.counts.messages || 0) + 1, unread: next.mail.counts.unread + (p.direction === 'in' ? 1 : 0), byStation } };
+      }
+      break;
+    }
+    case 'mail.event': {
+      next.mailEvents = [...next.mailEvents, { ...p, ts: event.ts }].slice(-500);
+      break;
+    }
+    case 'mail.address': {
+      if (next.mail) next.mail = { ...next.mail, addresses: Math.max(0, (next.mail.addresses || 0) + (p.change === 'created' ? 1 : -1)) };
       break;
     }
     case 'mail.dns': {

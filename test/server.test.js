@@ -54,14 +54,15 @@ test('state, layout placement rules, events replay, static files', async () => {
     const stream = await srv.sse(0);
     const ev = await stream.waitFor((e) => e.type === 'object.reclaim');
     assert.equal(ev.payload.objectId, 'win-1');
-    const layoutEvents = stream.events.filter((e) => !e.type.startsWith('workspace.'));
-    assert.deepEqual(stream.events[0].type, 'workspace.online', 'the watcher reports the root first');
+    const layoutEvents = stream.events.filter((e) => !e.type.startsWith('workspace.') && !e.type.startsWith('mail.'));
+    assert.ok(stream.events.some((e) => e.type === 'workspace.online'), 'the watcher reports the root');
     assert.deepEqual(layoutEvents.map((e) => e.type), ['object.place', 'object.place', 'object.place', 'object.reclaim']);
     for (const e of stream.events) assert.equal(validateEvent(e).ok, true);
-    assert.deepEqual(layoutEvents.map((e) => e.seq), [2, 3, 4, 5]);
+    const seqs = layoutEvents.map((e) => e.seq);
+    assert.deepEqual(seqs, [seqs[0], seqs[0] + 1, seqs[0] + 2, seqs[0] + 3], 'consecutive');
     stream.close();
-    const partial = await srv.sse(4);
-    await partial.waitFor((e) => e.seq === 5);
+    const partial = await srv.sse(seqs[2]);
+    await partial.waitFor((e) => e.seq === seqs[3]);
     assert.equal(partial.events.length, 1);
     partial.close();
 
@@ -129,7 +130,7 @@ test('run lifecycle over HTTP: events stream, persistence, spend, a second run q
     const endEv = await stream.waitFor((e) => e.type === 'agent.run.end' && e.payload.runId === runId);
     assert.equal(endEv.payload.reason, 'completed');
     assert.equal(endEv.payload.finalText, 'thinking done');
-    const types = stream.events.filter((e) => !e.type.startsWith('workspace.') && (!e.payload.runId || e.payload.runId === runId)).map((e) => e.type);
+    const types = stream.events.filter((e) => !e.type.startsWith('workspace.') && !e.type.startsWith('mail.') && (!e.payload.runId || e.payload.runId === runId)).map((e) => e.type);
     assert.deepEqual(types, ['agent.run.start', 'agent.token', 'agent.token', 'cost.estimate', 'agent.run.end']);
     const cost = stream.events.find((e) => e.type === 'cost.estimate').payload;
     assert.equal(cost.usd, (1000 * 1 + 500 * 2) / 1e6);
@@ -568,6 +569,7 @@ test('mail DNS over HTTP: no keys is a plain 400, plan is a dry run, apply waits
   try {
     const st = await bare.get('/api/mail/dns');
     assert.deepEqual(st.body.keys, { resend: false, cloudflare: false });
+    assert.deepEqual((await bare.get('/api/state')).body.mail.keys, { resend: false, cloudflare: false, webhook: false }, 'the snapshot merges both mail statuses');
     const r = await bare.post('/api/mail/dns/plan', {});
     assert.equal(r.status, 400, 'a missing key is a configuration error');
     assert.equal(r.body.code, 'NO_KEY');
@@ -577,7 +579,8 @@ test('mail DNS over HTTP: no keys is a plain 400, plan is a dry run, apply waits
   }
   const srv = await startTestServer({ makeProvider: scripted([]), env: { RESEND_API_KEY: rs.apiKey, CLOUDFLARE_API_TOKEN: cf.token }, mail: { resendBaseUrl: rs.url, cloudflareBaseUrl: cf.url } });
   try {
-    assert.deepEqual((await srv.get('/api/state')).body.mail.keys, { resend: true, cloudflare: true });
+    const keys = (await srv.get('/api/state')).body.mail.keys;
+    assert.deepEqual([keys.resend, keys.cloudflare], [true, true]);
     const stream = await srv.sse();
     const plan = await srv.post('/api/mail/dns/plan', {});
     assert.equal(plan.status, 200);
@@ -610,6 +613,60 @@ test('mail DNS over HTTP: no keys is a plain 400, plan is a dry run, apply waits
   }
 });
 
+test('mail over HTTP: station addresses from boot, alias CRUD, sync pulls received mail, the webhook needs a valid signature, messages and threads', async () => {
+  const rs = await startFakeResend();
+  const secret = 'whsec_' + Buffer.from('test-secret-0123456789').toString('base64');
+  const srv = await startTestServer({ makeProvider: scripted([]), env: { RESEND_API_KEY: rs.apiKey, RESEND_WEBHOOK_SECRET: secret }, mail: { resendBaseUrl: rs.url }, withChief: true });
+  try {
+    const status = await srv.get('/api/mail');
+    assert.deepEqual(status.body.keys, { resend: true, webhook: true });
+    const addresses = (await srv.get('/api/mail/addresses')).body;
+    assert.deepEqual(addresses.map((a) => a.local).sort(), ['gate', 'peak', 'rangers', 'unsubscribe', 'visitors']);
+    const alias = await srv.post('/api/mail/addresses', { local: 'sales-lantern-co', station: 'ranger-station', agentId: 'ranger', venture: 'lantern-co' });
+    assert.equal(alias.status, 201);
+    assert.equal((await srv.post('/api/mail/addresses', { local: 'sales-lantern-co', station: 'ranger-station' })).status, 409);
+    assert.equal((await srv.post('/api/mail/addresses', { local: 'Bad Local!', station: 'x' })).status, 400);
+    const stream = await srv.sse();
+    rs.receive({ id: 'rcv_a', from: 'Buyer <buyer@example.com>', to: ['sales-lantern-co@makapark.com'], subject: 'Do you ship to Spain?', text: 'Hi, do you ship to Spain?' });
+    rs.receive({ id: 'rcv_b', from: 'Stranger <s@example.com>', to: ['nobody@makapark.com'], subject: 'Hello?', text: 'anyone there' });
+    const sync = await srv.post('/api/mail/sync', {});
+    assert.equal(sync.status, 200);
+    assert.equal(sync.body.received, 2);
+    const msgs = (await srv.get('/api/mail/messages?station=ranger-station')).body;
+    assert.equal(msgs.length, 1);
+    assert.equal(msgs[0].venture, 'lantern-co');
+    assert.equal(msgs[0].agentId, 'ranger');
+    const triage = (await srv.get('/api/mail/messages?station=visitor-center&label=triage')).body;
+    assert.equal(triage.length, 1, 'unknown recipients land in visitors@ for triage');
+    const full = await srv.get(`/api/mail/messages/${msgs[0].id}`);
+    assert.equal(full.body.text, 'Hi, do you ship to Spain?');
+    assert.equal((await srv.get('/api/mail/messages/nope')).status, 404);
+    const threads = (await srv.get('/api/mail/threads?station=ranger-station')).body;
+    assert.equal(threads.length, 1);
+    assert.equal(threads[0].unread, 1);
+    assert.equal((await srv.get('/api/mail/search?q=spain')).body.length, 1);
+    assert.equal((await srv.get('/api/state')).body.mail.counts.messages, 2);
+    const seen = stream.events.filter((e) => e.type === 'mail.message').map((e) => e.payload.station).sort();
+    assert.deepEqual(seen, ['ranger-station', 'visitor-center']);
+    // Webhook: bad signature 400, good one records a bounce and suppresses the address.
+    const body = JSON.stringify({ type: 'email.bounced', created_at: new Date().toISOString(), data: { email_id: 'em_x', to: ['gone@example.com'], bounce: { type: 'Permanent', subType: 'General', message: 'no such user' } } });
+    const bad = await fetch(`${srv.url}/api/mail/resend/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', 'svix-id': 'm1', 'svix-timestamp': String(Math.floor(Date.now() / 1000)), 'svix-signature': 'v1,nope' }, body });
+    assert.equal(bad.status, 400);
+    const { signWebhook } = await import('../sidecar/mail/resend.js');
+    const headers = signWebhook({ secret, body });
+    const good = await fetch(`${srv.url}/api/mail/resend/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body });
+    assert.equal(good.status, 200);
+    assert.equal((await good.json()).suppressed, true);
+    assert.deepEqual((await srv.get('/api/mail/suppressions')).body.map((x) => x.address), ['gone@example.com']);
+    assert.equal((await srv.del('/api/mail/addresses/sales-lantern-co@makapark.com')).status, 200);
+    assert.equal((await srv.del('/api/mail/addresses/visitors@makapark.com')).status, 403);
+    stream.close();
+  } finally {
+    await srv.close();
+    await rs.close();
+  }
+});
+
 test('provider failure becomes agent.run.error and the run record says so; NO_KEY is a 400 before any event', async () => {
   const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([() => { const e = new Error('upstream 500'); e.code = 'HTTP_500'; throw e; }]), model: 'm', price: null }) });
   try {
@@ -634,7 +691,7 @@ test('provider failure becomes agent.run.error and the run record says so; NO_KE
     const r2 = await real.post('/api/run', { prompt: 'x', provider: 'anthropic' });
     assert.equal(r2.body.code, 'NO_KEY');
     assert.equal((await real.post('/api/run', { prompt: 'x', provider: 'bogus' })).body.code, 'UNKNOWN_PROVIDER');
-    assert.ok(real.bus.recent(10).every((e) => e.type.startsWith('workspace.')), 'no run event was emitted');
+    assert.ok(real.bus.recent(20).every((e) => e.type.startsWith('workspace.') || e.type.startsWith('mail.')), 'no run event was emitted');
   } finally {
     await real.close();
   }

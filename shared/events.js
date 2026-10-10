@@ -315,6 +315,43 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     errors: { type: 'array', items: str },
     message: str,
   }),
+  // Added v1 (phase 2 step 10): a mail message entered the local store, inbound (received
+  // through Resend) or outbound (sent through Resend). Bodies stay in the store.
+  'mail.message': payload(['messageId', 'threadId', 'direction', 'from', 'to', 'subject', 'station'], {
+    messageId: nonEmpty,
+    threadId: nonEmpty,
+    direction: { type: 'string', enum: ['in', 'out'] },
+    from: str,
+    to: { type: 'array', items: str },
+    subject: str,
+    station: nonEmpty,
+    venture: str,
+    agentId: str,
+    kind: str,
+    resendId: str,
+    attachments: int0,
+    classification: str,
+  }),
+  // Added v1 (phase 2 step 10): a delivery lifecycle event for a sent message (from
+  // Resend's webhooks or a status poll). A bounce or complaint suppresses the address.
+  'mail.event': payload(['resendId', 'event'], {
+    resendId: nonEmpty,
+    messageId: str,
+    event: { type: 'string', enum: ['sent', 'delivered', 'delivery_delayed', 'bounced', 'complained', 'opened', 'clicked', 'failed', 'suppressed'] },
+    address: str,
+    detail: str,
+    suppressed: bool,
+  }),
+  // Added v1 (phase 2 step 10): an address routing rule was created or removed.
+  'mail.address': payload(['address', 'change', 'kind', 'station'], {
+    address: nonEmpty,
+    change: { type: 'string', enum: ['created', 'removed'] },
+    kind: { type: 'string', enum: ['station', 'alias', 'system'] },
+    station: nonEmpty,
+    agentId: str,
+    venture: str,
+    by: str,
+  }),
   // Added v1 (phase 2 step 3): an agent record was created, changed or removed. `agent` is
   // the layout record as it now stands (absent on 'removed').
   'crew.agent': payload(['agentId', 'change'], {

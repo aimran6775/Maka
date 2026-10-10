@@ -16,6 +16,7 @@ import { createScheduler } from '../../sidecar/scheduler.js';
 import { createReflect } from '../../sidecar/reflect.js';
 import { createAway } from '../../sidecar/away.js';
 import { createMailSetup } from '../../sidecar/mail/setup.js';
+import { createMailSystem } from '../../sidecar/mail/system.js';
 import { TOOLS } from '../../sidecar/capability/tools.js';
 import { CREW_TOOLS } from '../../sidecar/capability/crew.js';
 import { createRouter, defaultPolicy } from '../../sidecar/router.js';
@@ -66,6 +67,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const scheduler = await createScheduler({ store, clock, tickMs: 60_000, log: { error() {} } }).init();
   away = await createAway({ bus, store, gateQueue, workspaceRoot, clock, log: { error() {} } }).init();
   const mailSetup = createMailSetup({ bus, gateQueue, env, keystorePath, clock, fetch: globalThis.fetch, log: { error() {} }, ...mail });
+  const mailSystem = await createMailSystem({ bus, store, scheduler, getLayout: layoutState.get, env, keystorePath, clock, workspaceRoot, log: { error() {} }, resendBaseUrl: mail.resendBaseUrl }).init();
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, log: { error() {} } }).init();
   await workspace.check();
   const app = createApp({
@@ -82,6 +84,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     reflect,
     away,
     mailSetup,
+    mail: mailSystem,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -112,6 +115,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     reflect,
     away,
     mailSetup,
+    mail: mailSystem,
     workspace,
     async get(p) {
       const res = await fetch(url + p);

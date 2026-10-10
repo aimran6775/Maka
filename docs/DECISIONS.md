@@ -517,3 +517,29 @@ foreign MX records at a name Resend owns (mail must not be split between provide
 leaves other TXT records at the same name alone (site verifications live there too).
 Keys: `CLOUDFLARE_API_TOKEN` (the owner's account-scoped token) and `RESEND_API_KEY`,
 from the environment or the 0600 keystore like the model keys.
+
+## D63. Addresses are routing rules; the store is the thread of record
+
+Resend receives for the whole domain, so an address exists when Maka decides to route it:
+`mail-addresses.json` maps each address to a station (zone id), an optional Ranger and a
+venture, and anything unknown goes to visitors@ tagged `triage`. The local store under the
+workspace root is where threads, labels and classifications live; Resend holds the raw
+copies for its retention window, Maka keeps its own forever. Threading uses In-Reply-To
+and References against stored Message-IDs, nothing heuristic.
+
+## D64. Inbound by polling after a persisted cursor; the webhook is an accelerator
+
+The Mac at home has no public endpoint, so the baseline is a one-minute poll of Resend's
+receiving list after the last stored id, oldest first, paging while `has_more`. The
+`email.received` webhook, when a tunnel exists, stores the same message sooner; both
+paths dedupe on the Resend id, so a webhook replay or a poll after a webhook stores
+nothing twice. Delivery status without webhooks comes from polling recent sends'
+`last_event`.
+
+## D65. Unsubscribe is a working mailbox, not a web endpoint
+
+Campaigns carry `List-Unsubscribe: <mailto:unsubscribe@<domain>>` with one-click
+semantics and a plain footer; any mail to unsubscribe@ (or with a subject starting
+"unsubscribe") suppresses the sender in `suppression.json`, as do permanent bounces and
+complaints. Temporary bounces do not. Suppressed recipients are dropped from a send and
+the copy is labelled `partial`; a send to only suppressed addresses is refused.

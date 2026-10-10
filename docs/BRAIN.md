@@ -12,6 +12,7 @@ browser (frontend/, vanilla JS, canvas)
 sidecar (one Node process, no dependencies)
    ├─ chief       mission → plan (schema-checked) → hire → delegate; follow-ups on work.done
    ├─ reflect     daily and on budget breach: actuals per venture → document + briefings
+   ├─ mail        Resend in and out, routed to stations by address rules, stored locally
    ├─ runs        N runs at once, one per Ranger, queued past the cap
    ├─ trails      work items between zones: handoff → receiver run → done
    ├─ loop        the agentic while-loop; every transition is an event
@@ -38,6 +39,17 @@ Three ideas carry everything:
    stay small.
 
 ## Current state
+
+Phase 2 step 10 done: the mail system's store and transport. Station addresses exist as
+routing rules the moment the park boots (peak@, rangers@, visitors@, the camps, gate@ for
+the Superintendent, unsubscribe@), Ranger aliases are rules too, and unknown recipients
+land in visitors@ for triage. With `RESEND_API_KEY` wired the sidecar polls Resend's
+receiving API every minute after a persisted cursor (and takes the `email.received`
+webhook when `RESEND_WEBHOOK_SECRET` is set), downloads attachments, threads messages
+and stores them under `<root>/_mail/`; delivery webhooks mark sent copies and a hard
+bounce or a complaint suppresses the address; a reply to unsubscribe@ suppresses the
+sender. `send()` is the mechanics only (suppression, thread headers, campaign footer);
+step 11 decides who may send what.
 
 Phase 2 step 9 done: the mail domain's DNS. With `RESEND_API_KEY` and
 `CLOUDFLARE_API_TOKEN` wired, "Plan DNS" on the Peak (or `POST /api/mail/dns/plan`) asks

@@ -123,8 +123,16 @@ log is the account. That completes Part A of phase 2.
 Step 9, the mail domain's DNS: set `RESEND_API_KEY` and `CLOUDFLARE_API_TOKEN` (or the
 keystore keys `resend` and `cloudflare`), click the Peak and "Plan DNS" to see the records
 Resend wants for makapark.com next to what the Cloudflare zone has; "Apply DNS" waits at
-the Entrance Gate and writes them only when you approve. The mail store, addresses,
-receiving and sending are steps 10–12.
+the Entrance Gate and writes them only when you approve.
+
+Step 10, the mail store: every station has its address from boot (peak@, rangers@,
+visitors@, the camps, gate@ for you, unsubscribe@), Rangers get `<role>-<venture>@`
+aliases, and mail to anything else lands in visitors@ for triage. With `RESEND_API_KEY`
+the sidecar polls Resend for received mail every minute (set `RESEND_WEBHOOK_SECRET` and
+point Resend's webhook at `/api/mail/resend/webhook` through a tunnel for instant
+delivery), threads it under `workspace/_mail/`, downloads attachments, and marks sent
+copies delivered, bounced or complained; bounces, complaints and replies to unsubscribe@
+suppress the address. Who may send what, and the mail tools, are steps 11 and 12.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

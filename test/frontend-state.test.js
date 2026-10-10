@@ -326,3 +326,19 @@ test('mail.dns events and the mail status reach the Peak view', () => {
   assert.equal(s.mailDns.at(-1).change, 'planned');
   assert.equal(s.mailDns.at(-1).create, 3);
 });
+
+test('mail.message, mail.event and mail.address keep the mail counts current', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ mail: { domain: 'makapark.com', keys: { resend: true, cloudflare: false }, addresses: 11, counts: { messages: 0, unread: 0, byStation: {}, suppressed: 0 } } }));
+  s = reduce(s, [
+    ev('mail.message', { messageId: 'm1', threadId: 't1', direction: 'in', from: 'a@x', to: ['visitors@makapark.com'], subject: 'hi', station: 'visitor-center' }),
+    ev('mail.message', { messageId: 'm2', threadId: 't1', direction: 'out', from: 'visitors@makapark.com', to: ['a@x'], subject: 're: hi', station: 'visitor-center' }),
+    ev('mail.event', { resendId: 'em1', event: 'delivered' }),
+    ev('mail.address', { address: 'x@makapark.com', change: 'created', kind: 'alias', station: 'sales' }),
+  ]);
+  assert.deepEqual(s.mail.counts.byStation['visitor-center'], { in: 1, out: 1 });
+  assert.equal(s.mail.counts.unread, 1);
+  assert.equal(s.mail.addresses, 12);
+  assert.equal(s.mailMessages.length, 2);
+  assert.equal(s.mailEvents[0].event, 'delivered');
+});

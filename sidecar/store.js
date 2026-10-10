@@ -14,6 +14,7 @@
 //   plan.json              the Chief Ranger's current plan (every version kept)
 //   scheduler.json         last run / next run per scheduled job
 //   away.json              away mode: flag, since, counters, last digest
+//   mail-addresses.json    mail routing rules (station addresses, Ranger aliases)
 //   reflections/<id>.json  reflection documents (the Peak's history)
 //   runs/<runId>.json      one record per run: metadata + every event + final messages
 
@@ -72,6 +73,7 @@ export function createStore({ root, fs = fsp }) {
   const planFile = path.join(root, 'plan.json');
   const schedulerFile = path.join(root, 'scheduler.json');
   const awayFile = path.join(root, 'away.json');
+  const mailAddressesFile = path.join(root, 'mail-addresses.json');
   const reflectionsDir = path.join(root, 'reflections');
   const runsDir = path.join(root, 'runs');
 
@@ -88,6 +90,8 @@ export function createStore({ root, fs = fsp }) {
     },
     loadScheduler: (fallback) => readJson(schedulerFile, fallback, { fs }),
     loadAway: (fallback) => readJson(awayFile, fallback, { fs }),
+    loadMailAddresses: (fallback) => readJson(mailAddressesFile, fallback, { fs }),
+    saveMailAddresses: (rules) => writeJsonAtomic(mailAddressesFile, rules, { fs }),
     saveAway: (state) => writeJsonAtomic(awayFile, state, { fs }),
     saveScheduler: (state) => writeJsonAtomic(schedulerFile, state, { fs }),
     saveReflection: (doc) => {
