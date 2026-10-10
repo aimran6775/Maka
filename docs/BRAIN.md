@@ -40,6 +40,10 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 is complete. `npm run demo` proves the chain against the fakes from recorded
+events (`scripts/demo-phase2.mjs`); `docs/LIVE_TEST.md` is the runbook for the real
+services; `node scripts/park-check.mjs` shows the crew moving in headless Chromium.
+
 Phase 2 step 18 done: the Scout's kit, and with it every step of the phase 2 brief. A
 Trailhead sign now grants a Scout `web.search` (the Brave Search API when the
 Superintendent set a key, otherwise the Ranger's own browser on DuckDuckGo, traced like

@@ -13,7 +13,9 @@
     "assets": "node scripts/fetch-assets.mjs",
     "assets:check": "node scripts/fetch-assets.mjs --check",
     "test": "node --test test/",
-    "test:fast": "node test/run-fast.js"
+    "test:fast": "node test/run-fast.js",
+    "demo": "node scripts/demo-phase2.mjs",
+    "park:check": "node scripts/park-check.mjs"
   },
   "dependencies": {},
   "devDependencies": {}

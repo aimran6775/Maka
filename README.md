@@ -200,6 +200,10 @@ brief with sourced evidence, real costs, a revenue model, risks and a go / no-go
 judge reviews. Briefs land in the Scout's outbox and are listed at the Peak; the Chief
 decides within the mission budget.
 All of phase 2 (`docs/PHASE2_BRIEF.md`) is in this build; phase 3 (macOS app) is not.
+`npm run demo` walks the whole chain against the fakes (mission → plan → delegation →
+tools → a refund at the Gate → the report in the outbox → the ledger → the reflection) and
+checks every link from recorded events; `docs/LIVE_TEST.md` is the runbook for the same
+chain against the real services.
 
 ```bash
 npm run test:fast   # the merge gate
