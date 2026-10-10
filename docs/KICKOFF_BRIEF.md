@@ -184,11 +184,22 @@ a zone (camp) with its own Rangers, fixtures, leashes and sub-budget. A venture 
 trailhead whose trails run to the camps that serve it; the same Marketing Ranger may serve
 several ventures, and the park shows which trail they are on.
 
-### Email: Maka runs its own mail
-Rangers create and operate their own addresses. Mechanics: the Superintendent owns one Maka
-domain and connects a mail provider whose API allows programmatic mailbox or alias creation
-(candidates: Fastmail via JMAP, Google Workspace via the Admin SDK, or Cloudflare Email
-Routing for inbound plus a transactional sender such as Postmark or Resend for outbound).
+### Email: Maka runs its own mail (owner decisions 2026-10-10: domain on Cloudflare, Fastmail)
+Rangers create and operate their own addresses. The Superintendent's Maka domain is managed
+in Cloudflare; the mail provider is Fastmail. Mechanics:
+- DNS: the sidecar sets MX, SPF, DKIM and DMARC for the domain through the Cloudflare API
+  (an API token scoped to Zone:DNS:Edit on that one zone). This is a one-time, Gate-approved
+  setup step with a dry-run preview of the records.
+- Mailboxes/aliases: created on demand through Fastmail's JMAP API with a Fastmail API
+  token. Inbound sync and outbound sends also go through JMAP (one protocol, no IMAP/SMTP
+  split). Rate limits and Fastmail's sending policies are respected by construction.
+- Cloudflare R2 (S3-compatible object storage; account-scoped R2 token): optional
+  encrypted offsite backup target for the workspace ledgers, mail store and deliverables,
+  on a schedule, under the Superintendent's control. Never a primary store: the LaCie
+  workspace root stays the source of truth.
+- Secrets involved, all held in Keychain in the app and in environment secrets for cloud
+  test sessions, never in chat or git: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_DNS_TOKEN
+  (Zone:DNS:Edit), R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, FASTMAIL_API_TOKEN.
 A Ranger requests an address (e.g. sales-<venture>@maka-domain); creation is an
 account_creation leash action; the mailbox then belongs to that Ranger's workspace. The
 sidecar runs the mail system: IMAP/JMAP sync into a local store, threading, classification

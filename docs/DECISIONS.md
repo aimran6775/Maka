@@ -211,3 +211,7 @@ model, and the rule that every visual state maps to a real event. Awaiting the n
 - Hardware: 16 GB Apple Silicon Mac → one ~7-8B 4-bit worker model; workspace root on the
   LaCie external drive with an offline-pause state. Apple Developer account available.
 - Leash domains add account_creation and browser_control.
+- Mail stack: domain on Cloudflare (DNS via API token scoped Zone:DNS:Edit), Fastmail via
+  JMAP for mailbox/alias creation, sync and sending. Cloudflare R2 as optional encrypted
+  offsite backup only. Secret names: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_DNS_TOKEN,
+  R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, FASTMAIL_API_TOKEN.
