@@ -364,3 +364,29 @@ spend readout.
 `policy.stepModels` overrides the tier's model per step kind. The default policy puts
 `plan` and `reflect` on `claude-opus-5-5` and leaves `review` on the judge tier's
 `claude-sonnet-5-5`, per the owner's defaults. `reflect` is a new step kind for step 6.
+
+## D45. An agent record is the layout's agent entry; the Chief lives in a `mountain_peak` room
+
+The brief asks for persisted agent records with id, name, role, zone, parent, venture,
+persona, model policy and leash overrides. The layout already held id, name, zone, tile,
+role and parent and is the one thing the park, the grants and the org chart read, so the
+record grew there (optional fields, additive) instead of in a second file that could
+drift. Leash overrides stay in `leash.json` (D40) and are edited through the same API.
+The Chief Ranger is a singleton created at boot in a room of kind `mountain_peak`;
+`placement.js` draws that room as the Peak clearing it used to derive (D34), so nothing
+moves in the park.
+
+## D46. Crew tools are granted by role, not by a fixture
+
+`crew.spawn_junior` has no fixture: a Ranger can always ask for a Junior, a Junior never
+can. `ROLE_GRANTS` in `shared/world.js` is unioned with the fixture grants by the run
+manager (`allGrantsFor`). The tool has no leash domain: it changes the org inside the
+park, which is not outbound, money, deletion or an account; the registry's depth rule and
+the role grants bound it. Step 4's `delegate` tool follows the same pattern.
+
+## D47. A per-agent worker policy overrides the router's worker tier
+
+`agent.policy.worker = { provider, model }` lets one Ranger run on a different local or
+hosted model (a bigger one for the Scout, say). An explicit provider in the run request
+still wins, and the judge tier is never per-agent: the Chief's planning model is a step
+model (D44).

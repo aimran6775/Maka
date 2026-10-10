@@ -19,10 +19,13 @@ import { promises as fsp } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { runLoop, DEFAULT_MAX_TURNS, DEFAULT_BUDGET_USD } from './loop.js';
 import { createToolGate } from './capability/gate.js';
+import { TOOLS } from './capability/tools.js';
+import { CREW_TOOLS } from './capability/crew.js';
+import { personaLines } from './agents.js';
 import { createProvider as defaultMakeProvider } from './providers/provider.js';
 import { createRouter, defaultPolicy } from './router.js';
 import { makeEvent } from '../shared/events.js';
-import { agentOf } from '../shared/world.js';
+import { agentOf, allGrantsFor } from '../shared/world.js';
 import { defaultLeash } from '../shared/leash.js';
 
 export const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
@@ -54,6 +57,8 @@ export function createRunManager({
   ledger = null, // sidecar/leash-ledger.js
   gateQueue = null, // sidecar/gate-queue.js
   judge = null, // sidecar/judge.js
+  agents = null, // sidecar/agents.js, for crew tools and personas
+  registry = { ...TOOLS, ...CREW_TOOLS },
   workspaceOnline = () => true, // the watcher's view; a run never starts while offline
 } = {}) {
   if (!bus || !store || typeof getLayout !== 'function' || !workspaceRoot) {
@@ -114,16 +119,19 @@ export function createRunManager({
         throw err;
       }
       const layout = getLayout();
-      if (!agentOf(layout, agentId)) {
+      const agentRecord = agentOf(layout, agentId);
+      if (!agentRecord) {
         const err = new Error(`unknown agent "${agentId}"`);
         err.code = 'BAD_REQUEST';
         throw err;
       }
-      // Explicit provider/model wins; otherwise the router's worker tier runs the turns.
+      // Explicit provider/model wins; then the agent's own worker policy; otherwise the
+      // router's worker tier runs the turns.
       const routed = router.route({ kind: 'turn' });
+      const own = agentRecord.policy && agentRecord.policy.worker;
       const tier = providerName ? null : routed.tier;
-      const wantProvider = providerName || routed.provider;
-      const wantModel = model || (providerName ? undefined : routed.model || undefined);
+      const wantProvider = providerName || (own && own.provider) || routed.provider;
+      const wantModel = model || (providerName ? undefined : (own && own.model) || routed.model || undefined);
       // Throws NO_KEY / NO_MODEL / OLLAMA_UNREACHABLE / UNKNOWN_PROVIDER before anything is
       // persisted or emitted.
       const { provider, model: chosenModel, price } = await makeProvider(wantProvider, { model: wantModel, env, keystorePath, fetch: fetchImpl });
@@ -197,6 +205,9 @@ export function createRunManager({
         workspaceDir,
         fetch: fetchImpl,
         ask,
+        registry,
+        grants: allGrantsFor,
+        toolContext: { agents },
         getLeash: () => (leashState ? leashState.get() : leash),
         ledger,
         submit: gateQueue ? { submit: (item) => gateQueue.submit({ ...item, runId, agentId }), log: (item) => gateQueue.log({ ...item, runId, agentId }) } : null,
@@ -241,7 +252,7 @@ export function createRunManager({
             provider,
             model: chosenModel,
             tier,
-            system: systemPrompt,
+            system: [systemPrompt, ...personaLines(agentRecord)].join(' '),
             prompt,
             tools: gate,
             emit: (ev) => bus.emit(ev),

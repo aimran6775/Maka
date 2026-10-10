@@ -139,3 +139,23 @@ test('sun: rises in the east, high at noon, below the horizon at night, always u
   }
   assert.equal(at(7).color, 0xffb070, 'warm light at dawn');
 });
+
+test('a mountain_peak room is the Peak clearing (no duplicate), and its agents stand on the Peak', async () => {
+  const { buildParkModel } = await import('../frontend/park/placement.js');
+  const layout = defaultLayout();
+  layout.rooms.push({ id: 'mountain-peak', name: 'Mountain Peak', kind: 'mountain_peak', x: 0, y: 0, w: 4, h: 4 });
+  layout.agents.push({ id: 'chief-ranger', name: 'Chief Ranger', roomId: 'mountain-peak', x: 0, y: 0, role: 'chief_ranger' });
+  const model = buildParkModel(layout);
+  const peaks = model.clearings.filter((c) => c.kind === 'peak');
+  assert.equal(peaks.length, 1);
+  assert.equal(peaks[0].id, 'mountain-peak');
+  assert.equal(peaks[0].zoneId, 'mountain-peak');
+  assert.equal(model.clearings.filter((c) => c.id === 'mountain-peak').length, 1, 'the room is not also a zone clearing');
+  const plain = buildParkModel(defaultLayout());
+  const derived = plain.clearings.find((c) => c.kind === 'peak');
+  assert.deepEqual([peaks[0].x, peaks[0].z, peaks[0].height], [derived.x, derived.z, derived.height], 'same place as the derived Peak');
+  const chief = model.agents.find((a) => a.id === 'chief-ranger');
+  assert.equal(chief.home.x, peaks[0].x);
+  assert.equal(chief.home.y, peaks[0].height);
+  assert.equal(model.clearings.find((c) => c.kind === 'zone').zoneKind, 'ranger_station');
+});

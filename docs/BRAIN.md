@@ -27,12 +27,21 @@ Three ideas carry everything:
    frontend renders them. Nothing in the UI changes without an event, and every event is
    schema-checked by both sender and receiver.
 2. **Layout is permission.** A tool is callable only when the agent's room contains the
-   object that grants it. The user builds the org by placing things.
+   object that grants it (or the agent's role grants it, for crew tools). The user builds
+   the org by placing things; the layout's agents ARE the agent records.
 3. **Pure core, injected edges.** Loop, gate and store are plain functions over injected
    provider / clock / signal / fs so they are tested with fakes and the real HTTP paths
    stay small.
 
 ## Current state
+
+Phase 2 step 3 done: agents and the hierarchy. `sidecar/agents.js` owns agent records
+(the layout's agent entries, now with venture, specialty, persona, per-agent worker
+policy and budget), the Chief Ranger singleton at a `mountain_peak` room created at boot,
+the parent rules (Rangers under the Chief, Juniors one hop under a Ranger), per-agent
+leash overrides, and `/api/agents` CRUD. Rangers get the `crew.spawn_junior` tool by
+role. Runs carry the agent's persona in the system prompt. Only one run at a time still
+(step 4), and the park still draws one body (step 7).
 
 Phase 2 step 2 done: the judge step. `sidecar/judge.js` supplies the loop's review hook:
 before a worker's tool calls in a non-research domain at Act with cap / Act freely, and

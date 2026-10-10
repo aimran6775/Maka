@@ -313,6 +313,55 @@ test('judge over HTTP: an act_free action is reviewed on the judge tier; verdict
   }
 });
 
+test('agents over HTTP: CRUD with the hierarchy rules, the Chief at the Peak, personas and per-agent policy drive the run', async () => {
+  const seen = [];
+  const makeProvider = async (name, opts) => {
+    seen.push({ name, model: opts.model });
+    return { provider: fakeProvider([[text('hello'), end()]], { name }), model: opts.model || 'picked', price: null };
+  };
+  const srv = await startTestServer({ makeProvider, chief: true });
+  try {
+    const list = await srv.get('/api/agents');
+    assert.equal(list.status, 200);
+    assert.deepEqual(list.body.map((a) => a.role).sort(), ['chief_ranger', 'ranger']);
+    assert.equal(list.body.find((a) => a.role === 'chief_ranger').zone.kind, 'mountain_peak');
+    assert.equal((await srv.get('/api/state')).body.agents.length, 2);
+    assert.equal((await srv.post('/api/agents', { name: 'Second Chief', role: 'chief_ranger' })).status, 409);
+    assert.equal((await srv.post('/api/agents', { name: 'X', zoneId: 'nowhere' })).status, 400);
+    const created = await srv.post('/api/agents', { name: 'Scout', zoneId: 'ranger-station', parentAgentId: 'chief-ranger', specialty: 'scout', venture: 'Lantern Co', policy: { worker: { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b' } } });
+    assert.equal(created.status, 201);
+    const scout = created.body;
+    assert.equal((await srv.get(`/api/agents/${scout.id}`)).body.specialtyLabel, 'Scout Ranger');
+    assert.equal((await srv.get('/api/agents/ghost')).status, 404);
+    const stream = await srv.sse();
+    const run = await srv.post('/api/run', { agentId: scout.id, prompt: 'scout' });
+    assert.equal(run.status, 202);
+    assert.deepEqual(seen.at(-1), { name: 'openrouter', model: 'meta-llama/llama-3.3-70b' }, 'the agent policy picks the worker');
+    assert.equal(run.body.tier, 'worker');
+    await stream.waitFor((e) => e.type === 'agent.run.end');
+    await srv.runs.waitForIdle();
+    const rec = await srv.get(`/api/runs/${run.body.runId}`);
+    assert.ok(rec.body.events.find((e) => e.type === 'agent.run.start').payload.tools.includes('crew.spawn_junior'));
+    const patched = await srv.patch(`/api/agents/${scout.id}`, { name: 'Scout Ada', leash: { domains: { publishing: { level: 'act_free' } } } });
+    assert.equal(patched.status, 200);
+    assert.equal(patched.body.leash.publishing.scope, 'agent');
+    assert.equal((await srv.get('/api/leash')).body.agents[scout.id].domains.publishing.level, 'act_free');
+    assert.equal((await srv.patch(`/api/agents/${scout.id}`, { role: 'junior_ranger' })).status, 400);
+    const junior = await srv.post('/api/agents', { name: 'Drafter', role: 'junior_ranger', zoneId: 'ranger-station', parentAgentId: scout.id, persona: 'drafts' });
+    assert.equal(junior.status, 201);
+    assert.equal((await srv.post('/api/agents', { name: 'Deeper', role: 'junior_ranger', zoneId: 'ranger-station', parentAgentId: junior.body.id })).status, 400);
+    assert.equal((await srv.del(`/api/agents/${scout.id}`)).status, 409, 'has reports');
+    assert.equal((await srv.del(`/api/agents/${junior.body.id}`)).status, 200);
+    assert.equal((await srv.del(`/api/agents/${scout.id}`)).status, 200);
+    assert.equal((await srv.del('/api/agents/ghost')).status, 404);
+    const crew = stream.events.filter((e) => e.type === 'crew.agent').map((e) => e.payload.change);
+    assert.deepEqual(crew, ['created', 'created', 'updated', 'created', 'removed', 'removed'], 'the Chief from boot is replayed first');
+    stream.close();
+  } finally {
+    await srv.close();
+  }
+});
+
 test('provider failure becomes agent.run.error and the run record says so; NO_KEY is a 400 before any event', async () => {
   const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([() => { const e = new Error('upstream 500'); e.code = 'HTTP_500'; throw e; }]), model: 'm', price: null }) });
   try {

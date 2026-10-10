@@ -18,6 +18,7 @@ export function initialState() {
     providers: {},
     policy: null, // router policy from the snapshot (worker / judge tiers)
     judge: null, // { provider, model, caps, today: { usd, calls }, wired } from the snapshot
+    agents: [], // agent records from the snapshot (zone, reports, grants, resolved leash)
     leash: null, // leash policy from the snapshot (shared/leash.js shape)
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
@@ -68,6 +69,7 @@ export function applySnapshot(state, snap) {
   next.providers = snap.providers || {};
   next.policy = snap.policy || null;
   next.judge = snap.judge || null;
+  next.agents = snap.agents || [];
   next.leash = snap.leash || null;
   next.workspace = snap.workspace || null;
   next.keystore = snap.keystore || { path: '', problem: null };
@@ -259,6 +261,21 @@ export function applyEvent(state, event) {
         ...run,
         items: [...run.items, { kind: 'judge', turn: p.turn, scope: p.scope, verdict: p.verdict, notes: p.notes || '', reason: p.reason || '', provider: p.provider || '', model: p.model || '', usd: typeof p.usd === 'number' ? p.usd : null, reconciled: Boolean(p.reconciled), tools: p.tools || [] }],
       }));
+      break;
+    }
+    case 'crew.agent': {
+      const others = next.layout.agents.filter((a) => a.id !== p.agentId);
+      if (p.change === 'removed') {
+        next.layout = { ...next.layout, agents: others };
+        const states = { ...next.agentStates };
+        delete states[p.agentId];
+        next.agentStates = states;
+      } else if (p.agent && p.agent.id === p.agentId) {
+        const idx = next.layout.agents.findIndex((a) => a.id === p.agentId);
+        const agents = idx === -1 ? [...next.layout.agents, p.agent] : next.layout.agents.map((a) => (a.id === p.agentId ? p.agent : a));
+        next.layout = { ...next.layout, agents };
+        if (!next.agentStates[p.agentId]) next.agentStates = { ...next.agentStates, [p.agentId]: 'idle' };
+      }
       break;
     }
     case 'agent.waiting': {

@@ -12,6 +12,11 @@
 //   POST /api/permission       { promptId, runId, allow } → emits permission.response
 //   GET  /api/gate             { pending, recent, ledger } the Entrance Gate queue
 //   POST /api/gate/:id         { decision: approve|revise|reject, notes? } → gate.item
+//   GET  /api/agents           every agent record with zone, reports, grants, resolved leash
+//   POST /api/agents           { name, role?, zoneId, parentAgentId?, venture?, specialty?, persona?, policy? }
+//   GET  /api/agents/:id
+//   PATCH /api/agents/:id      { name?, zoneId?, parentAgentId?, venture?, specialty?, persona?, policy?, leash? }
+//   DELETE /api/agents/:id
 //   GET  /api/leash            the live leash policy
 //   PUT  /api/leash            replace the leash policy (validated, persisted)
 //   GET  /api/runs             run summaries, newest first
@@ -83,6 +88,16 @@ async function readJsonBody(req) {
   }
 }
 
+// Runs fn and turns a thrown error that carries `status` into an HttpError.
+async function rethrow(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err && err.status) throw new HttpError(err.status, err.message, err.code);
+    throw err;
+  }
+}
+
 function sendJson(res, status, data) {
   const body = JSON.stringify(data);
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(body), 'cache-control': 'no-store' });
@@ -139,7 +154,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -192,6 +207,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         leash: leashState ? leashState.get() : null,
         ledger: ledger ? ledger.summary() : null,
         gate: gateQueue ? { pending: gateQueue.pending(), recent: gateQueue.recent(20) } : null,
+        agents: agents ? agents.list() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -238,6 +254,26 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         if (err.status) throw new HttpError(err.status, err.message, err.code);
         throw err;
       }
+    }
+    if (p === '/api/agents' && method === 'GET') {
+      if (!agents) throw new HttpError(404, 'no agents registry');
+      return sendJson(res, 200, agents.list());
+    }
+    if (p === '/api/agents' && method === 'POST') {
+      if (!agents) throw new HttpError(404, 'no agents registry');
+      return sendJson(res, 201, await rethrow(async () => agents.create(await readJsonBody(req), { by: 'superintendent' })));
+    }
+    if (p.startsWith('/api/agents/')) {
+      if (!agents) throw new HttpError(404, 'no agents registry');
+      const id = decodeURIComponent(p.slice('/api/agents/'.length));
+      if (method === 'GET') {
+        const a = agents.get(id);
+        if (!a) throw new HttpError(404, `no agent "${id}"`);
+        return sendJson(res, 200, a);
+      }
+      if (method === 'PATCH') return sendJson(res, 200, await rethrow(async () => agents.update(id, await readJsonBody(req), { by: 'superintendent' })));
+      if (method === 'DELETE') return sendJson(res, 200, await rethrow(() => agents.remove(id, { by: 'superintendent' })));
+      throw new HttpError(405, 'method not allowed');
     }
     if (p === '/api/leash' && method === 'GET') return sendJson(res, 200, leashState ? leashState.get() : null);
     if (p === '/api/leash' && method === 'PUT') {

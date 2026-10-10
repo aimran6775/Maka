@@ -18,8 +18,14 @@ export function createInspect({ parent, getState, x, y, w }) {
     const model = lastModel(run);
     const leash = s.leash ? Object.entries(resolveAllLeash(s.leash, { agentId: agent.id, roomId: agent.roomId })) : [];
     const waiting = pendingGate(s).filter((it) => it.agentId === agent.id);
+    const parent = agent.parentAgentId ? (s.layout.agents.find((a) => a.id === agent.parentAgentId) || { name: agent.parentAgentId }).name : null;
+    const reports = s.layout.agents.filter((a) => a.parentAgentId === agent.id);
     return [
       row('state', st),
+      row('role', `${(agent.role || 'ranger').replace('_', ' ')}${agent.specialty ? ` · ${agent.specialty}` : ''}${parent ? ` · reports to ${parent}` : ''}`),
+      reports.length ? row('reports', reports.map((a) => `${a.name} (${a.role === 'junior_ranger' ? 'junior' : a.role})`).join(', ')) : null,
+      agent.venture ? row('venture', agent.venture) : null,
+      agent.persona ? row('persona', agent.persona) : null,
       row('zone', (s.layout.rooms.find((r) => r.id === agent.roomId) || {}).name || agent.roomId),
       row('tools', grantedTools(s, agent.id).join(', ') || 'none (place fixtures in BUILD)'),
       row('run', run ? `${run.runId} · ${run.status}${run.reason ? ` (${run.reason})` : ''}` : 'no run yet'),

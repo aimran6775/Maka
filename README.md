@@ -85,6 +85,11 @@ research, and reviews the closing answer before a run ends; revise and reject go
 the Ranger as its next turn. Every judge call shows in the transcript and SPEND with its
 own cost, capped at $10 a day; at the cap or without a key the action waits at the Gate
 instead. The judge step itself is wired; the park's "radio the station" animation is step 7.
+Step 3, the crew: the Chief Ranger stands at the Mountain Peak from the first boot; Rangers
+and Junior Rangers (one hop below a Ranger) are created, briefed and moved through
+`/api/agents` with a venture, a specialty (scout, storefront, ads, marketing, support,
+books), a persona and their own leash overrides. Rangers can spawn a Junior from a run.
+Runs still go one at a time and the park still draws one body (steps 4 and 7).
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

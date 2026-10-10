@@ -192,3 +192,19 @@ test('judge.verdict lands in the run transcript as a judge item; the snapshot ca
   assert.deepEqual(v.map((x) => [x.turn, x.scope, x.verdict, x.notes, x.reason, x.usd]), [[1, 'action', 'revise', 'add a price', '', 0.01], [2, 'final', 'skipped', '', 'cap', null]]);
   assert.equal(s.agentStates.ranger, 'thinking', 'a verdict does not change the body state');
 });
+
+test('crew.agent creates, updates and removes layout agents and their idle state', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ agents: [{ id: 'ranger', role: 'ranger' }] }));
+  assert.equal(s.agents.length, 1);
+  const rec = { id: 'scout-1', name: 'Scout', roomId: 'ranger-station', x: 1, y: 1, role: 'ranger', parentAgentId: 'chief-ranger' };
+  s = reduce(s, [ev('crew.agent', { agentId: 'scout-1', change: 'created', agent: rec, by: 'chief-ranger' })]);
+  assert.equal(s.layout.agents.length, 2);
+  assert.equal(s.agentStates['scout-1'], 'idle');
+  s = reduce(s, [ev('crew.agent', { agentId: 'scout-1', change: 'updated', agent: { ...rec, name: 'Scout Ada' } })]);
+  assert.equal(s.layout.agents.find((a) => a.id === 'scout-1').name, 'Scout Ada');
+  assert.equal(s.layout.agents.length, 2);
+  s = reduce(s, [ev('crew.agent', { agentId: 'scout-1', change: 'removed' })]);
+  assert.equal(s.layout.agents.length, 1);
+  assert.equal('scout-1' in s.agentStates, false);
+});

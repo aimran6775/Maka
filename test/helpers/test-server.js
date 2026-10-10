@@ -9,6 +9,7 @@ import { createRunManager } from '../../sidecar/runs.js';
 import { createLeashLedger, createLeashState } from '../../sidecar/leash-ledger.js';
 import { createGateQueue } from '../../sidecar/gate-queue.js';
 import { createJudge } from '../../sidecar/judge.js';
+import { createAgents } from '../../sidecar/agents.js';
 import { createRouter, defaultPolicy } from '../../sidecar/router.js';
 import { defaultLeash } from '../../shared/leash.js';
 import { createWorkspaceWatcher } from '../../sidecar/workspace.js';
@@ -23,7 +24,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 
 // `judgeProvider`: a (name, opts) => { provider, model, price } factory for the judge tier; when
 // absent no judge is wired, so runs are not reviewed (the phase 1 behaviour).
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, chief = false } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -40,7 +41,9 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
   const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, intervalMs: 60000, onOffline: () => runsRef && runsRef.cancel() });
   const judge = judgeProvider ? createJudge({ router: createRouter(policy || defaultPolicy()), makeProvider: judgeProvider, ledger, bus, clock, env, keystorePath, log: { error() {} } }) : null;
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, fetch: localFetch, workspaceOnline: () => workspace.state().online });
+  const agents = createAgents({ layoutState, leashState, bus, clock, activeRunFor: (id) => (runsRef && runsRef.active() && runsRef.active().agentId === id ? runsRef.active() : null) });
+  if (chief) await agents.ensureChief();
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, agents, fetch: localFetch, workspaceOnline: () => workspace.state().online });
   runsRef = runs;
   await workspace.check();
   const app = createApp({
@@ -51,6 +54,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     leashState,
     ledger,
     gateQueue,
+    agents,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -74,10 +78,17 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     leashState,
     ledger,
     gateQueue,
+    agents,
     workspace,
     async get(p) {
       const res = await fetch(url + p);
       return { status: res.status, body: await res.json() };
+    },
+    async patch(p, body) {
+      return api.send('PATCH', p, body);
+    },
+    async del(p) {
+      return api.send('DELETE', p);
     },
     async send(method, p, body) {
       const res = await fetch(url + p, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });

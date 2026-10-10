@@ -31,15 +31,19 @@ export function tileToWorld(tx, ty) {
 
 // Clearings: one per zone, plus the Entrance Gate clearing south of the first zone. Their
 // heights are chosen from the raw terrain so they sit naturally, then the terrain is
-// flattened to them (see terrain.heightAt).
+// flattened to them (see terrain.heightAt). A room of kind 'mountain_peak' (the Chief
+// Ranger's post, phase 2 step 3) IS the Peak: it is placed where the derived Peak used to
+// be and raised the same way, so the park looks the same with or without the room.
 export function clearingsFor(layout) {
   const seed = layout.seed || 1;
   const out = [];
+  const peakRoom = layout.rooms.find((r) => r.kind === 'mountain_peak') || null;
   for (const room of layout.rooms) {
+    if (room === peakRoom) continue;
     const c = zoneCenter(room);
-    out.push({ id: room.id, kind: 'zone', name: room.name, x: c.x, z: c.z, radius: zoneRadius(room), height: heightAt(c.x, c.z, seed) });
+    out.push({ id: room.id, kind: 'zone', name: room.name, zoneKind: room.kind || null, x: c.x, z: c.z, radius: zoneRadius(room), height: heightAt(c.x, c.z, seed) });
   }
-  if (layout.rooms.length) {
+  if (layout.rooms.length && out.length) {
     const first = out[0];
     const gx = first.x;
     const gz = first.z + first.radius + 26;
@@ -47,11 +51,11 @@ export function clearingsFor(layout) {
   }
   // The Mountain Peak: the control centre, a visible high point north-west of the first
   // zone with a small station on it (docs/KICKOFF_BRIEF.md, "Operating systems inside Maka").
-  if (layout.rooms.length) {
+  if (layout.rooms.length && out.length) {
     const first = out[0];
     const px = first.x - first.radius - 46;
     const pz = first.z - first.radius - 40;
-    out.push({ id: 'mountain-peak', kind: 'peak', name: 'Mountain Peak', x: px, z: pz, radius: 8, height: Math.max(heightAt(px, pz, seed), 0) + 22 });
+    out.push({ id: peakRoom ? peakRoom.id : 'mountain-peak', kind: 'peak', name: peakRoom ? peakRoom.name : 'Mountain Peak', zoneId: peakRoom ? peakRoom.id : null, x: px, z: pz, radius: 8, height: Math.max(heightAt(px, pz, seed), 0) + 22 });
   }
   // Keep heights above water so clearings never flood.
   for (const c of out) c.height = Math.max(c.height, TERRAIN.waterLevel + 2);
@@ -125,7 +129,10 @@ export function buildParkModel(layout) {
     const p = tileToWorld(o.x, o.y);
     return { ...o, x: p.x, z: p.z, y: heightAt(p.x, p.z, seed, clearings) };
   });
+  const peak = clearings.find((c) => c.kind === 'peak');
   const agents = layout.agents.map((a) => {
+    // Agents in the Peak room stand on the Peak clearing, whatever their tile says.
+    if (peak && peak.zoneId && a.roomId === peak.zoneId) return { ...a, home: { x: peak.x, z: peak.z - 2, y: peak.height } };
     const p = tileToWorld(a.x, a.y);
     return { ...a, home: { x: p.x, z: p.z, y: heightAt(p.x, p.z, seed, clearings) } };
   });

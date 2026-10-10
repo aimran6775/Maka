@@ -29,6 +29,40 @@ const int1 = { type: 'integer', minimum: 1 };
 // reports to; it is optional so existing layouts stay valid.
 export const AGENT_ROLES = deepFreeze(['superintendent', 'chief_ranger', 'ranger', 'junior_ranger']);
 
+// Who may report to whom (phase 2 step 3). A Junior Ranger is one hop below a Ranger and
+// may not have Juniors of its own; the Chief Ranger is a singleton at the Mountain Peak.
+export const PARENT_ROLES = deepFreeze({
+  superintendent: [],
+  chief_ranger: ['superintendent'],
+  ranger: ['chief_ranger', 'superintendent'],
+  junior_ranger: ['ranger'],
+});
+
+// Specialties (docs/KICKOFF_BRIEF.md, "Business scope"): a persona + the department that
+// hosts it. Data only; the Chief staffs ventures with these in step 5.
+export const SPECIALTIES = deepFreeze({
+  scout: { label: 'Scout Ranger', zoneKind: 'research', persona: 'You find opportunities: study publicly visible success stories, trends and niches, and produce venture briefs with evidence, costs and a go/no-go for the judge. Replicate strategies, never property.' },
+  storefront: { label: 'Storefront Ranger', zoneKind: 'product_listings', persona: 'You run Etsy / Shopify / dropshipping stores: original listings, pricing proposals, supplier orders and fulfilment status. Every platform action goes through its official API under its terms.' },
+  ads: { label: 'Ads Ranger', zoneKind: 'marketing', persona: 'You create and manage ad campaigns, report real spend and results, and propose budget changes; money out always passes the Entrance Gate.' },
+  marketing: { label: 'Marketing Ranger', zoneKind: 'marketing', persona: 'You do content, social, email campaigns and SEO with original copy and creative, under the publishing and outbound_messages leashes.' },
+  support: { label: 'Support Ranger', zoneKind: 'operations_support', persona: 'You handle customer email and chat, returns and reviews, truthfully and politely, and escalate refunds and anything irreversible to the Gate.' },
+  books: { label: 'Books Ranger', zoneKind: 'finance', persona: 'You keep orders, refunds, fees and the daily P&L from real connector data only. You never estimate revenue.' },
+});
+export const SPECIALTY_NAMES = deepFreeze(Object.keys(SPECIALTIES));
+
+// Tools granted by role rather than by a fixture (phase 2 step 3). The capability gate
+// unions these with the fixture grants of the agent's zone.
+export const ROLE_GRANTS = deepFreeze({
+  superintendent: [],
+  chief_ranger: ['crew.spawn_junior'],
+  ranger: ['crew.spawn_junior'],
+  junior_ranger: [],
+});
+
+export function roleGrants(role) {
+  return ROLE_GRANTS[role] ? [...ROLE_GRANTS[role]] : [];
+}
+
 // Zone kinds (docs/KICKOFF_BRIEF.md, "The park" and "Operating systems inside Maka").
 // Phase 1 builds the Ranger Station, the Entrance Gate and the Mountain Peak; the
 // department zones and the others are names a layout may use, nothing more yet.
@@ -79,7 +113,23 @@ export const LAYOUT_SCHEMA = deepFreeze({
         type: 'object',
         required: ['id', 'name', 'roomId', 'x', 'y'],
         additionalProperties: false,
-        properties: { id, name: { type: 'string' }, roomId: id, x: int0, y: int0, role: { type: 'string', enum: AGENT_ROLES }, parentAgentId: id },
+        properties: {
+          id,
+          name: { type: 'string' },
+          roomId: id,
+          x: int0,
+          y: int0,
+          role: { type: 'string', enum: AGENT_ROLES },
+          parentAgentId: id,
+          // Phase 2 step 3 agent record fields (all optional, additive).
+          venture: { type: 'string' },
+          specialty: { type: 'string', enum: SPECIALTY_NAMES },
+          persona: { type: 'string', maxLength: 4000 },
+          policy: { type: 'object', additionalProperties: false, properties: { worker: { type: 'object', required: ['provider'], additionalProperties: false, properties: { provider: { type: 'string', minLength: 1 }, model: { type: 'string' } } } } },
+          createdBy: { type: 'string' },
+          createdAt: int0,
+          budgetUsd: { type: 'number', minimum: 0 },
+        },
       },
     },
   },
@@ -122,4 +172,25 @@ export function grantsFor(layout, agentId) {
     if (kind) for (const t of kind.grants) tools.add(t);
   }
   return [...tools].sort();
+}
+
+// Fixture grants plus role grants (phase 2 step 3).
+export function allGrantsFor(layout, agentId) {
+  const agent = agentOf(layout, agentId);
+  if (!agent) return [];
+  return [...new Set([...grantsFor(layout, agentId), ...roleGrants(agent.role || 'ranger')])].sort();
+}
+
+// Agents whose parentAgentId is `agentId`.
+export function childrenOf(layout, agentId) {
+  return layout.agents.filter((a) => a.parentAgentId === agentId);
+}
+
+// First free tile inside a room (not under an object or an agent), scanning row by row.
+export function freeTile(layout, room, { avoid = [] } = {}) {
+  const taken = new Set([...layout.objects.map((o) => `${o.x},${o.y}`), ...layout.agents.map((a) => `${a.x},${a.y}`), ...avoid]);
+  for (let y = room.y; y < room.y + room.h; y++) {
+    for (let x = room.x; x < room.x + room.w; x++) if (!taken.has(`${x},${y}`)) return { x, y };
+  }
+  return null;
 }

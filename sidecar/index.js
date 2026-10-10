@@ -19,6 +19,7 @@ import { createRunManager } from './runs.js';
 import { createLeashLedger, createLeashState } from './leash-ledger.js';
 import { createGateQueue } from './gate-queue.js';
 import { createJudge } from './judge.js';
+import { createAgents } from './agents.js';
 import { createRouter } from './router.js';
 import { createApp, createHttpServer, createLayoutState } from './server.js';
 import { providerStatus } from './providers/provider.js';
@@ -61,7 +62,9 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
 
   const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, onOffline: () => runs.cancel() });
   const judge = createJudge({ router: createRouter(policy), ledger, bus, env, keystorePath, log });
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, workspaceOnline: () => workspace.state().online });
+  const agents = createAgents({ layoutState, leashState, bus, activeRunFor: (id) => (runs && runs.active() && runs.active().agentId === id ? runs.active() : null) });
+  await agents.ensureChief(); // the Chief Ranger is a singleton at the Mountain Peak (D45)
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, workspaceOnline: () => workspace.state().online });
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -77,6 +80,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     leashState,
     ledger,
     gateQueue,
+    agents,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -105,6 +109,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     else log.info(`  provider ${name}: ${s.configured ? 'key configured' : `not wired (set ${s.envVar} or add to ${keystorePath})`}`);
   }
   log.info(`  gate: ${gateQueue.pending().length} item(s) waiting; leash day ${ledger.dayKey()}`);
+  log.info(`  crew: ${agents.list().map((a) => `${a.name} (${a.role})`).join(', ')}`);
   log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${judge.route.provider}/${judge.route.model || 'default'} (cap $${judge.caps.judgeUsdPerDay}/day, $${ledger.judgeToday().usd.toFixed(2)} used today)`);
 
   async function close() {
@@ -115,7 +120,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await new Promise((resolve) => server.close(resolve));
   }
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, close };
 }
 
 function validateConfig(data) {

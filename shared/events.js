@@ -215,6 +215,14 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     reason: str,
     tools: { type: 'array', items: nonEmpty },
   }),
+  // Added v1 (phase 2 step 3): an agent record was created, changed or removed. `agent` is
+  // the layout record as it now stands (absent on 'removed').
+  'crew.agent': payload(['agentId', 'change'], {
+    agentId: nonEmpty,
+    change: { type: 'string', enum: ['created', 'updated', 'removed'] },
+    agent: obj,
+    by: str,
+  }),
   // Added v1 (phase 2 step 1): a run is parked on a pending Gate item; the Ranger waits at
   // the Gate until a gate.item with that itemId leaves 'pending'.
   'agent.waiting': payload(['runId', 'agentId', 'itemId'], {
