@@ -27,6 +27,7 @@ export const ENV_VARS = Object.freeze({
   googleAdsClientId: 'GOOGLE_ADS_CLIENT_ID',
   googleAdsClientSecret: 'GOOGLE_ADS_CLIENT_SECRET',
   googleAdsDeveloperToken: 'GOOGLE_ADS_DEVELOPER_TOKEN',
+  braveSearch: 'BRAVE_SEARCH_API_KEY',
 });
 
 export function defaultKeystorePath(env = process.env) {

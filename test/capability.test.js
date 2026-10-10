@@ -25,7 +25,7 @@ test('world: default layout validates; grants derive from objects in the agent r
   const layout = defaultLayout();
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, true);
   assert.deepEqual(grantsFor(layout, 'ranger'), []);
-  assert.deepEqual(grantsFor(layoutWith(['trailhead_sign', 'supply_cache', 'trailhead_sign']), 'ranger'), ['fs.read', 'fs.write', 'web.fetch']);
+  assert.deepEqual(grantsFor(layoutWith(['trailhead_sign', 'supply_cache', 'trailhead_sign']), 'ranger'), ['brief.submit', 'fs.read', 'fs.write', 'web.fetch', 'web.read', 'web.search', 'web.trends']);
   const other = layoutWith(['supply_cache']);
   other.rooms.push({ id: 'annex', name: 'Annex', x: 20, y: 1, w: 4, h: 4 });
   other.objects[0].roomId = 'annex';
@@ -36,7 +36,8 @@ test('world: default layout validates; grants derive from objects in the agent r
   const CONNECTOR_TOOL_NAMES = ['connector.status', 'connector.sync']; // the framework's own tools (sidecar/connectors/registry.js)
   const { CONNECTOR_SPECS } = await import('../sidecar/connectors/kinds.js');
   const connectorTools = Object.assign({}, ...CONNECTOR_SPECS.map((spec) => spec.tools || {}));
-  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t) || t in MAIL_TOOLS || t in BROWSER_TOOLS || CONNECTOR_TOOL_NAMES.includes(t) || t in connectorTools, `${t} exists`);
+  const RESEARCH_TOOL_NAMES = ['web.search', 'web.read', 'web.trends', 'brief.submit']; // sidecar/research/index.js
+  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t) || t in MAIL_TOOLS || t in BROWSER_TOOLS || CONNECTOR_TOOL_NAMES.includes(t) || t in connectorTools || RESEARCH_TOOL_NAMES.includes(t), `${t} exists`);
   assert.equal(tileInRoom(layout.rooms[0], 1, 1), true);
   assert.equal(tileInRoom(layout.rooms[0], 13, 1), false);
   const bad = layoutWith(['piano']);

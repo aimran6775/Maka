@@ -220,6 +220,7 @@ test('Google Ads from a keystore token: the sync reads the customer, campaigns w
     assert.equal(fake.state.budgets.get('b1').amountMicros, 25_000_000);
     const upd = fake.state.calls.filter((c) => c.path.endsWith('campaignBudgets:mutate')).at(-1).body.operations[0];
     assert.equal(upd.updateMask, 'amount_micros');
+    assert.equal(h.connectors.data('google_ads').campaigns.find((x) => x.id === '9002').dailyBudget, 25, 'the shared budget moved every campaign on it');
     const enabled = JSON.parse((await h.call('w3', 'google_ads.set_status', { campaignId: '9002', status: 'ENABLED' })).output);
     assert.equal(enabled.status, 'ENABLED');
     assert.equal(h.gateQueue.recent(20).find((it) => it.callId === 'w3').amountUsd, 25, 'enabling counts the shared budget\'s daily amount');

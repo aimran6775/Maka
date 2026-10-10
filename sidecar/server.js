@@ -37,6 +37,8 @@
 //   POST /api/mail/send        the Superintendent sends from a station address (policy: ceilings,
 //                              suppression; no leash, the owner is the principal) → the stored copy
 //   POST /api/mail/resend/webhook   Resend webhook (raw body, svix signature)
+//   GET  /api/research         the Scout kit: search provider, trend sources, judge wired
+//   GET  /api/briefs           venture briefs from every Ranger's outbox, newest first
 //   GET  /api/connectors       one status row per connector (connected, last sync, summary)
 //   GET  /api/connectors/:kind the row plus the local data the syncs brought in
 //   POST /api/connectors/:kind/connect    { apiKey } or {} (OAuth) → a Gate item; 202
@@ -193,7 +195,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, research = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -264,6 +266,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         mail: await mailStatus(),
         browser: browser ? await browser.status() : null,
         connectors: connectors ? connectors.list() : null,
+        research: research ? await research.status() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -439,6 +442,14 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         if (['NO_KEY', 'NO_ZONE', 'NETWORK', 'BAD_RESPONSE', 'CLOUDFLARE'].includes(err.code) || /^HTTP_/.test(err.code || '')) throw new HttpError(502, err.message, err.code);
         throw err;
       }
+    }
+    if (p === '/api/research' && method === 'GET') {
+      if (!research) throw new HttpError(404, 'no research kit');
+      return sendJson(res, 200, await research.status());
+    }
+    if (p === '/api/briefs' && method === 'GET') {
+      if (!research) throw new HttpError(404, 'no research kit');
+      return sendJson(res, 200, await research.listBriefs({ limit: Number(url.searchParams.get('limit')) || 50 }));
     }
     if (p === '/api/connectors' && method === 'GET') {
       if (!connectors) throw new HttpError(404, 'no connectors');

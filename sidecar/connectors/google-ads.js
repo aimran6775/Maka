@@ -209,7 +209,8 @@ export const googleAdsSetBudget = {
     return withClient(ctx, async (client) => {
       await client.mutateBudgets([{ update: { resourceName: c.budgetResource, amountMicros: String(majorToMicros(input.dailyBudget)) }, updateMask: 'amount_micros' }]);
       const before = c.dailyBudget;
-      c.dailyBudget = input.dailyBudget;
+      // A budget can be shared: every campaign on it now has the new daily amount.
+      for (const x of data.campaigns) if (x.budgetResource === c.budgetResource) x.dailyBudget = input.dailyBudget;
       ctx.connectors.sync('google_ads', 'after-write').catch(() => {});
       return { ok: true, output: JSON.stringify({ id: c.id, name: c.name, dailyBudget: input.dailyBudget, before }) };
     });

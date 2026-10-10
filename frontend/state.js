@@ -30,6 +30,7 @@ export function initialState() {
     mailEvents: [], // mail.event payloads this session, oldest first (bounded)
     connectors: [], // one row per connector from the snapshot; connector.* events patch them
     connectorEvents: [], // connector.sync / connector.error payloads this session, oldest first (bounded)
+    research: null, // { search, searchKey, trends, judge } from the snapshot
     browser: null, // { chromium, wired, headless, sessions, pending } from the snapshot
     browserHandoffs: {}, // handoffId -> latest browser.handoff payload (+ ts)
     browserHandoffOrder: [], // handoffIds, oldest first
@@ -97,6 +98,7 @@ export function applySnapshot(state, snap) {
   next.mail = snap.mail || null;
   next.browser = snap.browser || null;
   next.connectors = Array.isArray(snap.connectors) ? snap.connectors : [];
+  next.research = snap.research || null;
   if (snap.browser && Array.isArray(snap.browser.pending)) {
     const handoffs = { ...next.browserHandoffs };
     const order = [...next.browserHandoffOrder];

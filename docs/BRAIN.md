@@ -40,6 +40,18 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 18 done: the Scout's kit, and with it every step of the phase 2 brief. A
+Trailhead sign now grants a Scout `web.search` (the Brave Search API when the
+Superintendent set a key, otherwise the Ranger's own browser on DuckDuckGo, traced like
+any browser action), `web.read` (a page as an article: title, author, date, the text
+without the chrome, its links), `web.trends` (Wikipedia pageviews and Hacker News activity
+for a topic, from official keyless APIs; Google Trends has none) and `brief.submit`. The
+venture brief is a schema: evidence with source URLs, costs with a basis, a revenue model,
+risks, a go / no-go with confidence. The judge reviews it (approve, revise with what is
+missing, reject), the brief lands in the Scout's outbox as a deliverable with the verdict
+written in, the Peak lists every brief, and the Chief, when the work item finishes, is
+told to decide within the mission budget.
+
 Phase 2 step 17 done: the ad networks. Meta Ads (a long-lived access token and the ad
 account id) and Google Ads (a Google sign-in approved at the Gate with the owner's OAuth
 client and developer token, the customer id) sync their campaigns, budgets and the last

@@ -110,9 +110,48 @@ export function createJudge({ router, makeProvider = defaultMakeProvider, ledger
     return null;
   }
 
+  // One-off review of a document a tool produced (a venture brief, step 18): the same
+  // model, caps, cost and judge.verdict event as a turn review; scope 'action' with the
+  // tool named. Returns { verdict, notes, usd } or { verdict: 'skipped', reason }.
+  async function reviewDocument({ runId = 'none', agentId = 'none', turn = 0, tool = 'document', title = 'document', text, brief = '' }) {
+    const cap = capReason(0);
+    const skip = (reason) => {
+      emit('judge.verdict', { agentId, runId, turn, verdict: 'skipped', scope: 'action', reason, provider: route.provider, model: route.model || '', usd: null, reconciled: false, tools: [tool] });
+      return { verdict: 'skipped', reason };
+    };
+    if (cap) return skip(cap);
+    let p;
+    try {
+      p = await provider();
+    } catch (err) {
+      return skip(`judge not wired: ${err && err.message ? err.message : err}`);
+    }
+    const lines = [`Brief from the Superintendent to Ranger "${agentId}":`, clip(brief, 2000), '', `SCOPE: the worker submitted a ${title} through ${tool}. Review it: is every claim backed by the evidence given (sources with URLs), are the costs real figures with a basis, is the go / no-go consistent with the evidence? Approve, or revise with what is missing, or reject.`, '', clip(text, 12000), '', 'Answer with the JSON object only.'];
+    let out = '';
+    let usage = null;
+    try {
+      const stream = p.provider.stream({ model: p.model, system: JUDGE_SYSTEM_PROMPT, messages: [{ role: 'user', content: [{ type: 'text', text: lines.join('\n') }] }], tools: [] }, {});
+      for await (const chunk of stream) {
+        if (chunk.type === 'text_delta') out += chunk.text;
+        else if (chunk.type === 'message_end') usage = chunk.usage || null;
+      }
+    } catch (err) {
+      log.error('judge call failed:', err);
+      return skip(`judge call failed: ${err && err.message ? err.message : err}`);
+    }
+    const turnUsage = usage ? { inputTokens: usage.inputTokens | 0, outputTokens: usage.outputTokens | 0 } : null;
+    const usd = usage && typeof usage.costUsd === 'number' && usage.costUsd >= 0 ? usage.costUsd : costOf(turnUsage, p.price);
+    emit('cost.estimate', { runId: runId || `judge-${tool}`, turn, provider: p.provider.name, model: p.model, inputTokens: turnUsage ? turnUsage.inputTokens : 0, outputTokens: turnUsage ? turnUsage.outputTokens : 0, usd, reconciled: usd !== null, tier: 'judge' });
+    if (ledger) await ledger.recordJudge({ usd: usd || 0 }).catch((err) => log.error('judge ledger failed:', err));
+    const parsed = parseVerdict(out) || { verdict: 'reject', notes: `the judge did not return a readable verdict (${clip(out, 200) || 'empty answer'})` };
+    emit('judge.verdict', { agentId, runId, turn, verdict: parsed.verdict, scope: 'action', provider: p.provider.name, model: p.model, usd, reconciled: usd !== null, notes: parsed.notes, tools: [tool] });
+    return { verdict: parsed.verdict, notes: parsed.notes, usd };
+  }
+
   return {
     route,
     caps,
+    reviewDocument,
     status() {
       const today = ledger ? ledger.judgeToday() : { usd: 0, calls: 0 };
       return { provider: route.provider, model: route.model, caps, today, wired: Boolean(cached) };

@@ -702,3 +702,31 @@ id and secret (a desktop client, so the secret is not secret in Google's own ter
 still lives only in the keystore), asks for offline access so a refresh token comes
 back, and sends the developer token with every call. The secret travels both as HTTP
 Basic and in the token request body because Google reads the body and others the header.
+
+## D85. Search is research whichever way it runs, and says which way it ran
+
+`web.search` uses the Brave Search API when `BRAVE_SEARCH_API_KEY` exists and the
+Ranger's browser on DuckDuckGo's HTML results otherwise; both are read-only lookups of
+public pages, so both are research. The browser path still runs through the browser
+control (one trace line with a screenshot, handoffs honoured), and every result set
+names its source so the Ranger and the Superintendent know an unkeyed search came from a
+results page, not an API. With neither key nor browser the tool refuses and names what to
+set rather than inventing results.
+
+## D86. Trend signals come from official keyless APIs only
+
+Google Trends has no official API, so it is not a source: scraping it would break
+product law 7. Wikipedia's pageviews (Wikimedia REST) and Hacker News (Algolia's search
+API) are official, public and keyless, and each answer carries the URL it came from so
+it can be cited as evidence. A source that fails is reported as failed inside the answer;
+only both failing fails the tool.
+
+## D87. The brief is reviewed inside the tool and decided by the Chief
+
+`brief.submit` has no leash domain: it writes to the Ranger's own outbox. Its review is
+the judge's, called from the tool with the rendered brief (same model, caps, cost events
+and `judge.verdict` as a turn review), and the verdict is written into the brief and told
+to the Ranger with what to do (fix and resubmit, or stop). The brief recommends; the
+Chief decides go / no-go within the mission budget when the work item finishes, which is
+the Chief's follow-up turn. A judge at its cap or not wired is said so in the brief, and
+the Chief reads it as unreviewed.

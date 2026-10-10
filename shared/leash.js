@@ -41,6 +41,12 @@ export const TOOL_DOMAINS = deepFreeze({
   'fs.read': 'research',
   'web.fetch': 'research',
   'fs.write': null,
+  // Phase 2 step 18: the Scout's kit. The brief is a workspace deliverable (no domain);
+  // the judge reviews it inside the tool.
+  'web.search': 'research',
+  'web.read': 'research',
+  'web.trends': 'research',
+  'brief.submit': null,
   // Phase 2 step 12 mail tools. `mail.send` decides between outbound_messages and
   // publishing from its input (the tool declares a domain function); listed here as its
   // default so coverage checks see it.

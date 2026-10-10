@@ -19,6 +19,7 @@ import { createMailSetup } from '../../sidecar/mail/setup.js';
 import { createMailSystem } from '../../sidecar/mail/system.js';
 import { createBrowserControl } from '../../sidecar/browser/control.js';
 import { createConnectors } from '../../sidecar/connectors/registry.js';
+import { createResearch } from '../../sidecar/research/index.js';
 import { TOOLS } from '../../sidecar/capability/tools.js';
 import { CREW_TOOLS } from '../../sidecar/capability/crew.js';
 import { createRouter, defaultPolicy } from '../../sidecar/router.js';
@@ -35,7 +36,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 
 // `judgeProvider`: a (name, opts) => { provider, model, price } factory for the judge tier; when
 // absent no judge is wired, so runs are not reviewed (the phase 1 behaviour).
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {} } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -91,6 +92,13 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   }
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, getConnectors: () => connectors, log: { error() {} } }).init();
   await workspace.check();
+  // `research`: endpoints for the fakes ({ braveBaseUrl, duckBaseUrl, wikiApi, wikiRest, hnApi });
+  // absent → no research kit is wired.
+  const research = researchEndpoints ? createResearch({ env, keystorePath, judge, workspaceRoot, endpoints: researchEndpoints, clock }) : null;
+  if (research) {
+    Object.assign(registry, research.tools);
+    toolContext.judge = judge;
+  }
   const app = createApp({
     bus,
     store,
@@ -108,6 +116,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     mail: mailSystem,
     browser: browserControl,
     connectors,
+    research,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -141,6 +150,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     mail: mailSystem,
     browser: browserControl,
     connectors,
+    research,
     workspace,
     keystorePath,
     async get(p) {

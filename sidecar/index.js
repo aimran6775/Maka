@@ -36,6 +36,7 @@ import { createMailSystem } from './mail/system.js';
 import { createBrowserControl } from './browser/control.js';
 import { createConnectors } from './connectors/registry.js';
 import { CONNECTOR_SPECS } from './connectors/kinds.js';
+import { createResearch } from './research/index.js';
 import { TOOLS } from './capability/tools.js';
 import { CREW_TOOLS } from './capability/crew.js';
 import { createRouter } from './router.js';
@@ -109,6 +110,9 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   await connectors.init();
   Object.assign(registry, connectors.tools);
   toolContext.connectors = connectors;
+  const research = createResearch({ env, keystorePath, judge, workspaceRoot });
+  Object.assign(registry, research.tools);
+  toolContext.judge = judge;
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -133,6 +137,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     mail,
     browser,
     connectors,
+    research,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -167,6 +172,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const mailSys = await mail.status();
   const connectorRows = connectors.list();
   log.info(`  connectors: ${connectorRows.length ? connectorRows.map((c) => `${c.label} ${c.connected ? `connected (${c.by})` : 'not connected'}`).join(' · ') : 'none defined yet'}`);
+  const researchStatus = await research.status();
+  log.info(`  research: search via ${researchStatus.search} · trends ${researchStatus.trends.join(', ')}`);
   const browserStatus = await browser.status();
   log.info(`  browser: ${browserStatus.chromium ? `${browserStatus.chromium} (${browserStatus.headless ? 'headless' : 'windowed'})` : 'not wired (no Chromium found; set browser.chromiumPath or CHROMIUM)'}`);
   log.info(`  mail: ${mailStatus.domain} · resend ${mailStatus.keys.resend ? 'key configured' : 'not wired (RESEND_API_KEY)'} · cloudflare ${mailStatus.keys.cloudflare ? 'token configured' : 'not wired (CLOUDFLARE_API_TOKEN)'} · webhook ${mailSys.keys.webhook ? 'secret configured' : 'not wired (RESEND_WEBHOOK_SECRET)'} · ${mailSys.addresses} address(es), ${mailSys.counts.messages} message(s), poll every ${mailSys.sync.pollMs / 1000}s`);
@@ -184,7 +191,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await new Promise((resolve) => server.close(resolve));
   }
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, research, close };
 }
 
 function validateConfig(data) {

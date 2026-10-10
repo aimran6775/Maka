@@ -49,7 +49,7 @@ test('world data: parent roles, role grants, specialties, free tiles, layout fie
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, true);
   layout.agents[0].specialty = 'wizard';
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, false);
-  assert.deepEqual(allGrantsFor({ ...defaultLayout(), objects: [{ id: 'o', kind: 'trailhead_sign', roomId: 'ranger-station', x: 1, y: 1 }] }, 'ranger'), ['crew.spawn_junior', 'delegate', 'web.fetch', 'work.check']);
+  assert.deepEqual(allGrantsFor({ ...defaultLayout(), objects: [{ id: 'o', kind: 'trailhead_sign', roomId: 'ranger-station', x: 1, y: 1 }] }, 'ranger'), ['brief.submit', 'crew.spawn_junior', 'delegate', 'web.fetch', 'web.read', 'web.search', 'web.trends', 'work.check']);
   assert.deepEqual(childrenOf(defaultLayout(), 'ranger'), []);
 });
 

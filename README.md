@@ -191,7 +191,15 @@ last seven days of spend and results sync into the local store; click the Market
 to read them. Place a Notice board there and its Rangers can read the same, create a
 campaign (paused), change a daily budget or activate one, each money out with the daily
 budget as the amount at the Gate or under the daily cap.
-The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
+
+Step 18, the Scout's kit: a Trailhead sign now also grants `web.search` (set
+`BRAVE_SEARCH_API_KEY` for the API; without it the Ranger's browser searches DuckDuckGo,
+which needs a Field office in the camp), `web.read` (a page as an article), `web.trends`
+(Wikipedia pageviews and Hacker News activity for a topic) and `brief.submit`: a venture
+brief with sourced evidence, real costs, a revenue model, risks and a go / no-go that the
+judge reviews. Briefs land in the Scout's outbox and are listed at the Peak; the Chief
+decides within the mission budget.
+All of phase 2 (`docs/PHASE2_BRIEF.md`) is in this build; phase 3 (macOS app) is not.
 
 ```bash
 npm run test:fast   # the merge gate

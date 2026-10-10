@@ -13,7 +13,9 @@ import { deepFreeze } from './schema.js';
 // tower, park store, notice board, fee booth, ledger desk) arrive with their connectors in
 // phase 2 and are documented in CODE_MAP.md, not faked here.
 export const OBJECT_KINDS = deepFreeze({
-  trailhead_sign: { label: 'Trailhead sign', grants: ['web.fetch'], hint: 'Rangers in this zone can fetch public web pages.' },
+  // Phase 2 step 18: the Scout's research kit joins the Trailhead sign (all research; the
+  // brief writes only to the workspace outbox).
+  trailhead_sign: { label: 'Trailhead sign', grants: ['web.fetch', 'web.search', 'web.read', 'web.trends', 'brief.submit'], hint: 'Rangers in this zone can fetch and read public web pages, search the web, look up interest in a topic (Wikipedia, Hacker News) and submit a venture brief for the judge and the Chief.' },
   supply_cache: { label: 'Supply cache', grants: ['fs.read', 'fs.write'], hint: 'Rangers in this zone can read and write files in their own workspace (writes ask you first at the Entrance Gate).' },
   // Phase 2 step 12: the station's mail. Reads are research; sends fall under
   // outbound_messages (replies, notifications) or publishing (campaigns); a new address is

@@ -30,3 +30,4 @@ test/connectors.test.js
 test/stripe.test.js
 test/storefront.test.js
 test/ads.test.js
+test/research.test.js

@@ -336,6 +336,32 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     ];
   }
 
+  // Venture briefs (step 18): listed from every Ranger's outbox, fetched when the Peak is
+  // inspected and again when a work item finishes.
+  const briefCache = { key: null, rows: [], loading: false };
+  async function loadBriefs(s) {
+    const key = `${s.workOrder.length}:${Object.values(s.workItems).filter((w) => w.status === 'done').length}`;
+    if (briefCache.key === key || briefCache.loading) return;
+    briefCache.loading = true;
+    try {
+      const r = await api.get('/api/briefs?limit=10');
+      briefCache.rows = r.ok ? r.body : [];
+      briefCache.key = key;
+    } finally {
+      briefCache.loading = false;
+      selectionRefresh && selectionRefresh();
+    }
+  }
+  function briefsSection(s) {
+    if (!s.research) return [];
+    loadBriefs(s);
+    return [
+      row('research', `search via ${s.research.search} · trends: ${(s.research.trends || []).join(', ')} · judge ${s.research.judge ? 'reviews briefs' : 'not wired'}`),
+      row('venture briefs', briefCache.rows.length ? `${briefCache.rows.length} (newest first)` : 'none yet: a Scout with a Trailhead sign submits them'),
+      ...briefCache.rows.slice(0, 6).map((b) => el('div', { class: `use ${b.judge && b.judge.verdict === 'approve' ? 'ok' : b.judge && b.judge.verdict === 'reject' ? 'failed' : ''}`, text: `${new Date(b.submittedAt).toLocaleDateString()} · ${b.title} · ${b.recommendation.replace(/_/g, ' ')} (${Math.round(b.confidence * 100)} %) · judge ${b.judge ? b.judge.verdict : '?'} · ${b.evidence} source(s) · one-off $${b.totals.one_off.toFixed(2)}, monthly $${b.totals.monthly.toFixed(2)} · ${b.agentId} · ${b.path}` })),
+    ];
+  }
+
   function renderPeak(s) {
     setTitle('INSPECT · Mountain Peak');
     const runs = s.runOrder.map((id) => s.runs[id]).reverse();
@@ -369,6 +395,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ) : null,
       row('gate queue', `${pendingGate(s).length} waiting`),
       ...connectorsSection(s),
+      ...briefsSection(s),
       s.browser ? row('browser', `${s.browser.wired ? `${s.browser.chromium}${s.browser.headless ? ' (headless)' : ''}` : 'not wired: no Chromium found (browser.chromiumPath or CHROMIUM)'} · ${(s.browser.sessions || []).length} open · ${pendingHandoffs(s).length} handoff(s) waiting`) : null,
       row('judge today', s.judge ? `${fmtUsd(s.judge.today.usd)} of $${s.judge.caps.judgeUsdPerDay} cap · ${s.judge.today.calls} call(s) · ${s.judge.provider}/${s.judge.model || 'default'}` : 'no judge wired'),
       row('spend', `${fmtUsd(s.spend.totalUsd)} reconciled${s.spend.unreconciledTurns ? ` · ${s.spend.unreconciledTurns} unpriced turn(s)` : ''}`),
