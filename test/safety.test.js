@@ -11,6 +11,63 @@ import { BROWSER_TOOLS } from '../sidecar/browser/tools.js';
 import { createBrowserControl } from '../sidecar/browser/control.js';
 import { createEventBus } from '../sidecar/bus.js';
 import { createNetGuard, guardedFetch, isPrivateAddress, isBlockedHostname } from '../sidecar/netguard.js';
+import { createStore } from '../sidecar/store.js';
+import { createLayoutState } from '../sidecar/server.js';
+import { createLeashLedger, createLeashState } from '../sidecar/leash-ledger.js';
+import { createGateQueue } from '../sidecar/gate-queue.js';
+import { createScheduler } from '../sidecar/scheduler.js';
+import { createToolGate } from '../sidecar/capability/gate.js';
+import { createConnectors } from '../sidecar/connectors/registry.js';
+import { metaAdsSpec } from '../sidecar/connectors/meta-ads.js';
+import { googleAdsSpec, GOOGLE_ADS_SCOPES } from '../sidecar/connectors/google-ads.js';
+import { setKey } from '../sidecar/providers/keys.js';
+import { defaultLayout, allGrantsFor } from '../shared/world.js';
+import { defaultLeash } from '../shared/leash.js';
+import { startFakeMetaAds } from './helpers/fake-meta-ads.js';
+import { startFakeGoogleAds } from './helpers/fake-google-ads.js';
+import { fakeClock, waitUntil } from './helpers/fake-provider.js';
+
+// A Ranger in a Marketing camp with a Notice board, the ad connectors against the fakes,
+// and a gate over the connector tools (the shape of test/ads.test.js, kept small).
+async function adsHarness({ meta, google, leash: leashPatch = {}, registry: extraTools = {} } = {}) {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-safety-ads-'));
+  const store = createStore({ root: path.join(dir, 'home') });
+  await store.init();
+  const bus = createEventBus();
+  const events = [];
+  bus.listen((e) => events.push(e));
+  const clock = fakeClock(1_700_000_000_000);
+  const layout = defaultLayout();
+  layout.rooms.push({ id: 'marketing', name: 'Marketing Camp', kind: 'marketing', x: 21, y: 1, w: 8, h: 6 });
+  layout.objects.push({ id: 'board', kind: 'notice_board', roomId: 'marketing', x: 22, y: 2 });
+  layout.agents.push({ id: 'mia', name: 'Mia', roomId: 'marketing', x: 21, y: 1, role: 'ranger', specialty: 'ads' });
+  const layoutState = createLayoutState({ initial: layout, store, bus, clock });
+  const ledger = await createLeashLedger({ store, clock }).init();
+  const leash = defaultLeash();
+  Object.assign(leash.domains, leashPatch);
+  const leashState = createLeashState({ initial: leash, store });
+  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
+  const scheduler = await createScheduler({ store, clock, tickMs: 60_000, log: { error() {} } }).init();
+  const keystorePath = path.join(dir, 'home', 'keystore.json');
+  const env = {};
+  if (meta) Object.assign(env, { META_ACCESS_TOKEN: meta.accessToken, META_AD_ACCOUNT_ID: '123' });
+  if (google) {
+    await setKey('googleAdsClientId', google.clientId, { env: {}, keystorePath });
+    await setKey('googleAdsClientSecret', google.clientSecret, { env: {}, keystorePath });
+    await setKey('googleAdsDeveloperToken', google.developerToken, { env: {}, keystorePath });
+    await setKey('googleAds', JSON.stringify({ accessToken: 'ya29.seed', refreshToken: '1//seed', expiresAt: clock.now() + 3600_000, scope: GOOGLE_ADS_SCOPES.join(' '), tokenType: 'Bearer' }), { env: {}, keystorePath });
+    env.GOOGLE_ADS_CUSTOMER_ID = google.customerId;
+  }
+  const connectors = createConnectors({ bus, store, scheduler, gateQueue, env, keystorePath, clock, config: { oauthPort: 0, syncOnBoot: false }, log: { error() {}, warn() {} } });
+  if (meta) connectors.define(metaAdsSpec({ baseUrl: meta.url }));
+  if (google) connectors.define(googleAdsSpec({ baseUrl: google.baseUrl, authorizeUrl: google.authorizeUrl, tokenUrl: google.tokenUrl }));
+  await connectors.init();
+  const registry = { ...connectors.tools, ...extraTools };
+  const grants = (l, id) => [...allGrantsFor(l, id), ...Object.keys(extraTools)];
+  const gate = createToolGate({ getLayout: layoutState.get, agentId: 'mia', workspaceDir: path.join(dir, 'ws', 'mia'), registry, grants, toolContext: { connectors }, getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId: 'run-1', agentId: 'mia' }), log: (item) => gateQueue.log({ ...item, runId: 'run-1', agentId: 'mia' }) } });
+  const call = (id, name, input) => gate.execute({ id, name, input }, { runId: 'run-1' });
+  return { dir, events, clock, gateQueue, ledger, leashState, connectors, gate, call, cleanup: async () => { await connectors.close(); await fsp.rm(dir, { recursive: true, force: true }); } };
+}
 
 // ---------- H1: Rangers may not reach loopback, private or the sidecar's own addresses ----------
 
@@ -190,5 +247,92 @@ test('H1 browser.open and browser.download refuse local targets before launching
   } finally {
     await browser.close();
     await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- H2: a money_out action whose amount cannot be proven is a Gate item ----------
+
+test('H2 activating an ad campaign with no campaign-level daily budget is never $0: a lifetime budget counts in full, no budget at all goes to the Gate and is refused when approved', async () => {
+  const meta = await startFakeMetaAds();
+  const google = await startFakeGoogleAds();
+  // c3: a paused campaign whose budgets live on its ad sets (no campaign-level budget)
+  meta.state.campaigns.push({ id: 'c3', name: 'Lanterns – Adset budgets', status: 'PAUSED', effective_status: 'PAUSED', objective: 'OUTCOME_SALES', created_time: '2026-09-01T00:00:00+0000', updated_time: '2026-09-01T00:00:00+0000' });
+  const h = await adsHarness({ meta, google, leash: { money_out: { level: 'act_capped', dailyCapUsd: 0 } } });
+  try {
+    await h.connectors.sync('meta_ads', 'manual');
+    await h.connectors.sync('google_ads', 'manual');
+    const c3 = h.connectors.data('meta_ads').campaigns.find((c) => c.id === 'c3');
+    assert.equal(c3.dailyBudget, null);
+    assert.equal(c3.lifetimeBudget, null);
+    const posts = () => meta.state.calls.filter((c) => c.method === 'POST').length;
+    // no budget at all: the amount cannot be proven → a Gate item with no amount, not a $0 pass
+    const activate = h.call('a1', 'meta_ads.set_status', { campaignId: 'c3', status: 'ACTIVE' });
+    const item = await waitUntil(() => h.gateQueue.pending()[0]);
+    assert.equal(item.tool, 'meta_ads.set_status');
+    assert.equal(item.amountUsd, undefined, 'no amount is claimed');
+    assert.match(item.reason, /cannot be proven/);
+    await h.gateQueue.resolve(item.itemId, { decision: 'approve' });
+    const refused = await activate;
+    assert.equal(refused.ok, false);
+    assert.equal(refused.code, 'NO_BUDGET');
+    assert.equal(posts(), 0, 'Meta never saw the activation');
+    assert.equal(meta.state.campaigns.find((c) => c.id === 'c3').status, 'PAUSED');
+    // a lifetime budget only: counted in full against the cap → waits at the Gate under the cap
+    const lifetime = h.call('a2', 'meta_ads.set_status', { campaignId: 'c2', status: 'ACTIVE' });
+    const capped = await waitUntil(() => h.gateQueue.pending()[0]);
+    assert.equal(capped.amountUsd, 500, 'the lifetime budget is the amount');
+    assert.match(capped.reason, /cap/);
+    await h.gateQueue.resolve(capped.itemId, { decision: 'reject', notes: 'no' });
+    assert.equal((await lifetime).code, 'GATE_REJECT');
+    assert.equal(posts(), 0);
+    // Google: a campaign whose budget the store does not know
+    const g = h.connectors.data('google_ads').campaigns.find((c) => c.status === 'PAUSED');
+    g.dailyBudget = null;
+    const enable = h.call('a3', 'google_ads.set_status', { campaignId: g.id, status: 'ENABLED' });
+    const gitem = await waitUntil(() => h.gateQueue.pending()[0]);
+    assert.equal(gitem.amountUsd, undefined);
+    assert.match(gitem.reason, /cannot be proven/);
+    await h.gateQueue.resolve(gitem.itemId, { decision: 'approve' });
+    assert.equal((await enable).code, 'NO_BUDGET');
+    assert.equal(google.state.calls.filter((c) => c.path.endsWith('campaigns:mutate')).length, 0, 'Google never saw the enable');
+    // pausing moves nothing and still passes under a $0 cap; a daily budget still counts
+    const paused = await h.call('a4', 'meta_ads.set_status', { campaignId: 'c1', status: 'PAUSED' });
+    assert.equal(paused.ok, true, paused.error);
+    assert.equal(h.gateQueue.recent(20).find((it) => it.callId === 'a4').amountUsd, 0);
+    assert.equal(h.ledger.summary().domains.money_out.usd, 0);
+  } finally {
+    await h.cleanup();
+    await meta.close();
+    await google.close();
+  }
+});
+
+test('H2 the gate: a money_out tool whose amountUsd is unknown (null, non-finite or throwing) is a Gate item even at Act freely; a proven zero passes; an unknown amount approved at the Gate is counted as an action, not as money', async () => {
+  const ran = [];
+  const moneyTool = (name, amount) => ({ name, description: name, inputSchema: { type: 'object', additionalProperties: false, properties: {} }, confirm: false, domain: 'money_out', amountUsd: amount, summarize: () => name, async run() { ran.push(name); return { ok: true, output: 'done' }; } });
+  const registry = { 'pay.unknown': moneyTool('pay.unknown', () => null), 'pay.nan': moneyTool('pay.nan', () => NaN), 'pay.throws': moneyTool('pay.throws', () => { throw new Error('no store'); }), 'pay.negative': moneyTool('pay.negative', () => -5), 'pay.zero': moneyTool('pay.zero', () => 0), 'pay.none': moneyTool('pay.none', undefined) };
+  const h = await adsHarness({ leash: { money_out: { level: 'act_free' } }, registry });
+  try {
+    for (const name of ['pay.unknown', 'pay.nan', 'pay.throws', 'pay.negative', 'pay.none']) {
+      const pending = h.call(name, name, {});
+      const item = await waitUntil(() => h.gateQueue.pending()[0]);
+      assert.equal(item.tool, name);
+      assert.equal(item.amountUsd, undefined, `${name}: no amount is claimed`);
+      assert.equal(item.level, 'act_free');
+      assert.match(item.reason, /cannot be proven/);
+      await h.gateQueue.resolve(item.itemId, { decision: 'reject', notes: 'no' });
+      assert.equal((await pending).code, 'GATE_REJECT', name);
+    }
+    assert.deepEqual(ran, []);
+    const zero = await h.call('z', 'pay.zero', {});
+    assert.equal(zero.ok, true);
+    assert.deepEqual(ran, ['pay.zero']);
+    const approved = h.call('u2', 'pay.unknown', {});
+    const item = await waitUntil(() => h.gateQueue.pending()[0]);
+    await h.gateQueue.resolve(item.itemId, { decision: 'approve' });
+    assert.equal((await approved).ok, true);
+    assert.deepEqual(h.ledger.summary().domains.money_out, { usd: 0, actions: 2 }, 'the action is counted; no money is invented');
+  } finally {
+    await h.cleanup();
   }
 });

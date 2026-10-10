@@ -45,7 +45,11 @@ findings are being fixed in order, each with a regression test in `test/safety.t
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing
 network tool (`web.fetch`, `web.read`, `browser.open`, `browser.download`) and every page
 the browser lands on to the public internet, checked after DNS and on every redirect hop,
-so a Ranger cannot drive Maka's own routes through its tools.
+so a Ranger cannot drive Maka's own routes through its tools. H2 done: a money_out
+action whose amount the tool cannot prove (an ad campaign with no campaign-level budget,
+a Stripe charge the store does not know) is a Gate item at every leash level, never a $0
+pass under the cap; a lifetime budget counts in full; activation of a campaign with no
+campaign-level budget is refused outright.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

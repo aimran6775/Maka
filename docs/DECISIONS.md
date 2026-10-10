@@ -952,3 +952,22 @@ a public page could land on Maka's own UI, which would fetch the frontend's toke
 work the Gate. The guard has one switch, `allowLocal`, for the test server, the suites,
 the demo and the park check, whose fakes listen on 127.0.0.1; the sidecar never sets it
 and a tool whose context names no guard falls back to the strict one.
+
+## D112. A money_out amount is proven or it is the Gate's (safety H2)
+
+`budgetOf` answered 0 for a campaign with no campaign-level daily budget, and 0 passes
+every cap: at Act with cap and a $0 cap the activation ran and spent the ad sets' real
+budgets. Now a money_out tool's `amountUsd` is a proof or nothing: a finite number ≥ 0
+is the amount (0 meaning "proven to move nothing", which is what pausing is), and null,
+NaN, a negative, a throw or no `amountUsd` at all is "unknown". An unknown amount goes to
+the Entrance Gate whatever the leash level, with no amount on the item and the reason
+spelled out, because no cap can be checked against a number nobody has. Approved, the
+action is counted in the ledger as an action and not as money, so the ledger never
+carries an invented figure. The ad tools prove the amount from the store: the
+campaign-level daily budget, else a lifetime budget in full (all of it can be spent),
+else nothing, and `set_status` refuses to activate a campaign with no campaign-level
+budget even after an approval, since the figure it would commit lives on ad sets the park
+does not manage. The review's "unknown or zero" is met this way rather than by sending
+every zero to the Gate: a pause is a reversible, spend-stopping action a Ranger must be
+able to take at 3 a.m. with the owner away, and the zero it reports is proven, not
+defaulted. money_in tools (price changes) keep no amount; the rule is about money leaving.

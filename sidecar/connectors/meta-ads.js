@@ -137,11 +137,21 @@ async function withClient(ctx, fn) {
     return { ok: false, code: err.code || 'META', error: err.message };
   }
 }
-const budgetOf = (ctx, id) => {
+// The money activating a campaign commits (safety H2): its campaign-level daily budget;
+// a lifetime budget counts in full (it can all be spent); a campaign with neither (its
+// budgets live on ad sets, or it is not in the store) is null: the amount cannot be
+// proven, the gate sends it to the Gate, and run() refuses it.
+export const budgetOf = (ctx, id) => {
   const data = ctx && ctx.connectors && ctx.connectors.status('meta_ads') ? ctx.connectors.data('meta_ads') : null;
   const c = data ? data.campaigns.find((x) => x.id === id) : null;
-  return c && typeof c.dailyBudget === 'number' ? c.dailyBudget : 0;
+  return campaignBudget(c);
 };
+export function campaignBudget(c) {
+  if (!c) return null;
+  if (typeof c.dailyBudget === 'number' && Number.isFinite(c.dailyBudget) && c.dailyBudget > 0) return c.dailyBudget;
+  if (typeof c.lifetimeBudget === 'number' && Number.isFinite(c.lifetimeBudget) && c.lifetimeBudget > 0) return c.lifetimeBudget;
+  return null;
+}
 
 export const metaAdsCampaigns = {
   name: 'meta_ads.campaigns',
@@ -217,7 +227,7 @@ export const metaAdsSetBudget = {
 
 export const metaAdsSetStatus = {
   name: 'meta_ads.set_status',
-  description: 'Pause or activate a Meta Ads campaign. Activating is money_out (its daily budget counts against the cap); pausing moves no money.',
+  description: 'Pause or activate a Meta Ads campaign. Activating is money_out (its campaign-level daily budget counts against the cap, a lifetime budget in full; a campaign with no campaign-level budget cannot be activated from here); pausing moves no money.',
   inputSchema: { type: 'object', required: ['campaignId', 'status'], additionalProperties: false, properties: { campaignId: { type: 'string', minLength: 1 }, status: { type: 'string', enum: ['ACTIVE', 'PAUSED'] } } },
   confirm: false,
   domain: 'money_out',
@@ -228,6 +238,7 @@ export const metaAdsSetStatus = {
     if (error) return error;
     const c = data.campaigns.find((x) => x.id === input.campaignId);
     if (!c) return { ok: false, code: 'NOT_FOUND', error: `no campaign ${input.campaignId} in the last Meta Ads sync` };
+    if (input.status === 'ACTIVE' && campaignBudget(c) === null) return { ok: false, code: 'NO_BUDGET', error: `campaign ${input.campaignId} has no campaign-level daily or lifetime budget in the store, so what activating it would spend cannot be proven; set a campaign budget with meta_ads.set_budget first` };
     return withClient(ctx, async (client) => {
       await client.updateCampaign(input.campaignId, { status: input.status });
       c.status = input.status;

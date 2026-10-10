@@ -132,11 +132,18 @@ async function withClient(ctx, fn) {
     return { ok: false, code: err.code || 'GOOGLE_ADS', error: err.message };
   }
 }
-const budgetOf = (ctx, id) => {
+// The money enabling a campaign commits (safety H2): its budget's daily amount from the
+// store; a campaign whose budget the store does not know is null: the amount cannot be
+// proven, the gate sends it to the Gate, and run() refuses it.
+export const budgetOf = (ctx, id) => {
   const data = ctx && ctx.connectors && ctx.connectors.status('google_ads') ? ctx.connectors.data('google_ads') : null;
   const c = data ? data.campaigns.find((x) => x.id === id) : null;
-  return c && typeof c.dailyBudget === 'number' ? c.dailyBudget : 0;
+  return campaignBudget(c);
 };
+export function campaignBudget(c) {
+  if (!c) return null;
+  return typeof c.dailyBudget === 'number' && Number.isFinite(c.dailyBudget) && c.dailyBudget > 0 ? c.dailyBudget : null;
+}
 
 export const googleAdsCampaigns = {
   name: 'google_ads.campaigns',
@@ -219,7 +226,7 @@ export const googleAdsSetBudget = {
 
 export const googleAdsSetStatus = {
   name: 'google_ads.set_status',
-  description: 'Pause or enable a Google Ads campaign. Enabling is money_out (its daily budget counts against the cap); pausing moves no money.',
+  description: 'Pause or enable a Google Ads campaign. Enabling is money_out (its daily budget counts against the cap; a campaign whose budget the store does not know cannot be enabled from here); pausing moves no money.',
   inputSchema: { type: 'object', required: ['campaignId', 'status'], additionalProperties: false, properties: { campaignId: { type: 'string', minLength: 1 }, status: { type: 'string', enum: ['ENABLED', 'PAUSED'] } } },
   confirm: false,
   domain: 'money_out',
@@ -230,6 +237,7 @@ export const googleAdsSetStatus = {
     if (error) return error;
     const c = data.campaigns.find((x) => x.id === input.campaignId);
     if (!c) return { ok: false, code: 'NOT_FOUND', error: `no campaign ${input.campaignId} in the last Google Ads sync` };
+    if (input.status === 'ENABLED' && campaignBudget(c) === null) return { ok: false, code: 'NO_BUDGET', error: `campaign ${input.campaignId} has no daily budget in the store, so what enabling it would spend cannot be proven; sync, or set its budget with google_ads.set_budget first` };
     return withClient(ctx, async (client) => {
       await client.mutateCampaigns([{ update: { resourceName: `customers/${client.customer}/campaigns/${c.id}`, status: input.status }, updateMask: 'status' }]);
       c.status = input.status;

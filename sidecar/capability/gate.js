@@ -19,8 +19,9 @@
 // the input for tools whose domain depends on what they send), else shared/leash.js
 // TOOL_DOMAINS. Tools with no domain (fs.write) keep the phase 1 per-call confirmation
 // through ask() when they are marked `confirm: true`. A tool may declare
-// `amountUsd(input, toolContext)` (money the action moves) and `summarize(input)` (one line for the
-// Gate card).
+// `amountUsd(input, toolContext)` (money the action moves: a finite number ≥ 0, where 0 is a
+// proven "moves nothing"; null / NaN / a throw mean unknown, and an unknown money_out amount
+// always goes to the Gate, safety H2) and `summarize(input)` (one line for the Gate card).
 //
 // ask({ runId, callId, tool, reason, input }) -> Promise<boolean>   (permission.prompt)
 // submit(item) -> Promise<{ decision, notes, status }>              (gate.item, see
@@ -139,14 +140,14 @@ export function createToolGate({
       const domain = domainOf(tool, call.input);
       if (domain) {
         const entry = leashFor(call.name, call.input);
-        let amountUsd = 0;
-        if (typeof tool.amountUsd === 'function') {
-          try {
-            amountUsd = Number(tool.amountUsd(call.input, { ...toolContext, agentId })) || 0;
-          } catch {
-            amountUsd = 0;
-          }
-        }
+        // The money an action moves, as the tool proves it. Safety H2: for money_out a
+        // tool must prove its amount (a finite number ≥ 0, where 0 means "proven to move
+        // nothing", e.g. pausing a campaign); null, NaN, a negative, a throw or no
+        // amountUsd at all is "unknown", and an unknown amount always needs the Gate,
+        // whatever the leash level, because no cap can be checked against it.
+        const amount = amountOf(tool, call.input, { ...toolContext, agentId });
+        const amountUnknown = domain === 'money_out' ? amount === null : false;
+        const amountUsd = amount === null ? 0 : amount;
         const base = {
           agentId,
           kind: 'action',
@@ -157,7 +158,7 @@ export function createToolGate({
           callId: call.id,
           turn: ctx.turn,
           level: entry.level,
-          amountUsd,
+          amountUsd: amountUnknown ? undefined : amountUsd,
           evidence: evidenceFor(call, ctx),
         };
         const log = async (status, reason) => {
@@ -174,7 +175,10 @@ export function createToolGate({
         }
         let viaGate = entry.level === 'draft';
         let gateReason = viaGate ? `leash for ${domain} is ${LEASH_LEVEL_LABELS.draft}` : null;
-        if (entry.level === 'act_capped') {
+        if (amountUnknown) {
+          viaGate = true;
+          gateReason = `the amount this ${domain} action moves cannot be proven (${call.name} names no campaign-level or record-level figure), so no cap can be checked; it needs a decision at the Entrance Gate`;
+        } else if (entry.level === 'act_capped') {
           if (!ledger) {
             viaGate = true;
             gateReason = `leash for ${domain} is ${LEASH_LEVEL_LABELS.act_capped} but no ledger can prove the cap`;
@@ -221,6 +225,21 @@ export function createToolGate({
       return run(tool, call, ctx);
     },
   };
+}
+
+// A finite amount ≥ 0 the tool proves, else null (unknown). Tools without amountUsd prove
+// nothing; tools outside money domains never need to.
+function amountOf(tool, input, toolCtx) {
+  if (typeof tool.amountUsd !== 'function') return null;
+  let v;
+  try {
+    v = tool.amountUsd(input, toolCtx);
+  } catch {
+    return null;
+  }
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 function evidenceFor(call, ctx) {

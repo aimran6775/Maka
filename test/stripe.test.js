@@ -177,7 +177,13 @@ test('stripe.refund is money_out: Draft parks it at the Gate with the amount (fu
     await h.leashState.set({ ...h.leashState.get(), domains: { ...h.leashState.get().domains, money_out: { level: 'act_free' } } });
     assert.equal((await h.call('r6', 'stripe.refund', { chargeId: 'ch_3', amountUsd: 500 })).code, 'BAD_AMOUNT', 'over the remaining amount');
     assert.equal((await h.call('r2', 'stripe.refund', { chargeId: 'ch_2' })).code, 'BAD_AMOUNT', 'refunded already: nothing remains');
-    assert.equal((await h.call('r3', 'stripe.refund', { chargeId: 'ch_nope' })).code, 'NOT_FOUND');
+    // an unknown charge has no provable amount: the Gate decides even at act_free (safety H2); approved, the tool still refuses
+    const unknown = h.call('r3', 'stripe.refund', { chargeId: 'ch_nope' });
+    const unknownItem = await waitUntil(() => h.gateQueue.pending()[0]);
+    assert.equal(unknownItem.amountUsd, undefined);
+    assert.match(unknownItem.reason, /cannot be proven/);
+    await h.gateQueue.resolve(unknownItem.itemId, { decision: 'approve' });
+    assert.equal((await unknown).code, 'NOT_FOUND');
     assert.equal(h.gate.leashFor('stripe.refund', { chargeId: 'ch_nope' }).domain, 'money_out');
     fake.state.fail = { status: 402, message: 'Insufficient funds' };
     const failed = await h.call('r7', 'stripe.refund', { chargeId: 'ch_3', amountUsd: 1 });

@@ -197,12 +197,13 @@ export const stripeRefund = {
   confirm: false,
   domain: 'money_out',
   // The money the Gate and the ledger see: the given amount, else the charge's remaining
-  // amount from the last sync (an unknown charge counts as 0 and fails in run()).
+  // amount from the last sync. An unknown charge is null (safety H2: the amount cannot be
+  // proven, so the gate sends it to the Gate and run() refuses it).
   amountUsd: (input, ctx) => {
     if (typeof input.amountUsd === 'number') return input.amountUsd;
     const data = ctx && ctx.connectors && ctx.connectors.status('stripe') ? ctx.connectors.data('stripe') : null;
     const charge = data ? (data.charges || []).find((c) => c.id === input.chargeId) : null;
-    return charge ? major(charge.amount - (charge.amountRefunded || 0), charge.currency) : 0;
+    return charge ? major(charge.amount - (charge.amountRefunded || 0), charge.currency) : null;
   },
   summarize: (input) => `refund ${typeof input.amountUsd === 'number' ? `$${input.amountUsd.toFixed(2)} of ` : ''}Stripe charge ${input.chargeId}${input.reason ? ` (${input.reason})` : ''}`,
   async run(input, ctx) {
