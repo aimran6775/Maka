@@ -217,3 +217,6 @@ model, and the rule that every visual state maps to a real event. Awaiting the n
   R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, FASTMAIL_API_TOKEN.
 - Domain: makapark.com (Cloudflare). Ranger mail is <role>-<venture>@makapark.com; the .dmg
   download page and update manifest are served from makapark.com in phase 3.
+- Outbound bulk/transactional mail: Resend on makapark.com (verified), webhooks into the
+  local mail store, automatic suppression on bounce/complaint. Fastmail stays for mailboxes,
+  inbound and conversational replies. Secret name: RESEND_API_KEY.

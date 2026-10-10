@@ -193,15 +193,24 @@ used by Rangers. Mechanics:
   (an API token scoped to Zone:DNS:Edit on that one zone). This is a one-time, Gate-approved
   setup step with a dry-run preview of the records.
 - Mailboxes/aliases: created on demand through Fastmail's JMAP API with a Fastmail API
-  token. Inbound sync and outbound sends also go through JMAP (one protocol, no IMAP/SMTP
-  split). Rate limits and Fastmail's sending policies are respected by construction.
+  token. Inbound sync and one-to-one conversational replies (customer support, supplier
+  threads) go through JMAP. Fastmail's sending limits are respected by construction.
+- Bulk and transactional outbound: Resend (owner decision 2026-10-10; makapark.com is
+  verified there). Marketing campaigns, order notifications, and any send above a small
+  per-hour count go through the Resend API from the same Ranger addresses, with Resend's
+  webhooks (delivered / bounced / complained / opened) fed back into the local mail store
+  so Rangers see outcomes. Bounces and complaints suppress the recipient automatically.
+  Marketing sends obey the publishing and outbound_messages leashes and always carry a
+  working unsubscribe link (CAN-SPAM and platform rules).
+- DNS on makapark.com therefore carries Fastmail's MX/SPF/DKIM/DMARC plus Resend's DKIM
+  selector and return-path; both coexist on one domain. Maka's DNS step sets all of them.
 - Cloudflare R2 (S3-compatible object storage; account-scoped R2 token): optional
   encrypted offsite backup target for the workspace ledgers, mail store and deliverables,
   on a schedule, under the Superintendent's control. Never a primary store: the LaCie
   workspace root stays the source of truth.
 - Secrets involved, all held in Keychain in the app and in environment secrets for cloud
   test sessions, never in chat or git: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_DNS_TOKEN
-  (Zone:DNS:Edit), R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, FASTMAIL_API_TOKEN.
+  (Zone:DNS:Edit), R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, FASTMAIL_API_TOKEN, RESEND_API_KEY.
 A Ranger requests an address (e.g. sales-<venture>@makapark.com); creation is an
 account_creation leash action; the mailbox then belongs to that Ranger's workspace. The
 sidecar runs the mail system: IMAP/JMAP sync into a local store, threading, classification
