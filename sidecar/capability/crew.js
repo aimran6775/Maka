@@ -56,7 +56,7 @@ export const delegate = {
     properties: {
       toAgentId: { type: 'string', minLength: 1, description: 'The receiving agent id' },
       brief: { type: 'string', minLength: 1, maxLength: 8000, description: 'What to do, with context and the expected deliverable' },
-      budgetUsd: { type: 'number', minimum: 0, description: 'Model spend the receiver may use (default 0.5)' },
+      budgetUsd: { type: 'number', minimum: 0, description: 'Model spend the receiver may use (default 0.5); capped at what you have left (the mission budget for the Chief, your run\'s budget otherwise)' },
       deadline: { type: 'string', description: 'Optional deadline, free text or ISO date' },
       evidence: { type: 'array', items: { type: 'string' }, description: 'What evidence the deliverable must carry' },
     },
@@ -66,7 +66,7 @@ export const delegate = {
     if (!ctx.trails) return { ok: false, error: 'no trails are available in this run' };
     try {
       const item = await ctx.trails.delegate({ toAgentId: input.toAgentId, brief: input.brief, budgetUsd: input.budgetUsd, deadline: input.deadline, evidence: input.evidence }, { by: ctx.agentId });
-      return { ok: true, output: JSON.stringify({ workItemId: item.id, toAgentId: item.toAgentId, status: item.status, queued: item.queued, runId: item.runId }) };
+      return { ok: true, output: JSON.stringify({ workItemId: item.id, toAgentId: item.toAgentId, status: item.status, queued: item.queued, runId: item.runId, budgetUsd: item.budgetUsd, ...(item.budgetCapped ? { budgetCapped: true, note: `the budget was capped at $${item.budgetUsd.toFixed(2)}, what you have left to delegate` } : {}) }) };
     } catch (err) {
       return { ok: false, error: err && err.message ? err.message : String(err) };
     }

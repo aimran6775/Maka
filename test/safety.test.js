@@ -929,3 +929,56 @@ test('L3 a throwing domain() falls back to the tool\'s known domain from TOOL_DO
     await h.cleanup();
   }
 });
+
+// ---------- L4: a delegated budget is capped at what the delegator has left ----------
+
+test('L4 delegate() caps the sub-run\'s budget at the delegator\'s remaining budget: the mission for the Chief, the active run for a Ranger; nothing to draw on is a refusal', async () => {
+  let release;
+  const blocked = new Promise((r) => { release = r; });
+  // the Chief's planning run answers at once; a Ranger's run waits until the test releases it
+  const firstPrompt = (request) => { const m = (request.messages || [])[0]; return typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content || ''); };
+  const makeProvider = async (name) => ({ provider: fakeProvider([async (request) => (/MISSION from the Superintendent/.test(firstPrompt(request)) ? [text('planning later'), end()] : (await blocked, [text('done'), end()]))], { name }), model: 'fake-1', price: null });
+  const srv = await startTestServer({ makeProvider, withChief: true });
+  try {
+    // a second Ranger receives the Superintendent's and the Chief's items, so 'ranger' stays free for its own run below
+    const rae = await srv.agents.create({ name: 'Rae', role: 'ranger', zoneId: 'ranger-station', parentAgentId: 'chief-ranger', persona: 'lists' }, { by: 'superintendent' });
+    // the Superintendent is unbounded
+    const own = await srv.trails.delegate({ toAgentId: rae.id, brief: 'Count the lanterns.', budgetUsd: 2 }, { by: 'superintendent' });
+    assert.equal(own.budgetUsd, 2);
+    // the Chief with no mission has nothing to delegate from
+    await assert.rejects(srv.trails.delegate({ toAgentId: rae.id, brief: 'x', budgetUsd: 1 }, { by: 'chief-ranger' }), (e) => e.code === 'BUDGET_UNKNOWN', 'no mission yet: the Chief has no budget to draw on');
+    const m = await srv.post('/api/mission', { text: 'Sell lanterns.', budgetUsd: 3, horizon: '30 days' });
+    assert.equal(m.status, 202, JSON.stringify(m.body));
+    await waitUntil(() => !srv.runs.activeFor('chief-ranger') && !srv.runs.queued().some((r) => r.agentId === 'chief-ranger'), { timeoutMs: 10_000 });
+    // the Chief: capped at the mission budget less what it already delegated
+    const first = await srv.trails.delegate({ toAgentId: rae.id, brief: 'Draft three listings.', budgetUsd: 10 }, { by: 'chief-ranger' });
+    assert.equal(first.budgetUsd, 3, 'capped at the mission budget');
+    assert.equal(first.budgetCapped, true);
+    await assert.rejects(srv.trails.delegate({ toAgentId: rae.id, brief: 'More.', budgetUsd: 1 }, { by: 'chief-ranger' }), (e) => e.code === 'BUDGET_EXHAUSTED' && /mission/.test(e.message));
+    assert.equal(srv.trails.list().filter((it) => it.fromAgentId === 'chief-ranger').length, 1);
+    // a Ranger: capped at its active run's remaining budget
+    const jr = await srv.agents.create({ name: 'Drafter', role: 'junior_ranger', zoneId: 'ranger-station', parentAgentId: 'ranger', persona: 'drafts' }, { by: 'ranger' });
+    const ranger = await srv.runs.start({ agentId: 'ranger', prompt: 'Work the listings.', budgetUsd: 1.5, maxTurns: 2 });
+    await waitUntil(() => srv.runs.activeFor('ranger'));
+    const sub = await srv.trails.delegate({ toAgentId: jr.id, brief: 'Draft one listing.', budgetUsd: 50 }, { by: 'ranger' });
+    assert.equal(sub.budgetUsd, 1.5, 'capped at the run\'s budget');
+    assert.equal(sub.budgetCapped, true);
+    const small = await srv.trails.delegate({ toAgentId: jr.id, brief: 'Another.', budgetUsd: 0.25 }, { by: 'ranger' }).catch((e) => e);
+    assert.equal(small.code, 'BUDGET_EXHAUSTED', 'the first sub-item took it all');
+    assert.match(small.message, /run/);
+    release();
+    await srv.runs.waitForIdle();
+    // the default budget is capped too, and a delegator whose run is over has nothing to draw on
+    await assert.rejects(srv.trails.delegate({ toAgentId: jr.id, brief: 'Later.' }, { by: 'ranger' }), (e) => e.code === 'BUDGET_UNKNOWN');
+    assert.ok(ranger.runId);
+  } finally {
+    release();
+    // the receivers' runs end on cancel and their work.done starts the Chief's follow-up: let it all settle before the temp dir goes
+    for (let i = 0; i < 5; i++) {
+      srv.runs.cancel();
+      await srv.runs.waitForIdle();
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    await srv.close();
+  }
+});

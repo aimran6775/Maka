@@ -70,7 +70,9 @@ handoff check runs before an action as well as after it, and a payment page is h
 back only with notes, so a returned checkout page cannot let the next "Place order"
 click run unchecked. L2 done: a Stripe refund is for USD charges only; a charge in
 another currency has no provable amount and is refused. L3 done: a tool whose domain
-function throws falls back to its known domain, or is refused; it never runs unleashed.
+function throws falls back to its known domain, or is refused; it never runs unleashed. L4 done: a
+delegated budget is capped at what the delegator has left (the mission for the Chief,
+the active run for a Ranger), so sub-runs cannot multiply a budget.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

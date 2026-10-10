@@ -45,6 +45,8 @@ async function setup({ maxConcurrent = 2, scripts = {} } = {}) {
   const toolContext = {};
   const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, makeProvider, clock, agents, toolContext, maxConcurrent, permissionTimeoutMs: 50 });
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, clock, workspaceRoot }).init();
+  // What the Chief module wires in production (safety L4): the Chief delegates from the mission budget.
+  trails.setMissionBudget(() => ({ budgetUsd: 100, createdAt: 0 }));
   toolContext.trails = trails;
   const cleanup = async () => {
     runs.cancel();
@@ -107,10 +109,13 @@ test('run manager: one run per agent, global cap, FIFO start, cancel of queued a
 });
 
 test('trails: delegation rules, briefs, work.handoff → run → work.done with outbox deliverables, work.check and delegate tools, persistence', async () => {
+  // A run whose prompt is 'hold' stays open until released: Mark delegates from inside it (safety L4: a Ranger delegates from its active run).
+  let releaseHold;
+  const hold = new Promise((r) => { releaseHold = r; });
   const h = await setup({
     maxConcurrent: 3,
     scripts: {
-      default: () => [[text('writing'), ...toolCall('c1', 'fs.write', { path: 'outbox/plan.md', content: '# plan' }), end('tool_use')], [text('plan written'), end()]],
+      default: () => [(request) => (request.messages[0] && request.messages[0].content === 'hold' ? hold.then(() => [text('held'), end()]) : [text('writing'), ...toolCall('c1', 'fs.write', { path: 'outbox/plan.md', content: '# plan' }), end('tool_use')]), [text('plan written'), end()]],
     },
   });
   try {
@@ -151,15 +156,22 @@ test('trails: delegation rules, briefs, work.handoff → run → work.done with 
 
     // Tools: delegate from Mark to its Junior; work.check from both sides; a stranger is refused.
     const ctx = (agentId) => ({ agentId, trails: h.trails, runId: 'r' });
+    const idle = await CREW_TOOLS.delegate.run({ toAgentId: 'jr', brief: 'Draft three captions', budgetUsd: 0.1 }, ctx('mark'));
+    assert.match(idle.error, /no budget to delegate from/, 'outside a run a Ranger has nothing to delegate from (safety L4)');
+    const holding = h.runs.start({ agentId: 'mark', prompt: 'hold', budgetUsd: 1 });
+    await waitUntil(() => h.runs.activeFor('mark'));
     const d = await CREW_TOOLS.delegate.run({ toAgentId: 'jr', brief: 'Draft three captions', budgetUsd: 0.1 }, ctx('mark'));
-    assert.equal(d.ok, true);
+    assert.equal(d.ok, true, d.error);
     const out = JSON.parse(d.output);
+    assert.equal(out.budgetUsd, 0.1, 'within the run\'s budget, so not capped');
     assert.equal(out.toAgentId, 'jr');
     assert.equal(out.status, 'running');
     const refused = await CREW_TOOLS.delegate.run({ toAgentId: 'mark', brief: 'x' }, ctx('jr'));
     assert.match(refused.error, /cannot delegate/);
     const prompt2 = await waitUntil(() => h.events.find((e) => e.type === 'permission.prompt' && e.payload.runId === out.runId));
     h.runs.answer({ promptId: prompt2.payload.promptId, runId: out.runId, allow: false });
+    releaseHold();
+    await holding;
     await h.runs.waitForIdle();
     const mine = JSON.parse((await CREW_TOOLS['work.check'].run({}, ctx('mark'))).output);
     assert.deepEqual(mine.map((it) => [it.to, it.status]), [['jr', 'done'], ['mark', 'done']]);

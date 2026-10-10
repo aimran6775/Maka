@@ -3,9 +3,11 @@
 //   createTrails({ bus, store, runs, agents, getLayout, clock, workspaceRoot })
 //     -> { init(), delegate(spec, { by }), list(), get(id), forAgent(id), cancel(id) }
 //
-// A work item is { id, brief, budgetUsd, deadline, evidence[], fromAgentId, toAgentId,
-// fromRoomId, toRoomId, trailId, status, runId, createdAt, startedAt, endedAt,
-// deliverables[], summary, reason, spentUsd }. delegate() validates who may hand work to
+// A work item is { id, brief, budgetUsd, budgetCapped, deadline, evidence[], fromAgentId,
+// toAgentId, fromRoomId, toRoomId, trailId, status, runId, createdAt, startedAt, endedAt,
+// deliverables[], summary, reason, spentUsd }. budgetUsd is capped at what the delegator
+// has left (safety L4: the mission for the Chief, the active run for a Ranger) and
+// budgetCapped says when it was. delegate() validates who may hand work to
 // whom (the Chief to anyone, a Ranger to its Juniors or other Rangers, never a Junior and
 // never to the Chief), persists the item, emits work.handoff and enqueues a run for the
 // receiver with a brief built from the item. The run manager's end hook closes the item:
@@ -65,9 +67,31 @@ async function listOutbox(dir) {
   return out;
 }
 
-export function createTrails({ bus, store, runs, agents = null, getLayout, clock = { now: () => Date.now() }, workspaceRoot, maxItems = 1000 } = {}) {
+export function createTrails({ bus, store, runs, agents = null, getLayout, clock = { now: () => Date.now() }, workspaceRoot, maxItems = 1000, missionBudget = null } = {}) {
   if (!bus || !store || !runs || typeof getLayout !== 'function' || !workspaceRoot) throw new TypeError('createTrails needs bus, store, runs, getLayout and workspaceRoot');
   let items = [];
+  let missionBudgetSource = typeof missionBudget === 'function' ? missionBudget : null;
+
+  // Safety L4: what a delegator may hand out. The Superintendent is unbounded. The Chief
+  // draws on the mission budget less the budgets of the items it already delegated for
+  // it (its planning runs are judge-tier model spend, not the pool the tasks come from).
+  // A Ranger draws on its active run: the run's budget less what the run has spent and
+  // less the budgets of the items it delegated during the run. No run, or no mission for
+  // the Chief, is nothing to draw on.
+  function allowance(from) {
+    if (from.role === 'superintendent') return { remaining: Infinity, source: 'the Superintendent' };
+    const live = (it) => it.status !== 'failed' && it.status !== 'cancelled';
+    if ((from.role || 'ranger') === 'chief_ranger') {
+      const m = missionBudgetSource ? missionBudgetSource() : null;
+      if (!m || typeof m.budgetUsd !== 'number') return { remaining: null, source: 'the mission' };
+      const delegated = items.filter((it) => it.fromAgentId === from.id && live(it) && it.createdAt >= (m.createdAt || 0)).reduce((n, it) => n + it.budgetUsd, 0);
+      return { remaining: Math.max(0, m.budgetUsd - delegated), source: `the mission budget ($${m.budgetUsd.toFixed(2)}, $${delegated.toFixed(2)} already delegated)` };
+    }
+    const run = typeof runs.budgetFor === 'function' ? runs.budgetFor(from.id) : null;
+    if (!run) return { remaining: null, source: 'an active run' };
+    const delegated = items.filter((it) => it.fromAgentId === from.id && live(it) && it.createdAt >= (run.startedAt || 0)).reduce((n, it) => n + it.budgetUsd, 0);
+    return { remaining: Math.max(0, run.budgetUsd - run.spentUsd - delegated), source: `its run's budget ($${run.budgetUsd.toFixed(2)}, $${run.spentUsd.toFixed(2)} spent, $${delegated.toFixed(2)} already delegated)` };
+  }
   let saving = Promise.resolve();
   const save = () => {
     saving = saving.then(() => store.saveWorkItems({ version: 1, items })).catch((err) => console.error('work items save failed:', err));
@@ -119,6 +143,10 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
       if (changed) await save();
       return this;
     },
+    // The Chief's pool (safety L4): set by the Chief module once it exists.
+    setMissionBudget(fn) {
+      missionBudgetSource = typeof fn === 'function' ? fn : null;
+    },
     list: () => items.slice().reverse(),
     get: (id) => (find(id) ? { ...find(id) } : null),
     forAgent: (agentId) => items.filter((it) => it.fromAgentId === agentId || it.toAgentId === agentId).reverse(),
@@ -135,10 +163,17 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
       const from = by === 'superintendent' ? { id: 'superintendent', role: 'superintendent', roomId: 'entrance-gate' } : agentOf(layout, by);
       if (!from) throw fail('BAD_REQUEST', `unknown delegator "${by}"`);
       if (by !== 'superintendent') mayDelegate(from, to);
+      // Safety L4: a sub-run's budget never exceeds what the delegator has left.
+      const { remaining, source } = allowance(from);
+      if (remaining === null) throw fail('BUDGET_UNKNOWN', `${from.id} has no budget to delegate from: it needs ${source}`, 409);
+      if (remaining <= 0) throw fail('BUDGET_EXHAUSTED', `${from.id} has nothing left to delegate from ${source}`, 409);
+      const budgetCapped = budgetUsd > remaining;
+      if (budgetCapped) budgetUsd = remaining;
       const item = {
         id: `work-${randomUUID().slice(0, 8)}`,
         brief: brief.trim(),
         budgetUsd,
+        budgetCapped,
         deadline: deadline || null,
         evidence,
         fromAgentId: from.id,

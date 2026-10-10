@@ -6,7 +6,8 @@
 //                      clock, makeProvider, policy, leash | leashState, ledger, gateQueue,
 //                      judge, agents, maxConcurrent })
 //     -> { start(opts), cancel(runId), answer(permissionResponse), active(), queued(),
-//          pending(), policy, judge(), leash, route(), waitForIdle(), onRunEnd(fn) }
+//          pending(), budgetFor(agentId), policy, judge(), leash, route(), waitForIdle(),
+//          onRunEnd(fn) }
 //
 // Concurrency (phase 2 step 4, docs/DECISIONS.md D48): N runs at once, one per agent, each
 // in its own workspace `<root>/<agentId>/`. A run for a busy agent, or when `maxConcurrent`
@@ -175,6 +176,12 @@ export function createRunManager({
     active: () => [...running.values()].map((r) => ({ runId: r.runId, agentId: r.agentId, startedAt: r.record.startedAt, workItemId: r.record.workItemId || null })),
     queued: () => queue.map((q, i) => ({ runId: q.runId, agentId: q.agentId, position: i, workItemId: q.record.workItemId || null })),
     activeFor: (agentId) => api.active().find((r) => r.agentId === agentId) || null,
+    // The active run's budget and spend for an agent (safety L4: what it may delegate from).
+    budgetFor(agentId) {
+      const r = [...running.values()].find((x) => x.agentId === agentId);
+      if (!r) return null;
+      return { runId: r.runId, budgetUsd: r.record.budgetUsd, spentUsd: r.record.spentUsd || 0, startedAt: r.record.startedAt, workItemId: r.record.workItemId || null };
+    },
     pending: () => [...pendingPrompts.entries()].map(([promptId, p]) => ({ promptId, runId: p.runId })),
 
     async start({ agentId = 'ranger', prompt, provider: providerName, model, step = null, maxTurns = DEFAULT_MAX_TURNS, budgetUsd = DEFAULT_BUDGET_USD, workItemId = null, system = null, review: wantReview = true } = {}) {

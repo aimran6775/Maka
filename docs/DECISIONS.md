@@ -1087,3 +1087,17 @@ per-call confirmation. The gate now tells the two apart: a throw falls back to t
 tool's entry in `TOOL_DOMAINS` (every leashed tool has one), and a tool with no entry
 is refused `DOMAIN_UNKNOWN`. Refusing beats guessing a domain: a tool that cannot say
 what it is about to do should not do it.
+
+## D122. A delegated budget comes out of the delegator's own (safety L4)
+
+`delegate` took any `budgetUsd`, so a Ranger with $1 could hand a Junior $50, and a
+chain of delegations could multiply the mission budget. The pool a delegator draws on
+is now explicit: the Superintendent has no bound (the owner is the principal); the
+Chief draws on the mission budget less the budgets of the items it already delegated
+for that mission (its own planning runs are judge-tier spend, counted separately, not
+the task pool); a Ranger draws on its active run, the run's budget less what the run
+has spent and less the items it delegated during the run. A larger ask is capped to
+what is left and the item says so, since a smaller budget is still useful work; nothing
+left is a refusal, and a delegator with no run or no mission has nothing to draw on and
+is refused rather than guessed at. Per-agent budgets (`agent.budgetUsd`) stay what they
+were, the reflection's threshold, and are not a second pool.

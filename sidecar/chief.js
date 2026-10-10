@@ -262,6 +262,8 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
       mission = await store.loadMission(null);
       plan = await store.loadPlan(null);
       if (mission && !Array.isArray(mission.runIds)) mission.runIds = [];
+      // Safety L4: the Chief delegates from the mission budget, never past it.
+      if (typeof trails.setMissionBudget === 'function') trails.setMissionBudget(() => (mission ? { budgetUsd: mission.budgetUsd, createdAt: mission.createdAt } : null));
       return this;
     },
     state: () => ({ mission: mission ? { ...mission } : null, plan: plan ? { ...plan } : null, chief: agents.get(CHIEF_ID), caps, judgeToday: ledger ? ledger.judgeToday() : null }),

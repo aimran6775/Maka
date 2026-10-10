@@ -244,7 +244,17 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
       if (connectors) await connectors.close();
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
-      await fsp.rm(tmp, { recursive: true, force: true });
+      // A run record flushed by a follow-up that started during the cancel can land while the
+      // directory is being removed; the remove is retried, as test/trails.test.js does.
+      for (let i = 0; ; i++) {
+        try {
+          await fsp.rm(tmp, { recursive: true, force: true });
+          return;
+        } catch (err) {
+          if (err.code !== 'ENOTEMPTY' || i >= 5) throw err;
+          await new Promise((r) => setTimeout(r, 25));
+        }
+      }
     },
   };
   return api;
