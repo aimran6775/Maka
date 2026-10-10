@@ -283,3 +283,7 @@ unplugged drive; agents never write outside the root.
 The Peak is derived by the park model from the first zone's position, like the Entrance
 Gate, so no layout record changes and the sidecar needs no new route. `ZONE_KINDS` carries
 `mountain_peak` for the day a layout places it explicitly.
+- 2026-10-10 owner: full control granted to build until ready. Defaults: judge cap 10 USD/day,
+  money-out cap 0 USD/day until raised at the Gate; judge models claude-sonnet-5-5 (review)
+  and claude-opus-5-5 (Chief planning/reflection), configurable. Phase 2 and 3 briefs in
+  docs/PHASE2_BRIEF.md and docs/PHASE3_BRIEF.md.
