@@ -61,9 +61,15 @@ test('parseVerdict reads the JSON object out of prose and refuses nonsense', () 
   assert.match(JUDGE_SYSTEM_PROMPT, /"verdict": "approve" \| "revise" \| "reject"/);
 });
 
-test('needsActionReview picks only non-research calls at act_capped / act_free', () => {
-  const gate = { leashFor: (n) => ({ 'a': { domain: 'publishing', level: 'act_free' }, 'b': { domain: 'research', level: 'act_free' }, 'c': { domain: 'money_out', level: 'draft' }, 'd': { domain: 'money_out', level: 'act_capped' } }[n] || null) };
-  assert.deepEqual(needsActionReview(gate, [{ name: 'a' }, { name: 'b' }, { name: 'c' }, { name: 'd' }, { name: 'fs.write' }]).map((n) => n.name), ['a', 'd']);
+test('needsActionReview picks non-research calls at act_capped / act_free, and draft calls whose tool asks (judgeAtDraft)', () => {
+  const tools = { e: { judgeAtDraft: (input) => input && input.to === 'new@example.com' }, f: { judgeAtDraft: () => { throw new Error('boom'); } } };
+  const gate = {
+    leashFor: (n) => ({ a: { domain: 'publishing', level: 'act_free' }, b: { domain: 'research', level: 'act_free' }, c: { domain: 'money_out', level: 'draft' }, d: { domain: 'money_out', level: 'act_capped' }, e: { domain: 'outbound_messages', level: 'draft' }, f: { domain: 'outbound_messages', level: 'draft' } }[n] || null),
+    tool: (n) => tools[n] || null,
+  };
+  const picked = needsActionReview(gate, [{ name: 'a' }, { name: 'b' }, { name: 'c' }, { name: 'd' }, { name: 'fs.write' }, { name: 'e', input: { to: 'new@example.com' } }, { name: 'e', input: { to: 'known@example.com' } }, { name: 'f', input: {} }]);
+  assert.deepEqual(picked.map((n) => n.name), ['a', 'd', 'e']);
+  assert.equal(picked[2].reason, 'new external recipient');
 });
 
 test('judge reviews act_free actions and the final answer; emits judge.verdict + judge cost; revise goes back to the worker; ledger counts judge spend', async () => {

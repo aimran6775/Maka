@@ -40,6 +40,15 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 11 done: mail policy. `sidecar/mail/send.js` decides who may send from
+which address (a Ranger from its aliases and its station, the Chief from the Peak and any
+station, the Superintendent from any station), which leash domain a message falls under
+(replies and notifications are outbound messages, campaigns are publishing), hourly
+ceilings per Ranger, per station and for campaign recipients, and asks the judge to review
+a send to an address the park has never exchanged mail with even while the domain is at
+Draft for review. A tool's leash domain may now depend on its input, which is how the mail
+tool of step 12 will pick its domain by kind.
+
 Phase 2 step 10 done: the mail system's store and transport. Station addresses exist as
 routing rules the moment the park boots (peak@, rangers@, visitors@, the camps, gate@ for
 the Superintendent, unsubscribe@), Ranger aliases are rules too, and unknown recipients

@@ -260,6 +260,16 @@ test('gate enforcement: observe refuses, draft waits at the Gate, act_capped run
     const noLedger = createToolGate({ getLayout: defaultLayout, agentId: 'ranger', workspaceDir: dir, registry: REGISTRY, grants: allGranted, leash: capped, submit: { submit: async () => ({ decision: 'approve', notes: '' }) } });
     assert.deepEqual(await noLedger.execute({ id: 'c8', name: 'social.post', input: { text: 'y' } }, {}), { ok: true, output: 'posted y' });
 
+    // A tool whose domain depends on its input (mail kinds): the leash follows the domain.
+    const byKind = { name: 'mail.send', description: 'send', inputSchema: { type: 'object', properties: { kind: { type: 'string' } } }, domain: (input) => (input.kind === 'campaign' ? 'publishing' : 'outbound_messages'), run: async () => ({ ok: true, output: 'sent' }) };
+    const dyn = createToolGate({ getLayout: defaultLayout, agentId: 'ranger', workspaceDir: dir, registry: { ...REGISTRY, 'mail.send': byKind }, grants: () => ['mail.send'], getLeash: () => leashState.get(), ledger, submit });
+    assert.equal(dyn.leashFor('mail.send', { kind: 'campaign' }).domain, 'publishing');
+    assert.equal(dyn.leashFor('mail.send', { kind: 'reply' }).domain, 'outbound_messages');
+    assert.equal(dyn.tool('mail.send'), byKind);
+    const refusedCampaign = await dyn.execute({ id: 'c10', name: 'mail.send', input: { kind: 'campaign' } }, { runId: 'run-1' });
+    assert.equal(refusedCampaign.code, 'LEASH_OBSERVE', 'publishing is at observe in this leash');
+    assert.deepEqual(await dyn.execute({ id: 'c11', name: 'mail.send', input: { kind: 'reply' } }, { runId: 'run-1' }), { ok: true, output: 'sent' }, 'outbound_messages is act_free for this Ranger');
+
     // fs.write still confirms per call and carries no leash.
     const asks = [];
     const confirm = createToolGate({ getLayout: defaultLayout, agentId: 'ranger', workspaceDir: dir, registry: REGISTRY, grants: allGranted, leash: defaultLeash(), ask: async (q) => { asks.push(q); return true; } });

@@ -15,7 +15,8 @@
 //   act_capped  runs while the ledger says the domain's daily caps hold, else a Gate item
 //   act_free    runs; logged in the ledger (and at the Gate for non-research domains)
 //
-// A tool's domain is `tool.domain` when the tool declares one, else shared/leash.js
+// A tool's domain is `tool.domain` when the tool declares one (a string, or a function of
+// the input for tools whose domain depends on what they send), else shared/leash.js
 // TOOL_DOMAINS. Tools with no domain (fs.write) keep the phase 1 per-call confirmation
 // through ask() when they are marked `confirm: true`. A tool may declare
 // `amountUsd(input)` (money the action moves) and `summarize(input)` (one line for the
@@ -77,11 +78,20 @@ export function createToolGate({
     const base = typeof grants === 'function' ? grants(getLayout(), agentId) : grantsFor(getLayout(), agentId);
     return [...new Set(base)].filter((name) => registry[name]).sort();
   };
-  const domainOf = (tool) => (tool.domain !== undefined ? tool.domain : domainOfTool(tool.name));
-  const leashFor = (toolName) => {
+  const domainOf = (tool, input) => {
+    if (typeof tool.domain === 'function') {
+      try {
+        return tool.domain(input || {}) || null;
+      } catch {
+        return null;
+      }
+    }
+    return tool.domain !== undefined ? tool.domain : domainOfTool(tool.name);
+  };
+  const leashFor = (toolName, input) => {
     const tool = registry[toolName];
     if (!tool) return null;
-    const domain = domainOf(tool);
+    const domain = domainOf(tool, input);
     if (!domain) return null;
     const agent = agentOf(getLayout(), agentId);
     return resolveLeash(currentLeash(), { agentId, roomId: agent ? agent.roomId : undefined }, domain);
@@ -110,6 +120,7 @@ export function createToolGate({
   return {
     granted,
     leashFor,
+    tool: (name) => registry[name] || null,
     definitions() {
       return granted().map((name) => {
         const t = registry[name];
@@ -125,9 +136,9 @@ export function createToolGate({
       const problem = inputProblem(tool, call.input);
       if (problem) return { ok: false, error: `invalid input for ${call.name}: ${problem}` };
 
-      const domain = domainOf(tool);
+      const domain = domainOf(tool, call.input);
       if (domain) {
-        const entry = leashFor(call.name);
+        const entry = leashFor(call.name, call.input);
         const amountUsd = typeof tool.amountUsd === 'function' ? Number(tool.amountUsd(call.input)) || 0 : 0;
         const base = {
           agentId,

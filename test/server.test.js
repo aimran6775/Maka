@@ -658,6 +658,15 @@ test('mail over HTTP: station addresses from boot, alias CRUD, sync pulls receiv
     assert.equal(good.status, 200);
     assert.equal((await good.json()).suppressed, true);
     assert.deepEqual((await srv.get('/api/mail/suppressions')).body.map((x) => x.address), ['gone@example.com']);
+    // The Superintendent sends from a station address; policy refuses a foreign from.
+    const sent = await srv.post('/api/mail/send', { from: 'visitors@makapark.com', to: 'buyer@example.com', subject: 'Welcome', text: 'Thanks for writing.' });
+    assert.equal(sent.status, 201);
+    assert.equal(sent.body.kind, 'notification');
+    assert.equal(sent.body.station, 'visitor-center');
+    assert.equal(rs.state.emails.length, 1);
+    assert.equal((await srv.post('/api/mail/send', { from: 'nobody@elsewhere.com', to: 'x@example.com', subject: 's', text: 't' })).status, 403);
+    assert.equal((await srv.post('/api/mail/send', { from: 'visitors@makapark.com', to: 'gone@example.com', subject: 's', text: 't' })).status, 422);
+    assert.equal((await srv.get('/api/mail')).body.policy.ceilings.perAgentPerHour, 30);
     assert.equal((await srv.del('/api/mail/addresses/sales-lantern-co@makapark.com')).status, 200);
     assert.equal((await srv.del('/api/mail/addresses/visitors@makapark.com')).status, 403);
     stream.close();

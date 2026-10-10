@@ -34,6 +34,8 @@
 //   GET  /api/mail/search?q=
 //   GET  /api/mail/suppressions
 //   POST /api/mail/sync        poll Resend now → { received }
+//   POST /api/mail/send        the Superintendent sends from a station address (policy: ceilings,
+//                              suppression; no leash, the owner is the principal) → the stored copy
 //   POST /api/mail/resend/webhook   Resend webhook (raw body, svix signature)
 //   GET  /api/away             away state (flag, since, counters, last digest)
 //   POST /api/away             { away: true|false } → away.changed (+ away.digest and the digest on return)
@@ -361,6 +363,17 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
       } catch (err) {
         if (err.status) throw new HttpError(err.status, err.message, err.code);
         if (['NETWORK', 'BAD_RESPONSE'].includes(err.code) || /^HTTP_/.test(err.code || '')) throw new HttpError(502, err.message, err.code);
+        throw err;
+      }
+    }
+    if (p === '/api/mail/send' && method === 'POST') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      const body = await readJsonBody(req);
+      try {
+        return sendJson(res, 201, await mail.send(body, { by: 'superintendent' }));
+      } catch (err) {
+        if (err.status) throw new HttpError(err.status, err.message, err.code);
+        if (['NETWORK', 'BAD_RESPONSE', 'NO_KEY'].includes(err.code) || /^HTTP_/.test(err.code || '')) throw new HttpError(err.code === 'NO_KEY' ? 400 : 502, err.message, err.code);
         throw err;
       }
     }

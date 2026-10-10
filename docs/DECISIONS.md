@@ -543,3 +543,24 @@ semantics and a plain footer; any mail to unsubscribe@ (or with a subject starti
 "unsubscribe") suppresses the sender in `suppression.json`, as do permanent bounces and
 complaints. Temporary bounces do not. Suppressed recipients are dropped from a send and
 the copy is labelled `partial`; a send to only suppressed addresses is refused.
+
+## D66. Ceilings are counted from the store's sent copies, per hour, and the owner is capped too
+
+Hourly ceilings (per Ranger, per station, campaign recipients) are computed from the sent
+copies in the local store over the last hour, so a restart cannot reset them and nothing
+is counted that was not sent. The Superintendent has no per-sender ceiling but shares the
+station's: the ceiling protects the domain's reputation, not the Ranger's.
+
+## D67. "New external recipient" means never seen, and asks the judge even at Draft
+
+An address off the mail domain that appears nowhere in the store (no mail from it, none
+to it) is new. A send to one is the moment a Ranger could spam or phish on the park's
+name, so the mail tool declares `judgeAtDraft` and the judge reviews it before the Gate
+item is raised, in addition to the Superintendent's decision. Known addresses at Draft go
+to the Gate without a judge call, as before.
+
+## D68. A tool's leash domain may be a function of its input
+
+`mail.send` is one tool whose domain depends on what it sends (reply vs campaign). The
+gate accepts `tool.domain` as a function of the input and resolves the leash per call;
+`leashFor(tool, input)` reports the same. Static domains are unchanged.

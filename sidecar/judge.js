@@ -60,11 +60,28 @@ export function parseVerdict(text) {
   return null;
 }
 
+// Which of the turn's tool calls the judge must review: non-research calls the leash lets
+// through alone (act_capped / act_free), plus calls at Draft for review whose tool asks
+// for a review itself (`tool.judgeAtDraft(input)`, e.g. a mail to a new external address).
 export function needsActionReview(gate, toolUses) {
   const needing = [];
   for (const tu of toolUses) {
-    const l = gate && typeof gate.leashFor === 'function' ? gate.leashFor(tu.name) : null;
-    if (l && l.domain !== 'research' && (l.level === 'act_capped' || l.level === 'act_free')) needing.push({ name: tu.name, domain: l.domain, level: l.level });
+    const l = gate && typeof gate.leashFor === 'function' ? gate.leashFor(tu.name, tu.input) : null;
+    if (!l || l.domain === 'research') continue;
+    if (l.level === 'act_capped' || l.level === 'act_free') {
+      needing.push({ name: tu.name, domain: l.domain, level: l.level });
+      continue;
+    }
+    const tool = gate && typeof gate.tool === 'function' ? gate.tool(tu.name) : null;
+    if (l.level === 'draft' && tool && typeof tool.judgeAtDraft === 'function') {
+      let wants = false;
+      try {
+        wants = Boolean(tool.judgeAtDraft(tu.input));
+      } catch {
+        wants = false;
+      }
+      if (wants) needing.push({ name: tu.name, domain: l.domain, level: l.level, reason: 'new external recipient' });
+    }
   }
   return needing;
 }
@@ -133,7 +150,7 @@ export function createJudge({ router, makeProvider = defaultMakeProvider, ledger
           lines.push('Tool calls:');
           for (const tu of ctx.toolUses) {
             const need = needing.find((n) => n.name === tu.name);
-            lines.push(`- ${tu.name}${need ? ` [domain ${need.domain}, leash ${need.level}]` : ' [no judge review needed]'}: ${clip(tu.input)}`);
+            lines.push(`- ${tu.name}${need ? ` [domain ${need.domain}, leash ${need.level}${need.reason ? `, ${need.reason}` : ''}]` : ' [no judge review needed]'}: ${clip(tu.input)}`);
             seen.push(`${tu.name} ${clip(tu.input, 200)}`);
           }
         }

@@ -22,3 +22,4 @@ test/reflect.test.js
 test/away.test.js
 test/mail-dns.test.js
 test/mail.test.js
+test/mail-policy.test.js

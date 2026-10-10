@@ -132,7 +132,15 @@ the sidecar polls Resend for received mail every minute (set `RESEND_WEBHOOK_SEC
 point Resend's webhook at `/api/mail/resend/webhook` through a tunnel for instant
 delivery), threads it under `workspace/_mail/`, downloads attachments, and marks sent
 copies delivered, bounced or complained; bounces, complaints and replies to unsubscribe@
-suppress the address. Who may send what, and the mail tools, are steps 11 and 12.
+suppress the address.
+
+Step 11, mail policy: a Ranger sends only from its own aliases or its station's address,
+replies and notifications fall under the outbound-messages leash and campaigns under
+publishing, hourly ceilings (per Ranger, per station, campaign recipients; `mailCeilings`
+in `config.json`) hold whoever sends, and a message to an address the park has never
+exchanged mail with gets a judge review even at "Draft for review". You can send from any
+station address with `POST /api/mail/send`. The Rangers' mail tools and the Visitor Center
+inbox are step 12.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

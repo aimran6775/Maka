@@ -15,12 +15,13 @@ import { resolveKey } from '../providers/keys.js';
 import { createMailStore } from './store.js';
 import { createAddresses } from './addresses.js';
 import { createResendMail, createMailSync } from './resend.js';
+import { createMailPolicy } from './send.js';
 import { DEFAULT_MAIL_DOMAIN, RESEND_BASE_URL } from './dns.js';
 
 export const MAIL_SYNC_JOB_ID = 'mail-sync';
 export const DEFAULT_MAIL_POLL_MS = 60_000;
 
-export function createMailSystem({ bus, store, scheduler = null, getLayout, env = process.env, keystorePath, fetch: fetchImpl = globalThis.fetch, clock = { now: () => Date.now() }, workspaceRoot, domain = DEFAULT_MAIL_DOMAIN, pollMs = DEFAULT_MAIL_POLL_MS, resendBaseUrl = RESEND_BASE_URL, log = console } = {}) {
+export function createMailSystem({ bus, store, scheduler = null, getLayout, env = process.env, keystorePath, fetch: fetchImpl = globalThis.fetch, clock = { now: () => Date.now() }, workspaceRoot, domain = DEFAULT_MAIL_DOMAIN, pollMs = DEFAULT_MAIL_POLL_MS, resendBaseUrl = RESEND_BASE_URL, ceilings = {}, log = console } = {}) {
   if (!bus || !store || typeof getLayout !== 'function' || !workspaceRoot) throw new TypeError('createMailSystem needs bus, store, getLayout and workspaceRoot');
   const mailStore = createMailStore({ root: path.join(workspaceRoot, '_mail'), clock });
   const addresses = createAddresses({ store, bus, domain, clock });
@@ -42,11 +43,14 @@ export function createMailSystem({ bus, store, scheduler = null, getLayout, env 
   }
 
   const sync = createMailSync({ store: mailStore, addresses, getResend, bus, clock, domain, log });
+  const policy = createMailPolicy({ mailStore, addresses, sync, getLayout, clock, domain, ceilings });
   const api = {
     domain,
     mailStore,
     addresses,
     sync,
+    policy,
+    send: (msg, opts) => policy.send(msg, opts),
     async init() {
       await mailStore.init();
       await addresses.init();
@@ -78,6 +82,7 @@ export function createMailSystem({ bus, store, scheduler = null, getLayout, env 
         addresses: addresses.list().length,
         counts,
         sync: { ...sync.state(), pollMs, job: scheduler ? scheduler.state()[MAIL_SYNC_JOB_ID] || null : null, lastReason: jobState.lastReason },
+        policy: policy.status(),
       };
     },
   };

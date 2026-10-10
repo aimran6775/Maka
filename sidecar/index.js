@@ -4,7 +4,9 @@
 //   PORT=8790  HOST=127.0.0.1  MAKA_HOME=./.maka  MAKA_WORKSPACE=~/Maka/workspace
 //   $MAKA_HOME/config.json may set { "workspaceRoot": "/Volumes/LaCie/Maka/workspace",
 //   "maxConcurrentRuns": 4, "reflectAt": "07:00", "mailDomain": "makapark.com",
-//   "resendRegion": "us-east-1", "mailPollMs": 60000 }; the env var wins over the file for the root. The root may go away (external drive): runs pause.
+//   "resendRegion": "us-east-1", "mailPollMs": 60000,
+//   "mailCeilings": { "perAgentPerHour": 30, "perStationPerHour": 120, "campaignRecipientsPerHour": 500 } };
+//   the env var wins over the file for the root. The root may go away (external drive): runs pause.
 //
 // Everything here is wiring; behaviour lives in loop.js, capability/, providers/, runs.js,
 // server.js and store.js, all of which are tested with fakes.
@@ -89,7 +91,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   scheduler.start();
   away = await createAway({ bus, store, gateQueue, workspaceRoot, log }).init();
   const mailSetup = createMailSetup({ bus, gateQueue, env, keystorePath, domain: config.mailDomain || undefined, region: config.resendRegion || undefined, log });
-  const mail = await createMailSystem({ bus, store, scheduler, getLayout: layoutState.get, env, keystorePath, workspaceRoot, domain: config.mailDomain || undefined, pollMs: config.mailPollMs || undefined, log }).init();
+  const mail = await createMailSystem({ bus, store, scheduler, getLayout: layoutState.get, env, keystorePath, workspaceRoot, domain: config.mailDomain || undefined, pollMs: config.mailPollMs || undefined, ceilings: config.mailCeilings || {}, log }).init();
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -161,7 +163,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
 }
 
 function validateConfig(data) {
-  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 } } }, data);
+  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } } } }, data);
 }
 
 async function loadOrDefault(file, validateFn, defaultFn, log, label) {
