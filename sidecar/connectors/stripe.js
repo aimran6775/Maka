@@ -22,6 +22,8 @@ function fail(code, message, status) {
 }
 
 // Minor units → major (cents → dollars; zero-decimal currencies as is).
+export const isUsd = (currency) => String(currency || '').toLowerCase() === 'usd';
+
 export function major(amountMinor, currency) {
   const n = Number(amountMinor) || 0;
   return ZERO_DECIMAL.has(String(currency || '').toLowerCase()) ? n : n / 100;
@@ -192,18 +194,21 @@ export const stripeRefunds = listTool('stripe.refunds', 'refunds', 'Refunds from
 
 export const stripeRefund = {
   name: 'stripe.refund',
-  description: 'Refund a charge (money out; follows the money_out leash and its daily cap). Give the charge id; amountUsd defaults to the full remaining amount. reason: duplicate | fraudulent | requested_by_customer.',
+  description: 'Refund a USD charge (money out; follows the money_out leash and its daily cap; a charge in another currency is refused). Give the charge id; amountUsd defaults to the full remaining amount. reason: duplicate | fraudulent | requested_by_customer.',
   inputSchema: { type: 'object', required: ['chargeId'], additionalProperties: false, properties: { chargeId: { type: 'string', minLength: 1 }, amountUsd: { type: 'number', exclusiveMinimum: 0 }, reason: { type: 'string', enum: ['duplicate', 'fraudulent', 'requested_by_customer'] }, note: { type: 'string' } } },
   confirm: false,
   domain: 'money_out',
   // The money the Gate and the ledger see: the given amount, else the charge's remaining
   // amount from the last sync. An unknown charge is null (safety H2: the amount cannot be
   // proven, so the gate sends it to the Gate and run() refuses it).
+  // Safety L2: the ledger counts USD, so only a USD charge has a provable amount; a charge
+  // in another currency is unknown here (the Gate) and refused in run().
   amountUsd: (input, ctx) => {
-    if (typeof input.amountUsd === 'number') return input.amountUsd;
     const data = ctx && ctx.connectors && ctx.connectors.status('stripe') ? ctx.connectors.data('stripe') : null;
     const charge = data ? (data.charges || []).find((c) => c.id === input.chargeId) : null;
-    return charge ? major(charge.amount - (charge.amountRefunded || 0), charge.currency) : null;
+    if (!charge || !isUsd(charge.currency)) return null;
+    if (typeof input.amountUsd === 'number') return input.amountUsd;
+    return major(charge.amount - (charge.amountRefunded || 0), charge.currency);
   },
   summarize: (input) => `refund ${typeof input.amountUsd === 'number' ? `$${input.amountUsd.toFixed(2)} of ` : ''}Stripe charge ${input.chargeId}${input.reason ? ` (${input.reason})` : ''}`,
   async run(input, ctx) {
@@ -213,6 +218,7 @@ export const stripeRefund = {
     if (error) return error;
     const charge = (data.charges || []).find((c) => c.id === input.chargeId);
     if (!charge) return { ok: false, code: 'NOT_FOUND', error: `no charge ${input.chargeId} in the last Stripe sync; sync first or check the id` };
+    if (!isUsd(charge.currency)) return { ok: false, code: 'NON_USD', error: `charge ${input.chargeId} is in ${String(charge.currency || '?').toUpperCase()}; the park's ledger and caps count USD, so refunds from here are USD charges only (safety L2). Ask the Superintendent to refund it in the Stripe dashboard.` };
     const remaining = charge.amount - (charge.amountRefunded || 0);
     const amountMinor = typeof input.amountUsd === 'number' ? minor(input.amountUsd, charge.currency) : remaining;
     if (amountMinor <= 0 || amountMinor > remaining) return { ok: false, code: 'BAD_AMOUNT', error: `refund must be between 0 and the remaining ${major(remaining, charge.currency)} ${charge.currency.toUpperCase()}` };

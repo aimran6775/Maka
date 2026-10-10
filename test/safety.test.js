@@ -30,6 +30,8 @@ import { startTestServer } from './helpers/test-server.js';
 import { createAgents } from '../sidecar/agents.js';
 import { createMailSystem } from '../sidecar/mail/system.js';
 import { startFakeResend } from './helpers/fake-resend.js';
+import { startFakeStripe } from './helpers/fake-stripe.js';
+import { stripeSpec } from '../sidecar/connectors/stripe.js';
 
 // A Ranger in a Marketing camp with a Notice board, the ad connectors against the fakes,
 // and a gate over the connector tools (the shape of test/ads.test.js, kept small).
@@ -836,5 +838,67 @@ test('L1 a payment page is checked before the next action too, and its handoff i
   } finally {
     await browser.close();
     await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- L2: a Stripe refund is USD or it is refused ----------
+
+test('L2 a refund of a charge in another currency is never counted as USD: the amount is unknown (the Gate) and the tool refuses it, with or without an explicit amount', async () => {
+  const fake = await startFakeStripe();
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-safety-l2-'));
+  const store = createStore({ root: path.join(dir, 'home') });
+  await store.init();
+  const bus = createEventBus();
+  const clock = fakeClock(1_700_000_000_000);
+  const layout = defaultLayout();
+  layout.rooms.push({ id: 'finance', name: 'Finance Camp', kind: 'finance', x: 21, y: 1, w: 8, h: 6 });
+  layout.objects.push({ id: 'booth', kind: 'fee_booth', roomId: 'finance', x: 22, y: 2 });
+  layout.agents.push({ id: 'books', name: 'Bea', roomId: 'finance', x: 21, y: 1, role: 'ranger', specialty: 'books' });
+  const layoutState = createLayoutState({ initial: layout, store, bus, clock });
+  const ledger = await createLeashLedger({ store, clock }).init();
+  const leash = defaultLeash();
+  leash.domains.money_out = { level: 'act_free' };
+  const leashState = createLeashState({ initial: leash, store });
+  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
+  const scheduler = await createScheduler({ store, clock, tickMs: 60_000, log: { error() {} } }).init();
+  const connectors = createConnectors({ bus, store, scheduler, gateQueue, env: { STRIPE_API_KEY: fake.apiKey }, keystorePath: path.join(dir, 'home', 'keystore.json'), clock, config: { syncOnBoot: false }, log: { error() {}, warn() {} } });
+  connectors.define(stripeSpec({ baseUrl: fake.url }));
+  await connectors.init();
+  const gate = createToolGate({ getLayout: layoutState.get, agentId: 'books', workspaceDir: path.join(dir, 'ws', 'books'), registry: { ...connectors.tools }, grants: allGrantsFor, toolContext: { connectors }, getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId: 'run-1', agentId: 'books' }), log: (item) => gateQueue.log({ ...item, runId: 'run-1', agentId: 'books' }) } });
+  const call = (id, input) => gate.execute({ id, name: 'stripe.refund', input }, { runId: 'run-1' });
+  try {
+    await connectors.sync('stripe', 'manual');
+    const charge = connectors.data('stripe').charges.find((c) => c.id === 'ch_3');
+    charge.currency = 'eur'; // the store knows this charge as a EUR charge
+    const posts = () => fake.state.calls.filter((c) => c.method === 'POST').length;
+    // no amount given: EUR is not a USD figure, so the amount cannot be proven → the Gate; approved, the tool refuses
+    const pending = call('r1', { chargeId: 'ch_3', reason: 'duplicate' });
+    const item = await waitUntil(() => gateQueue.pending()[0]);
+    assert.equal(item.amountUsd, undefined, 'no USD amount is claimed for a EUR charge');
+    assert.match(item.reason, /cannot be proven/);
+    await gateQueue.resolve(item.itemId, { decision: 'approve' });
+    const r1 = await pending;
+    assert.equal(r1.ok, false);
+    assert.equal(r1.code, 'NON_USD');
+    assert.match(r1.error, /EUR/);
+    // an explicit USD amount on a EUR charge proves nothing either: the Gate, then refused before any request
+    const pending2 = call('r2', { chargeId: 'ch_3', amountUsd: 5 });
+    const item2 = await waitUntil(() => gateQueue.pending()[0]);
+    assert.equal(item2.amountUsd, undefined);
+    await gateQueue.resolve(item2.itemId, { decision: 'approve' });
+    const r2 = await pending2;
+    assert.equal(r2.ok, false);
+    assert.equal(r2.code, 'NON_USD');
+    assert.equal(posts(), 0, 'Stripe never saw a refund');
+    assert.equal(ledger.spentToday('money_out').usd, 0);
+    // a USD charge still refunds
+    const r3 = await call('r3', { chargeId: 'ch_2', amountUsd: 5 });
+    assert.equal(r3.ok, true, r3.error);
+    assert.equal(posts(), 1);
+    assert.equal(ledger.summary().domains.money_out.usd, 5);
+  } finally {
+    await connectors.close();
+    await fsp.rm(dir, { recursive: true, force: true });
+    await fake.close();
   }
 });

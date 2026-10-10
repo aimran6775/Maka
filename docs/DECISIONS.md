@@ -1067,3 +1067,14 @@ says nothing about whether the order may be placed; the notes are what the Range
 continues on, and a payment page is not re-raised only when its last hand-back carried
 them. Login, one-time-code and captcha pages keep the one-handoff rule: once handed
 back, the same page is the Ranger's to act on, notes or not.
+
+## D120. Refunds from the park are USD refunds (safety L2)
+
+The ledger and the daily caps count USD, and a refund's amount was the charge's amount
+whatever its currency, so a 100 EUR refund counted as $100 and a 10,000 JPY one as
+$10,000 (or, converted the other way, far less than it was). Converting would need a
+rate the park cannot prove at the moment of the action. A refund from the park is
+therefore a USD charge's refund: another currency has no provable amount (the Gate),
+and the tool refuses it even when approved, naming the currency and the dashboard as
+the place to do it by hand. Stripe's own reads and the Finance card keep showing every
+currency as the platform reports it.
