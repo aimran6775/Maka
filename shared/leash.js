@@ -41,6 +41,14 @@ export const TOOL_DOMAINS = deepFreeze({
   'fs.read': 'research',
   'web.fetch': 'research',
   'fs.write': null,
+  // Phase 2 step 12 mail tools. `mail.send` decides between outbound_messages and
+  // publishing from its input (the tool declares a domain function); listed here as its
+  // default so coverage checks see it.
+  'mail.search': 'research',
+  'mail.read': 'research',
+  'mail.draft': null,
+  'mail.send': 'outbound_messages',
+  'mail.create_address': 'account_creation',
 });
 
 // One domain entry. `dailyCapUsd` and `dailyCapActions` matter at 'act_capped': an action

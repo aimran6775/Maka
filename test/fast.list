@@ -23,3 +23,5 @@ test/away.test.js
 test/mail-dns.test.js
 test/mail.test.js
 test/mail-policy.test.js
+test/mail-tools.test.js
+test/hosted-worker.test.js

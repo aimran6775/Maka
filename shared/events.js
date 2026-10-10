@@ -122,7 +122,7 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
       outputTokens: int0,
       usd: { type: ['number', 'null'], minimum: 0 },
       reconciled: bool,
-      tier: { type: 'string', enum: ['worker', 'judge'] },
+      tier: { type: 'string', enum: ['worker', 'judge', 'hosted_worker'] },
     },
   ),
   // The harness needs the user's yes/no before a tool call proceeds. `leash` (added v1,
@@ -351,6 +351,16 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     agentId: str,
     venture: str,
     by: str,
+  }),
+  // Added v1 (phase 2 step 12): an inbound message was classified by the worker model (or
+  // the judge when the worker was unsure). `by` names the tier; 'none' when no model was
+  // reachable and the message stays unclassified.
+  'mail.classified': payload(['messageId', 'classification', 'by'], {
+    messageId: nonEmpty,
+    classification: { type: 'string', enum: ['customer', 'supplier', 'platform_notice', 'spam', 'unclassified'] },
+    by: { type: 'string', enum: ['worker', 'judge', 'hosted_worker', 'none'] },
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    reason: str,
   }),
   // Added v1 (phase 2 step 3): an agent record was created, changed or removed. `agent` is
   // the layout record as it now stands (absent on 'removed').

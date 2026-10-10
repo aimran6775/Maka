@@ -8,6 +8,7 @@
 // "how many approvals in a row has this Ranger earned". It holds, persisted atomically:
 //   days[YYYY-MM-DD].domains[domain] = { usd, actions }   executed actions per domain per day
 //   days[YYYY-MM-DD].judge           = { usd, calls }     judge-tier spend per day (step 2)
+//   days[YYYY-MM-DD].hosted          = { calls, tokens }  hosted worker calls per day (step 12b)
 //   streaks[agentId][domain]         = { approvals }      Gate approvals since the last
 //                                                         rejection or proposal
 // Days are the sidecar machine's local calendar day (docs/DECISIONS.md D36).
@@ -43,7 +44,7 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
   const day = () => {
     const key = localDayKey(clock.now());
     if (!data.days[key]) {
-      data.days[key] = { domains: {}, judge: { usd: 0, calls: 0 } };
+      data.days[key] = { domains: {}, judge: { usd: 0, calls: 0 }, hosted: { calls: 0, tokens: 0 } };
       const keys = Object.keys(data.days).sort();
       while (keys.length > keepDays) delete data.days[keys.shift()];
     }
@@ -124,10 +125,22 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
       const d = data.days[localDayKey(clock.now())];
       return d ? { ...d.judge } : { usd: 0, calls: 0 };
     },
+    async recordHosted({ tokens = 0 } = {}) {
+      const d = day();
+      if (!d.hosted) d.hosted = { calls: 0, tokens: 0 };
+      d.hosted.calls += 1;
+      d.hosted.tokens += tokens;
+      await save();
+      return { ...d.hosted };
+    },
+    hostedToday() {
+      const d = data.days[localDayKey(clock.now())];
+      return d && d.hosted ? { ...d.hosted } : { calls: 0, tokens: 0 };
+    },
     summary() {
       const key = localDayKey(clock.now());
       const d = data.days[key] || { domains: {}, judge: { usd: 0, calls: 0 } };
-      return { day: key, domains: JSON.parse(JSON.stringify(d.domains)), judge: { ...d.judge }, streaks: JSON.parse(JSON.stringify(data.streaks)), earnApprovals };
+      return { day: key, domains: JSON.parse(JSON.stringify(d.domains)), judge: { ...d.judge }, hosted: { ...(d.hosted || { calls: 0, tokens: 0 }) }, streaks: JSON.parse(JSON.stringify(data.streaks)), earnApprovals };
     },
     state: () => data,
     flushed: () => saving,

@@ -31,8 +31,8 @@ test('defaults follow the brief: draft everywhere, research act_free, money_out 
   assert.equal(leash.domains.money_out.dailyCapUsd, 0);
 });
 
-test('every phase 1 tool is mapped (to a domain or explicitly to none); leashFor reports domain and level', () => {
-  for (const t of TOOL_NAMES) {
+test('every tool is mapped (to a domain or explicitly to none); leashFor reports domain and level', () => {
+  for (const t of [...TOOL_NAMES, 'mail.search', 'mail.read', 'mail.draft', 'mail.send', 'mail.create_address']) {
     assert.ok(t in TOOL_DOMAINS, `${t} is mapped`);
     assert.ok(TOOL_DOMAINS[t] === null || DOMAINS.includes(TOOL_DOMAINS[t]), `${t} maps to a real domain or null`);
   }

@@ -31,6 +31,7 @@ const SAMPLES = {
   'mail.message': { messageId: 'msg-1', threadId: 'thread-1', direction: 'in', from: 'Customer <c@example.com>', to: ['support@makapark.com'], subject: 'Order 12', station: 'operations-support', venture: 'lantern-co', kind: 'inbound', resendId: 'rcv_1', attachments: 1 },
   'mail.event': { resendId: 'em_1', messageId: 'msg-2', event: 'bounced', address: 'gone@example.com', detail: 'Permanent Suppressed', suppressed: true },
   'mail.address': { address: 'sales-lantern-co@makapark.com', change: 'created', kind: 'alias', station: 'sales', agentId: 'ben-1', venture: 'lantern-co', by: 'chief-ranger' },
+  'mail.classified': { messageId: 'msg-1', classification: 'customer', by: 'worker', confidence: 0.92, reason: 'asks about an order' },
   'mail.dns': { domain: 'makapark.com', change: 'applied', itemId: 'gate-1', create: 4, update: 1, remove: 0, unchanged: 2, errors: [], message: '5 change(s) written' },
   'away.changed': { away: true, since: 1700000000000, actions: 0, waiting: 2 },
   'away.digest': { digestId: 'digest-1', since: 1700000000000, until: 1700003600000, actions: 4, waiting: 1, spentUsd: 0.12, path: '_peak/digest-1.md', summary: '4 actions' },
@@ -109,6 +110,8 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('mail.message', { ...SAMPLES['mail.message'], direction: 'sideways' });
   bad('mail.event', { resendId: 'x', event: 'vanished' });
   bad('mail.address', { address: 'a@b', change: 'created', kind: 'royal', station: 's' });
+  bad('mail.classified', { messageId: 'm', classification: 'royalty', by: 'worker' });
+  assert.equal(validate_('cost.estimate', { ...SAMPLES['cost.estimate'], tier: 'hosted_worker' }).ok, true);
   bad('away.digest', { digestId: 'd', since: 1, until: 2, actions: 1, waiting: 0 });
   bad('reflection.posted', { reflectionId: 'r', reason: 'x', status: 'dreamt' });
   assert.equal(validate_('reflection.posted', { reflectionId: 'r', reason: 'manual', status: 'skipped', skipReason: 'cap', usd: null, reconciled: false }).ok, true);

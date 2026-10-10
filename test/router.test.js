@@ -16,10 +16,10 @@ test('default policy validates and routes routine turns to the worker, quality s
   assert.equal(router.route({ kind: 'review' }).model, 'claude-sonnet-5-5', 'the judge reviews on sonnet');
   assert.equal(router.route({ kind: 'plan' }).model, 'claude-opus-5-5', 'the Chief plans on opus');
   assert.equal(router.route({ kind: 'reflect' }).model, 'claude-opus-5-5');
-  assert.deepEqual(router.caps(), { judgeCallsPerRun: 20, judgeCallsPerDay: 500, judgeUsdPerDay: 10 });
+  assert.deepEqual(router.caps(), { judgeCallsPerRun: 20, judgeCallsPerDay: 500, judgeUsdPerDay: 10, hostedWorkerCallsPerDay: 2000 });
   assert.deepEqual(router.route(), router.route({ kind: 'turn' }));
   assert.deepEqual([...STEP_KINDS], ['turn', 'plan', 'review', 'ambiguity', 'gate_action', 'reflect']);
-  assert.deepEqual([...TIERS], ['worker', 'judge']);
+  assert.deepEqual([...TIERS], ['worker', 'judge', 'hosted_worker']);
 });
 
 test('a custom policy is plain data: models per tier, step overrides, missing steps fall back', () => {
@@ -31,7 +31,7 @@ test('a custom policy is plain data: models per tier, step overrides, missing st
   const router = createRouter(policy);
   assert.deepEqual(router.route({ kind: 'turn' }), { tier: 'judge', provider: 'anthropic', model: 'claude-opus-5-5' });
   assert.deepEqual(router.route({ kind: 'plan' }), { tier: 'judge', provider: 'anthropic', model: 'claude-opus-5-5' });
-  assert.deepEqual(router.caps(), { judgeCallsPerRun: 20, judgeCallsPerDay: 500, judgeUsdPerDay: 10 }, 'missing caps use the defaults');
+  assert.deepEqual(router.caps(), { judgeCallsPerRun: 20, judgeCallsPerDay: 500, judgeUsdPerDay: 10, hostedWorkerCallsPerDay: 2000 }, 'missing caps use the defaults');
   assert.equal(router.policy, policy);
   assert.equal(validatePolicy({ ...policy, stepModels: { dance: 'x' } }).ok, false);
   assert.equal(validatePolicy({ ...policy, caps: { judgeUsdPerDay: -1 } }).ok, false);

@@ -15,6 +15,16 @@ let state = initialState();
 const getState = () => state;
 
 const api = {
+  async get(path) {
+    const res = await fetch(path);
+    let parsed = null;
+    try {
+      parsed = await res.json();
+    } catch {
+      /* no body */
+    }
+    return { ok: res.ok, status: res.status, body: parsed };
+  },
   async post(path, body) {
     const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     let parsed = {};

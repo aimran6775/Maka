@@ -25,6 +25,7 @@
 import { createAnthropicProvider, ANTHROPIC_DEFAULT_MODEL } from './anthropic.js';
 import { createOpenRouterProvider, OPENROUTER_DEFAULT_MODEL } from './openrouter.js';
 import { createOllamaProvider, ollamaHost, listModels, probe as probeOllama } from './ollama.js';
+import { createHuggingFaceProvider, HUGGINGFACE_DEFAULT_MODEL } from './huggingface.js';
 import { resolveKey } from './keys.js';
 import { priceFor } from './pricing.js';
 
@@ -34,6 +35,8 @@ export const PROVIDERS = Object.freeze({
   anthropic: Object.freeze({ envVar: 'ANTHROPIC_API_KEY', defaultModel: ANTHROPIC_DEFAULT_MODEL, local: false, tierHint: 'judge' }),
   openrouter: Object.freeze({ envVar: 'OPENROUTER_API_KEY', defaultModel: OPENROUTER_DEFAULT_MODEL, local: false, tierHint: 'worker' }),
   ollama: Object.freeze({ envVar: null, defaultModel: null, local: true, tierHint: 'worker' }),
+  // Phase 2 step 12b: hosted open-weight models, metered by calls (no price reported).
+  huggingface: Object.freeze({ envVar: 'HF_TOKEN', defaultModel: HUGGINGFACE_DEFAULT_MODEL, local: false, tierHint: 'hosted_worker' }),
 });
 
 export const PROVIDER_NAMES = Object.freeze(Object.keys(PROVIDERS));
@@ -74,7 +77,7 @@ export async function createProvider(name, { model, env = process.env, keystoreP
   const apiKey = await resolveKey(name, { env, keystorePath });
   if (!apiKey) throw fail('NO_KEY', `no API key for ${name}: set ${spec.envVar} or add it to the keystore`);
   const chosenModel = model || spec.defaultModel;
-  const provider = name === 'anthropic' ? createAnthropicProvider({ apiKey, fetch: fetchImpl }) : createOpenRouterProvider({ apiKey, fetch: fetchImpl });
+  const provider = name === 'anthropic' ? createAnthropicProvider({ apiKey, fetch: fetchImpl }) : name === 'huggingface' ? createHuggingFaceProvider({ apiKey, fetch: fetchImpl }) : createOpenRouterProvider({ apiKey, fetch: fetchImpl });
   return { provider, model: chosenModel, price: priceFor(name, chosenModel) };
 }
 

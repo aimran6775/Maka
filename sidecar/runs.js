@@ -136,9 +136,12 @@ export function createRunManager({
       .catch((err) => console.error('spend update failed:', err));
     return track(spendChain);
   }
-  // One global listener: spend is a fact about the park, not about one run.
+  // One global listener: spend is a fact about the park, not about one run. Hosted worker
+  // turns are counted in the ledger against their daily call cap.
   bus.listen((event) => {
-    if (event.type === 'cost.estimate') applySpend(event);
+    if (event.type !== 'cost.estimate') return;
+    applySpend(event);
+    if (event.payload.tier === 'hosted_worker' && ledger) track(ledger.recordHosted({ tokens: (event.payload.inputTokens || 0) + (event.payload.outputTokens || 0) }).catch((err) => console.error('hosted ledger failed:', err)));
   });
 
   // Starts queued runs while slots are free and their agents are idle.
@@ -187,12 +190,27 @@ export function createRunManager({
       // Explicit provider/model wins; then the agent's own worker policy; otherwise the
       // router's worker tier. Throws NO_KEY / NO_MODEL / OLLAMA_UNREACHABLE /
       // UNKNOWN_PROVIDER before anything is persisted or emitted.
-      const routed = router.route({ kind: step || 'turn' });
+      let routed = router.route({ kind: step || 'turn' });
       const own = !step && agentRecord.policy && agentRecord.policy.worker;
-      const tier = providerName ? null : routed.tier;
+      let tier = providerName ? null : routed.tier;
       const wantProvider = providerName || (own && own.provider) || routed.provider;
       const wantModel = model || (providerName ? undefined : (own && own.model) || routed.model || undefined);
-      const { provider, model: chosenModel, price } = await makeProvider(wantProvider, { model: wantModel, env, keystorePath, fetch: fetchImpl });
+      const hostedCapReached = () => ledger && ledger.hostedToday().calls >= router.caps().hostedWorkerCallsPerDay;
+      if ((tier === 'hosted_worker' || wantProvider === 'huggingface') && hostedCapReached()) throw fail('HOSTED_CAP', `the hosted worker reached its daily cap of ${router.caps().hostedWorkerCallsPerDay} call(s)`);
+      let made;
+      try {
+        made = await makeProvider(wantProvider, { model: wantModel, env, keystorePath, fetch: fetchImpl });
+      } catch (err) {
+        // Opt-in fallback (policy.fallback.worker): a local worker that is unreachable hands
+        // routine turns to the hosted worker, recorded as such (D19 stays: nothing silent).
+        const fb = !providerName && !own && tier === 'worker' && err.code === 'OLLAMA_UNREACHABLE' ? router.fallbackFor('worker') : null;
+        if (!fb) throw err;
+        if (hostedCapReached()) throw fail('HOSTED_CAP', `ollama is unreachable and the hosted worker reached its daily cap of ${router.caps().hostedWorkerCallsPerDay} call(s)`);
+        routed = router.route({ tier: fb });
+        tier = fb;
+        made = await makeProvider(routed.provider, { model: routed.model || undefined, env, keystorePath, fetch: fetchImpl });
+      }
+      const { provider, model: chosenModel, price } = made;
 
       const runId = `run-${new Date(clock.now()).toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`;
       const workspaceDir = workspaceFor(agentId);

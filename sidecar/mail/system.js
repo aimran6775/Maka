@@ -16,12 +16,14 @@ import { createMailStore } from './store.js';
 import { createAddresses } from './addresses.js';
 import { createResendMail, createMailSync } from './resend.js';
 import { createMailPolicy } from './send.js';
+import { MAIL_TOOLS } from './tools.js';
+import { createClassifier } from './classify.js';
 import { DEFAULT_MAIL_DOMAIN, RESEND_BASE_URL } from './dns.js';
 
 export const MAIL_SYNC_JOB_ID = 'mail-sync';
 export const DEFAULT_MAIL_POLL_MS = 60_000;
 
-export function createMailSystem({ bus, store, scheduler = null, getLayout, env = process.env, keystorePath, fetch: fetchImpl = globalThis.fetch, clock = { now: () => Date.now() }, workspaceRoot, domain = DEFAULT_MAIL_DOMAIN, pollMs = DEFAULT_MAIL_POLL_MS, resendBaseUrl = RESEND_BASE_URL, ceilings = {}, log = console } = {}) {
+export function createMailSystem({ bus, store, scheduler = null, getLayout, env = process.env, keystorePath, fetch: fetchImpl = globalThis.fetch, clock = { now: () => Date.now() }, workspaceRoot, domain = DEFAULT_MAIL_DOMAIN, pollMs = DEFAULT_MAIL_POLL_MS, resendBaseUrl = RESEND_BASE_URL, ceilings = {}, router = null, makeProvider = undefined, ledger = null, classify = true, log = console } = {}) {
   if (!bus || !store || typeof getLayout !== 'function' || !workspaceRoot) throw new TypeError('createMailSystem needs bus, store, getLayout and workspaceRoot');
   const mailStore = createMailStore({ root: path.join(workspaceRoot, '_mail'), clock });
   const addresses = createAddresses({ store, bus, domain, clock });
@@ -44,12 +46,39 @@ export function createMailSystem({ bus, store, scheduler = null, getLayout, env 
 
   const sync = createMailSync({ store: mailStore, addresses, getResend, bus, clock, domain, log });
   const policy = createMailPolicy({ mailStore, addresses, sync, getLayout, clock, domain, ceilings });
+  // The tools act on this system through toolContext.mail; mail.send asks the judge for
+  // sends to new external recipients even at Draft (policy.judgeAtDraft).
+  const tools = { ...MAIL_TOOLS, 'mail.send': { ...MAIL_TOOLS['mail.send'], judgeAtDraft: (input) => policy.judgeAtDraft(input) } };
+  const classifier = router && classify ? createClassifier({ router, makeProvider, ledger, bus, env, keystorePath, fetch: fetchImpl, clock, log }) : null;
+  const classifyState = { queued: 0, done: 0, lastError: null };
+  let classifying = Promise.resolve();
+  if (classifier) {
+    bus.listen((event) => {
+      if (event.type !== 'mail.message' || event.payload.direction !== 'in' || event.payload.kind === 'unsubscribe') return;
+      classifyState.queued += 1;
+      classifying = classifying
+        .then(async () => {
+          const m = await mailStore.get(event.payload.messageId);
+          if (!m) return;
+          const r = await classifier.classify(m);
+          if (r.classification !== 'unclassified') await mailStore.setClassification(m.id, r.classification);
+          classifyState.done += 1;
+        })
+        .catch((err) => {
+          classifyState.lastError = err.message;
+          log.error('mail classification failed:', err.message);
+        });
+    });
+  }
   const api = {
     domain,
     mailStore,
     addresses,
     sync,
     policy,
+    tools,
+    classifier,
+    classified: () => classifying,
     send: (msg, opts) => policy.send(msg, opts),
     async init() {
       await mailStore.init();
@@ -83,6 +112,7 @@ export function createMailSystem({ bus, store, scheduler = null, getLayout, env 
         counts,
         sync: { ...sync.state(), pollMs, job: scheduler ? scheduler.state()[MAIL_SYNC_JOB_ID] || null : null, lastReason: jobState.lastReason },
         policy: policy.status(),
+        classify: classifier ? { ...classifyState, wired: true } : { wired: false },
       };
     },
   };

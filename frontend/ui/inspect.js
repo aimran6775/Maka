@@ -60,6 +60,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       run ? row('judge', judgeVerdicts(run).length ? judgeVerdicts(run).map((v) => `${v.scope} ${v.verdict}${v.notes ? ` (${v.notes})` : v.reason ? ` (${v.reason})` : ''}`).join('; ') : 'not consulted yet') : null,
       row('at the Gate', waiting.length ? waiting.map((it) => `${it.domain}: ${it.summary}`).join('; ') : 'nothing waiting'),
       row('spend', `${fmtUsd(s.spendByAgent[agent.id] || 0)} since the mission${typeof agent.budgetUsd === 'number' ? ` of $${agent.budgetUsd.toFixed(2)} budget` : ''}`),
+      s.mail ? row('addresses', (() => { const mine = mailCache.addresses.filter((a) => a.agentId === agent.id || (a.kind === 'station' && a.station === agent.roomId)); if (!mailCache.addresses.length) loadMail(s, { id: agent.roomId, kind: 'zone' }); return mine.length ? mine.map((a) => a.address).join(', ') : 'none loaded'; })()) : null,
       s.queuedRuns.some((r) => r.agentId === agent.id) ? row('queued', `${s.queuedRuns.filter((r) => r.agentId === agent.id).length} run(s) waiting for this Ranger`) : null,
       agentActions(s, agent),
       ...workFor(s, agent.id).slice(0, 8).map((it) => el('div', { class: `use ${it.status === 'done' ? 'ok' : it.status === 'failed' || it.status === 'cancelled' ? 'failed' : 'running'}`, text: `${it.fromAgentId === agent.id ? '→ ' + it.toAgentId : '← ' + it.fromAgentId} · ${it.status} · ${(it.brief || '').slice(0, 50)}${it.deliverables && it.deliverables.length ? ` · ${it.deliverables.length} file(s)` : ''}` })),
@@ -90,6 +91,49 @@ export function createInspect({ parent, getState, api, x, y, w }) {
   }
   let selectionRefresh = null;
 
+  // Mail views fetch from the sidecar when a station is inspected; they re-fetch on mail events.
+  const mailCache = { key: null, threads: [], addresses: [], sent: [], at: 0, loading: false };
+  async function loadMail(s, room) {
+    const key = `${room.id}:${s.mailMessages.length}:${s.mail ? s.mail.addresses : 0}`;
+    if (mailCache.key === key || mailCache.loading) return;
+    mailCache.loading = true;
+    try {
+      const all = room.kind === 'visitor_center';
+      const [threads, addresses, sent] = await Promise.all([
+        api.get(all ? '/api/mail/threads?limit=30' : `/api/mail/threads?station=${encodeURIComponent(room.id)}&limit=30`),
+        api.get('/api/mail/addresses'),
+        api.get(all ? '/api/mail/messages?direction=out&limit=15' : `/api/mail/messages?station=${encodeURIComponent(room.id)}&direction=out&limit=15`),
+      ]);
+      mailCache.threads = threads.ok ? threads.body : [];
+      mailCache.addresses = addresses.ok ? addresses.body : [];
+      mailCache.sent = sent.ok ? sent.body : [];
+      mailCache.key = key;
+      mailCache.at = Date.now();
+    } finally {
+      mailCache.loading = false;
+      if (selectionRefresh) selectionRefresh();
+    }
+  }
+  function mailSection(s, room) {
+    if (!s.mail) return [];
+    loadMail(s, room);
+    const all = room.kind === 'visitor_center';
+    const stationAddrs = mailCache.addresses.filter((a) => all || a.station === room.id);
+    const byVenture = {};
+    for (const t of mailCache.threads) {
+      const k = t.venture || '(no venture)';
+      byVenture[k] = (byVenture[k] || 0) + 1;
+    }
+    return [
+      el('div', { class: 'k', text: all ? 'mail · every station' : 'mail · this station' }),
+      row('addresses', stationAddrs.length ? stationAddrs.map((a) => `${a.address}${a.agentId ? ` (${a.agentId})` : ''}`).join(', ') : 'none yet'),
+      row('inbox', mailCache.threads.length ? `${mailCache.threads.length} thread(s) · ${mailCache.threads.reduce((n, t) => n + t.unread, 0)} unread · by venture: ${Object.entries(byVenture).map(([v, n]) => `${v} ${n}`).join(', ')}` : s.mail.keys && s.mail.keys.resend ? 'no threads yet' : 'Resend not wired (RESEND_API_KEY)'),
+      ...mailCache.threads.slice(0, 8).map((t) => el('div', { class: `use ${t.unread ? 'running' : ''}`, text: `${new Date(t.last).toLocaleDateString()} · ${t.station}${t.venture ? ` · ${t.venture}` : ''} · ${t.subject || '(no subject)'} · ${t.count} msg${t.classification ? ` · ${t.classification}` : ''}` })),
+      row('outbox', mailCache.sent.length ? `${mailCache.sent.length} sent recently` : 'nothing sent yet'),
+      ...mailCache.sent.slice(0, 5).map((m) => el('div', { class: `use ${m.status === 'bounced' || m.status === 'complained' ? 'failed' : m.status === 'delivered' ? 'ok' : ''}`, text: `${m.status} · ${m.kind} · to ${m.to.join(', ')} · ${m.subject}` })),
+    ];
+  }
+
   function renderZone(s, room) {
     setTitle(`INSPECT · ${room.name}`);
     const roster = s.layout.agents.filter((a) => a.roomId === room.id);
@@ -107,6 +151,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       row('grants', [...new Set(fixtures.flatMap((o) => (s.objectKinds[o.kind] || {}).grants || []))].sort().join(', ') || 'none'),
       row('queue', `${workInTransit(s, room.id).length} work item(s) in transit here · ${s.queuedRuns.filter((r) => roster.some((a) => a.id === r.agentId)).length} run(s) queued`),
       ...workInTransit(s, room.id).slice(0, 6).map((it) => el('div', { class: 'use running', text: `${it.fromAgentId} → ${it.toAgentId} · ${(it.brief || '').slice(0, 60)}` })),
+      ...mailSection(s, room),
       el('div', { class: 'k', text: 'leash defaults for this zone (a Ranger override still wins)' }),
       el('div', { class: 'leash' }, ...zoneLeash.map(([d, v]) => el('div', { class: 'kv' },
         el('span', { class: 'k', text: d }),

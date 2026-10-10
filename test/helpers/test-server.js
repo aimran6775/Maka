@@ -67,7 +67,9 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const scheduler = await createScheduler({ store, clock, tickMs: 60_000, log: { error() {} } }).init();
   away = await createAway({ bus, store, gateQueue, workspaceRoot, clock, log: { error() {} } }).init();
   const mailSetup = createMailSetup({ bus, gateQueue, env, keystorePath, clock, fetch: globalThis.fetch, log: { error() {} }, ...mail });
-  const mailSystem = await createMailSystem({ bus, store, scheduler, getLayout: layoutState.get, env, keystorePath, clock, workspaceRoot, log: { error() {} }, resendBaseUrl: mail.resendBaseUrl }).init();
+  const mailSystem = await createMailSystem({ bus, store, scheduler, getLayout: layoutState.get, env, keystorePath, clock, workspaceRoot, log: { error() {} }, resendBaseUrl: mail.resendBaseUrl, router: createRouter(policy || defaultPolicy()), makeProvider: mail.classifyProvider || null, ledger, classify: Boolean(mail.classifyProvider) }).init();
+  Object.assign(registry, mailSystem.tools);
+  toolContext.mail = mailSystem;
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, log: { error() {} } }).init();
   await workspace.check();
   const app = createApp({

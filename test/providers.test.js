@@ -267,7 +267,7 @@ test('pricing: known models priced, unknown null, table frozen', () => {
 test('registry: createProvider resolves keys and prices; NO_KEY and UNKNOWN_PROVIDER; status hides keys', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-reg-'));
   const keystorePath = path.join(dir, 'keystore.json');
-  assert.deepEqual(PROVIDER_NAMES, ['anthropic', 'openrouter', 'ollama']);
+  assert.deepEqual(PROVIDER_NAMES, ['anthropic', 'openrouter', 'ollama', 'huggingface']);
   await assert.rejects(createProvider('anthropic', { env: {}, keystorePath }), (e) => e.code === 'NO_KEY');
   await assert.rejects(createProvider('bogus', { env: {}, keystorePath }), (e) => e.code === 'UNKNOWN_PROVIDER');
   const { provider, model, price } = await createProvider('anthropic', { env: { ANTHROPIC_API_KEY: 'k' }, keystorePath, fetch: async () => {} });

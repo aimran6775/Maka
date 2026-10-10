@@ -28,7 +28,7 @@ const ASSETS = {
   rock: ['nature-kit/rock_largeA.glb', 'nature-kit/rock_largeB.glb', 'nature-kit/rock_smallA.glb'],
   station: { structure: 'survival-kit/structure.glb', tent: 'survival-kit/tent.glb', campfire: 'survival-kit/campfire-pit.glb', signpost: 'survival-kit/signpost.glb', tentOpen: 'nature-kit/tent_detailedOpen.glb', crate: 'survival-kit/box.glb', logs: 'nature-kit/campfire_logs.glb', fenceGate: 'nature-kit/fence_gate.glb', fenceSimple: 'nature-kit/fence_simple.glb' },
   gate: { doorway: 'survival-kit/fence-doorway.glb', fence: 'survival-kit/fence.glb', signpost: 'survival-kit/signpost.glb' },
-  fixtures: { trailhead_sign: 'nature-kit/sign.glb', supply_cache: 'survival-kit/chest.glb' },
+  fixtures: { trailhead_sign: 'nature-kit/sign.glb', supply_cache: 'survival-kit/chest.glb' }, // radio_tower is built in code (makeTower)
   ranger: { body: 'characters/characterMedium.fbx', skin: 'characters/skaterMaleA.png', clips: { idle: 'characters/idle.fbx', run: 'characters/run.fbx' } },
 };
 
@@ -572,6 +572,31 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     }
   }
 
+  // The Radio tower: an original Maka piece made from primitives (no kit has one).
+  function makeTower() {
+    const g = new THREE.Group();
+    const steel = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.6, metalness: 0.5 });
+    const red = new THREE.MeshStandardMaterial({ color: 0xd94b3d, roughness: 0.7 });
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.28, 7, 8), steel);
+    mast.position.y = 3.5;
+    mast.castShadow = true;
+    g.add(mast);
+    for (let i = 0; i < 3; i++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.6 - i * 0.15, 0.04, 6, 16), steel);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 1.5 + i * 2;
+      g.add(ring);
+    }
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), steel);
+    dish.rotation.x = -Math.PI / 2.4;
+    dish.position.set(0.5, 5.6, 0);
+    g.add(dish);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), red);
+    beacon.position.y = 7.1;
+    g.add(beacon);
+    return g;
+  }
+
   function syncFixtures(state) {
     if (!model) return;
     const wanted = new Map(model.fixtures.map((f) => [f.id, f]));
@@ -586,7 +611,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     for (const f of model.fixtures) {
       if (dynamic.fixtures.has(f.id)) continue;
       const proto = kit.fixtures[f.kind];
-      const obj = proto ? proto.clone() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+      const obj = proto ? proto.clone() : f.kind === 'radio_tower' ? makeTower() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
       place(obj, f.x, f.y, f.z, { scale: proto ? 3.2 : 1 });
       obj.userData.pick = { type: 'object', id: f.id };
       obj.traverse((o) => (o.userData.pick = obj.userData.pick));

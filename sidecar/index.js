@@ -91,7 +91,9 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   scheduler.start();
   away = await createAway({ bus, store, gateQueue, workspaceRoot, log }).init();
   const mailSetup = createMailSetup({ bus, gateQueue, env, keystorePath, domain: config.mailDomain || undefined, region: config.resendRegion || undefined, log });
-  const mail = await createMailSystem({ bus, store, scheduler, getLayout: layoutState.get, env, keystorePath, workspaceRoot, domain: config.mailDomain || undefined, pollMs: config.mailPollMs || undefined, ceilings: config.mailCeilings || {}, log }).init();
+  const mail = await createMailSystem({ bus, store, scheduler, getLayout: layoutState.get, env, keystorePath, workspaceRoot, domain: config.mailDomain || undefined, pollMs: config.mailPollMs || undefined, ceilings: config.mailCeilings || {}, router, ledger, log }).init();
+  Object.assign(registry, mail.tools);
+  toolContext.mail = mail;
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {

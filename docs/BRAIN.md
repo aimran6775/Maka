@@ -40,6 +40,17 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 steps 12 and 12b done. Mail tools: a Radio tower placed in a camp grants its
+Rangers `mail.search`, `mail.read`, `mail.draft`, `mail.send` and `mail.create_address`;
+reads are research, sends follow the leash by kind (replies and notifications are
+outbound messages, campaigns are publishing), a new address is account creation, and a
+send to a never-seen address asks the judge even at Draft. Inbound mail is classified by
+the worker model (the judge when it is unsure; "unclassified" when nothing is reachable)
+and the Visitor Center and camp cards show addresses, inbox threads by venture and the
+outbox with delivery status. Hosted worker: `huggingface` is a fourth provider behind the
+`hosted_worker` tier (HF_TOKEN), metered by calls per day in the ledger; a policy may
+route turns to it or opt into a fallback when Ollama is unreachable, always recorded.
+
 Phase 2 step 11 done: mail policy. `sidecar/mail/send.js` decides who may send from
 which address (a Ranger from its aliases and its station, the Chief from the Peak and any
 station, the Superintendent from any station), which leash domain a message falls under

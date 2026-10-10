@@ -21,7 +21,7 @@ function layoutWith(kinds) {
   return layout;
 }
 
-test('world: default layout validates; grants derive from objects in the agent room only', () => {
+test('world: default layout validates; grants derive from objects in the agent room only', async () => {
   const layout = defaultLayout();
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, true);
   assert.deepEqual(grantsFor(layout, 'ranger'), []);
@@ -31,7 +31,8 @@ test('world: default layout validates; grants derive from objects in the agent r
   other.objects[0].roomId = 'annex';
   assert.deepEqual(grantsFor(other, 'ranger'), []);
   assert.deepEqual(grantsFor(other, 'nobody'), []);
-  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t), `${t} exists`);
+  const { MAIL_TOOLS } = await import('../sidecar/capability/../mail/tools.js');
+  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t) || t in MAIL_TOOLS, `${t} exists`);
   assert.equal(tileInRoom(layout.rooms[0], 1, 1), true);
   assert.equal(tileInRoom(layout.rooms[0], 13, 1), false);
   const bad = layoutWith(['piano']);

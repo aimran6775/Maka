@@ -264,7 +264,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         return sendJson(res, 202, { runId, agentId, provider, model, tier, queued });
       } catch (err) {
         if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);
-        if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST', 'AGENT_PAUSED'].includes(err.code)) throw new HttpError(400, err.message, err.code);
+        if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST', 'AGENT_PAUSED', 'HOSTED_CAP'].includes(err.code)) throw new HttpError(400, err.message, err.code);
         throw err;
       }
     }

@@ -564,3 +564,26 @@ to the Gate without a judge call, as before.
 `mail.send` is one tool whose domain depends on what it sends (reply vs campaign). The
 gate accepts `tool.domain` as a function of the input and resolves the leash per call;
 `leashFor(tool, input)` reports the same. Static domains are unchanged.
+
+## D69. Mail is granted by the Radio tower, scoped by station, and the Chief sees all
+
+The brief's fixture table makes the Radio tower the mail grant, so the five mail tools
+are its `grants` and a camp without a tower has no mail. A Ranger's view is its station's
+shared mailbox plus its own aliases; the Chief sees every station. The tower model is an
+original Maka piece built from primitives because no vendored kit has one.
+
+## D70. Classification is worker first, judge on doubt, and never guessed
+
+The worker model classifies inbound mail with a confidence; under 0.6 or when its answer
+is unreadable the judge decides (within the judge caps); when neither is reachable the
+message stays `unclassified` and the event says `by: 'none'`. The worker's turn is a
+known $0 on Ollama; a judge call is a priced `cost.estimate` and counts in the ledger.
+
+## D71. The hosted worker is metered by calls, never priced by guess, and never a silent fallback
+
+Hugging Face's router reports tokens but no price, so its cost events are unreconciled
+and the ledger caps calls per day (`hostedWorkerCallsPerDay`, 2000). It runs only when
+a policy step, an agent's own policy or an explicit request names it, or when the policy
+opts into `fallback.worker: 'hosted_worker'` and Ollama is unreachable; the run then
+records tier `hosted_worker` and the park shows it. D19 (no silent fallback to a paid
+provider) stands: the fallback is a written opt-in and every turn says which tier ran.

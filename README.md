@@ -33,6 +33,7 @@ reproduce them.
 npm run assets                        # fetch + verify Three.js and the kits (network)
 ollama serve                          # local worker models (any tool-capable model pulled)
 export ANTHROPIC_API_KEY=sk-ant-...   # the judge; or OPENROUTER_API_KEY; or the keystore below
+# optional: HF_TOKEN (hosted worker), RESEND_API_KEY + CLOUDFLARE_API_TOKEN (mail), RESEND_WEBHOOK_SECRET
 npm start                             # node sidecar/index.js
 ```
 
@@ -139,8 +140,18 @@ replies and notifications fall under the outbound-messages leash and campaigns u
 publishing, hourly ceilings (per Ranger, per station, campaign recipients; `mailCeilings`
 in `config.json`) hold whoever sends, and a message to an address the park has never
 exchanged mail with gets a judge review even at "Draft for review". You can send from any
-station address with `POST /api/mail/send`. The Rangers' mail tools and the Visitor Center
-inbox are step 12.
+station address with `POST /api/mail/send`.
+
+Step 12, mail tools: place a Radio tower in a camp (BUILD) and its Rangers can search and
+read the station's mail, draft and send replies, notifications and campaigns, and ask for
+a venture address, each under the matching leash at the Gate. Inbound mail is classified
+(customer, supplier, platform notice, spam) by the local worker, the judge when unsure.
+Click the Visitor Center or a camp for its addresses, inbox threads by venture and outbox.
+
+Step 12b, hosted worker: set `HF_TOKEN` and `policy.json` can route turns to
+`hosted_worker` (Hugging Face Inference Providers, `Qwen/Qwen2.5-72B-Instruct` by
+default) or opt into `"fallback": { "worker": "hosted_worker" }` for when Ollama is down.
+It is metered by calls per day (`hostedWorkerCallsPerDay`), shown as unpriced spend.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

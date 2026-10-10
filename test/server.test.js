@@ -676,6 +676,27 @@ test('mail over HTTP: station addresses from boot, alias CRUD, sync pulls receiv
   }
 });
 
+test('a Radio tower placed in the station grants the mail tools to a run, and the Ranger card data lists the addresses', async () => {
+  const rs = await startFakeResend();
+  const layout = (await import('../shared/world.js')).defaultLayout();
+  layout.objects.push({ id: 'tower', kind: 'radio_tower', roomId: 'ranger-station', x: 2, y: 2 });
+  const srv = await startTestServer({ layout, makeProvider: scripted([[text('checking mail'), end()]]), env: { RESEND_API_KEY: rs.apiKey }, mail: { resendBaseUrl: rs.url } });
+  try {
+    assert.ok((await srv.get('/api/state')).body.objectKinds.radio_tower);
+    const stream = await srv.sse();
+    const r = await srv.post('/api/run', { prompt: 'check mail' });
+    const start = await stream.waitFor((e) => e.type === 'agent.run.start' && e.payload.runId === r.body.runId);
+    assert.ok(start.payload.tools.includes('mail.search') && start.payload.tools.includes('mail.send'));
+    await stream.waitFor((e) => e.type === 'agent.run.end');
+    await srv.runs.waitForIdle();
+    assert.equal((await srv.get('/api/mail')).body.classify.wired, false, 'no classifier without a worker in this test');
+    stream.close();
+  } finally {
+    await srv.close();
+    await rs.close();
+  }
+});
+
 test('provider failure becomes agent.run.error and the run record says so; NO_KEY is a 400 before any event', async () => {
   const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([() => { const e = new Error('upstream 500'); e.code = 'HTTP_500'; throw e; }]), model: 'm', price: null }) });
   try {

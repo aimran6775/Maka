@@ -15,6 +15,10 @@ import { deepFreeze } from './schema.js';
 export const OBJECT_KINDS = deepFreeze({
   trailhead_sign: { label: 'Trailhead sign', grants: ['web.fetch'], hint: 'Rangers in this zone can fetch public web pages.' },
   supply_cache: { label: 'Supply cache', grants: ['fs.read', 'fs.write'], hint: 'Rangers in this zone can read and write files in their own workspace (writes ask you first at the Entrance Gate).' },
+  // Phase 2 step 12: the station's mail. Reads are research; sends fall under
+  // outbound_messages (replies, notifications) or publishing (campaigns); a new address is
+  // account_creation. Each is enforced by the leash at the Entrance Gate.
+  radio_tower: { label: 'Radio tower', grants: ['mail.search', 'mail.read', 'mail.draft', 'mail.send', 'mail.create_address'], hint: "Rangers in this zone can read their station's mail, draft and send replies, notifications and campaigns, and ask for a venture address; sends and new addresses follow the leash." },
 });
 
 export const OBJECT_KIND_NAMES = deepFreeze(Object.keys(OBJECT_KINDS));
