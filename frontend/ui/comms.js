@@ -98,6 +98,10 @@ export function createComms({ parent, getState, api, x, y, w }) {
   function renderItem(it) {
     if (it.kind === 'text') return el('div', { class: 'item text' }, it.text);
     if (it.kind === 'note') return el('div', { class: 'item note', text: it.text });
+    if (it.kind === 'judge') {
+      const cost = it.usd === null ? (it.verdict === 'skipped' ? 'no call' : 'unpriced') : fmtUsd(it.usd);
+      return el('div', { class: `item judge ${it.verdict}`, text: `judge · turn ${it.turn} · ${it.scope} · ${it.verdict}${it.notes ? `: ${it.notes}` : it.reason ? `: ${it.reason}` : ''} · ${it.model || it.provider || ''} · ${cost}` });
+    }
     if (it.kind === 'cost') {
       const who = `${it.tier ? it.tier + ' · ' : ''}${it.provider}/${it.model}`;
       const cost = it.reconciled ? fmtUsd(it.usd) : 'unpriced';

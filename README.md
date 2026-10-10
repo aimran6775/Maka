@@ -40,7 +40,7 @@ Then open <http://127.0.0.1:8790>. Orbit with the mouse, scroll to zoom, switch 
 follow with the buttons at the bottom, re-roll the terrain seed there too. Click the Ranger,
 a zone, a fixture, the Entrance Gate or the Mountain Peak to inspect it. Routine turns run on the local worker model (Ollama at
 `OLLAMA_HOST`, default `http://127.0.0.1:11434`, model `OLLAMA_MODEL` or the first installed).
-Claude via the Anthropic API is the judge tier; the judge step itself lands in phase 2.
+Claude via the Anthropic API is the judge tier (see "Phase 2 so far").
 Without Ollama running, a default run answers `400 OLLAMA_UNREACHABLE`; without a key, an
 explicit Anthropic or OpenRouter run answers `400 NO_KEY`. The UI shows each provider as
 wired, not wired, reachable or not reachable. Nothing is simulated.
@@ -79,6 +79,12 @@ at "Act with cap" it runs while the day's USD and action caps hold; at "Act free
 runs and is counted. Five approvals in a row raise a proposal card to loosen that Ranger
 one level. Phase 1 tools fall under `research` (reads and fetches) or none (`fs.write`,
 still confirmed per call); the money, mail and connector tools arrive in later steps.
+Step 2, the judge: with an Anthropic key, Claude (`claude-sonnet-5-5`, see `policy.json`)
+reviews a Ranger's tool calls before they act at "Act with cap" or "Act freely" outside
+research, and reviews the closing answer before a run ends; revise and reject go back to
+the Ranger as its next turn. Every judge call shows in the transcript and SPEND with its
+own cost, capped at $10 a day; at the cap or without a key the action waits at the Gate
+instead. The judge step itself is wired; the park's "radio the station" animation is step 7.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

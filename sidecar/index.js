@@ -18,6 +18,8 @@ import { createEventBus } from './bus.js';
 import { createRunManager } from './runs.js';
 import { createLeashLedger, createLeashState } from './leash-ledger.js';
 import { createGateQueue } from './gate-queue.js';
+import { createJudge } from './judge.js';
+import { createRouter } from './router.js';
 import { createApp, createHttpServer, createLayoutState } from './server.js';
 import { providerStatus } from './providers/provider.js';
 import { keystoreStatus, defaultKeystorePath } from './providers/keys.js';
@@ -58,7 +60,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get }).init();
 
   const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, onOffline: () => runs.cancel() });
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, workspaceOnline: () => workspace.state().online });
+  const judge = createJudge({ router: createRouter(policy), ledger, bus, env, keystorePath, log });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, workspaceOnline: () => workspace.state().online });
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -102,7 +105,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     else log.info(`  provider ${name}: ${s.configured ? 'key configured' : `not wired (set ${s.envVar} or add to ${keystorePath})`}`);
   }
   log.info(`  gate: ${gateQueue.pending().length} item(s) waiting; leash day ${ledger.dayKey()}`);
-  log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${policy.tiers.judge.provider}${policy.tiers.judge.model ? '/' + policy.tiers.judge.model : ''}`);
+  log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${judge.route.provider}/${judge.route.model || 'default'} (cap $${judge.caps.judgeUsdPerDay}/day, $${ledger.judgeToday().usd.toFixed(2)} used today)`);
 
   async function close() {
     workspace.stop();

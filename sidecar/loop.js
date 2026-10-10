@@ -5,11 +5,16 @@
 //     -> { reason, turns, finalText, usage, spentUsd, messages }
 //
 // `tier` ('worker' | 'judge') is recorded on every cost.estimate so a run shows which model
-// did which turn. `review` is the pre-Gate hook point for the phase 2 judge step:
-//   review({ runId, turn, content, toolUses }) -> { verdict: 'approve'|'revise'|'reject', notes }
-// When it returns revise/reject, the turn's tool calls are NOT executed; each gets an error
-// tool_result carrying the notes, so the worker sees the verdict as a new turn. Phase 1
-// passes no review, which means approve.
+// did which turn. `review` is the pre-Gate hook point for the judge step (sidecar/judge.js):
+//   review({ runId, turn, content, toolUses, final }) -> { verdict, notes, usd?, escalate?, reason? }
+//   verdict: 'approve' | 'revise' | 'reject'
+// With tool calls (final: false), revise/reject means the turn's tool calls are NOT
+// executed; each gets an error tool_result carrying the notes, so the worker sees the
+// verdict as a new turn. Without tool calls (final: true, the worker is about to finish),
+// revise/reject becomes a new user turn carrying the notes, at most `maxReviewRetries`
+// times, after which the run ends as completed. `usd` (the judge call's reconciled cost)
+// counts against the run budget. `escalate` is handed to the tools as ctx.review so the
+// gate can send the call to the Entrance Gate instead (judge at cap). No review = approve.
 //
 // Invariants (each one is tested in test/loop.test.js):
 //   - every transition is an event validated against shared/events.js before emit();
@@ -38,6 +43,7 @@ import { makeEvent } from '../shared/events.js';
 
 export const DEFAULT_MAX_TURNS = 8;
 export const DEFAULT_BUDGET_USD = 1;
+export const DEFAULT_MAX_REVIEW_RETRIES = 2;
 
 function sequentialIds(prefix) {
   let n = 0;
@@ -93,6 +99,7 @@ export async function runLoop(options) {
     ids = sequentialIds(runId),
     tier = null,
     review = null,
+    maxReviewRetries = DEFAULT_MAX_REVIEW_RETRIES,
   } = options;
 
   if (!runId || !agentId || !provider || !model || !tools || typeof emit !== 'function') {
@@ -111,6 +118,21 @@ export async function runLoop(options) {
   let turn = 0;
   let finalText = '';
   let reason = null;
+  let reviewRetries = 0;
+
+  const askReview = async (ctx) => {
+    let verdict = null;
+    try {
+      verdict = (await review(ctx)) || null;
+    } catch (err) {
+      verdict = { verdict: 'reject', notes: `review failed: ${err && err.message ? err.message : err}` };
+    }
+    if (verdict && verdict.verdict !== 'approve' && verdict.verdict !== 'revise' && verdict.verdict !== 'reject') {
+      verdict = { verdict: 'reject', notes: `review returned an unknown verdict "${verdict.verdict}"` };
+    }
+    if (verdict && typeof verdict.usd === 'number' && verdict.usd >= 0) spentUsd += verdict.usd;
+    return verdict;
+  };
 
   send('agent.run.start', {
     runId,
@@ -202,6 +224,17 @@ export async function runLoop(options) {
 
     const toolUses = content.filter((b) => b.type === 'tool_use');
     if (toolUses.length === 0) {
+      // Final review (judge) before the run ends: revise/reject sends the notes back as a
+      // new user turn, a bounded number of times.
+      if (typeof review === 'function' && reviewRetries < maxReviewRetries && !(signal && signal.aborted)) {
+        const verdict = await askReview({ runId, turn, content, toolUses, final: true });
+        if (verdict && verdict.verdict !== 'approve') {
+          reviewRetries += 1;
+          const label = verdict.verdict === 'reject' ? 'rejected' : 'sent back for revision';
+          messages.push({ role: 'user', content: [{ type: 'text', text: `[Judge review: your answer was ${label}${verdict.notes ? `: ${verdict.notes}` : ''}. Revise and answer again.]` }] });
+          continue;
+        }
+      }
       reason = 'completed';
       break;
     }
@@ -209,19 +242,10 @@ export async function runLoop(options) {
     // tool_use block gets an answer so the transcript stays well-formed.
     void stopReason;
 
-    // Pre-Gate review hook (phase 2 judge). Absent hook = approve.
-    let verdict = null;
-    if (typeof review === 'function') {
-      try {
-        verdict = (await review({ runId, turn, content, toolUses })) || null;
-      } catch (err) {
-        verdict = { verdict: 'reject', notes: `review failed: ${err && err.message ? err.message : err}` };
-      }
-      if (verdict && verdict.verdict !== 'approve' && verdict.verdict !== 'revise' && verdict.verdict !== 'reject') {
-        verdict = { verdict: 'reject', notes: `review returned an unknown verdict "${verdict.verdict}"` };
-      }
-    }
+    // Pre-Gate review hook (judge). Absent hook = approve.
+    const verdict = typeof review === 'function' ? await askReview({ runId, turn, content, toolUses, final: false }) : null;
     const blocked = verdict && verdict.verdict !== 'approve' ? verdict : null;
+    const reviewCtx = verdict ? { verdict: verdict.verdict, notes: verdict.notes || '', escalate: Boolean(verdict.escalate), reason: verdict.reason || '' } : null;
 
     const results = [];
     for (const call of toolUses) {
@@ -235,7 +259,7 @@ export async function runLoop(options) {
         result = { ok: false, error: 'tool input was not valid JSON' };
       } else {
         try {
-          result = normalizeResult(await tools.execute(call, { runId, agentId, turn, signal, turnText: textOf(content) }));
+          result = normalizeResult(await tools.execute(call, { runId, agentId, turn, signal, turnText: textOf(content), review: reviewCtx }));
         } catch (err) {
           result = { ok: false, error: err && err.message ? err.message : String(err) };
         }

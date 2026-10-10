@@ -7,18 +7,20 @@
 //   policy = {
 //     version: 1,
 //     tiers: { worker: { provider, model }, judge: { provider, model } },
-//     steps: { turn: 'worker', plan: 'judge', review: 'judge', ambiguity: 'judge', gate_action: 'judge' },
-//     caps: { judgeCallsPerRun: 20, judgeCallsPerDay: 500 }
+//     steps: { turn: 'worker', plan: 'judge', review: 'judge', ambiguity: 'judge', gate_action: 'judge', reflect: 'judge' },
+//     stepModels: { plan: 'claude-opus-5-5', reflect: 'claude-opus-5-5' },   // per-step model override
+//     caps: { judgeCallsPerRun: 20, judgeCallsPerDay: 500, judgeUsdPerDay: 10 }
 //   }
 //
 //   createRouter(policy).route({ kind }) -> { tier, provider, model }
 //
-// Phase 1 uses only kind 'turn'. The judge step in the loop is phase 2; the hook point for
-// it is runLoop({ review }) in sidecar/loop.js.
+// Owner defaults (docs/PHASE2_BRIEF.md): the judge reviews on claude-sonnet-5-5; the Chief
+// Ranger plans and reflects on claude-opus-5-5; judge spend is capped at 10 USD per day.
+// The judge step lives in sidecar/judge.js and hooks into runLoop({ review }).
 
 import { validate, deepFreeze } from '../shared/schema.js';
 
-export const STEP_KINDS = deepFreeze(['turn', 'plan', 'review', 'ambiguity', 'gate_action']);
+export const STEP_KINDS = deepFreeze(['turn', 'plan', 'review', 'ambiguity', 'gate_action', 'reflect']);
 export const TIERS = deepFreeze(['worker', 'judge']);
 
 const tierSpec = {
@@ -40,23 +42,33 @@ export const POLICY_SCHEMA = deepFreeze({
       additionalProperties: false,
       properties: Object.fromEntries(STEP_KINDS.map((k) => [k, { type: 'string', enum: TIERS }])),
     },
+    stepModels: {
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.fromEntries(STEP_KINDS.map((k) => [k, { type: 'string', minLength: 1 }])),
+    },
     caps: {
       type: 'object',
       additionalProperties: false,
-      properties: { judgeCallsPerRun: { type: 'integer', minimum: 0 }, judgeCallsPerDay: { type: 'integer', minimum: 0 } },
+      properties: { judgeCallsPerRun: { type: 'integer', minimum: 0 }, judgeCallsPerDay: { type: 'integer', minimum: 0 }, judgeUsdPerDay: { type: 'number', minimum: 0 } },
     },
   },
 });
+
+export const DEFAULT_JUDGE_MODEL = 'claude-sonnet-5-5';
+export const DEFAULT_CHIEF_MODEL = 'claude-opus-5-5';
+export const DEFAULT_JUDGE_USD_PER_DAY = 10;
 
 export function defaultPolicy() {
   return {
     version: 1,
     tiers: {
       worker: { provider: 'ollama' }, // model: first locally installed model unless set
-      judge: { provider: 'anthropic' }, // model: the provider default (claude-opus-5-5)
+      judge: { provider: 'anthropic', model: DEFAULT_JUDGE_MODEL },
     },
-    steps: { turn: 'worker', plan: 'judge', review: 'judge', ambiguity: 'judge', gate_action: 'judge' },
-    caps: { judgeCallsPerRun: 20, judgeCallsPerDay: 500 },
+    steps: { turn: 'worker', plan: 'judge', review: 'judge', ambiguity: 'judge', gate_action: 'judge', reflect: 'judge' },
+    stepModels: { plan: DEFAULT_CHIEF_MODEL, reflect: DEFAULT_CHIEF_MODEL },
+    caps: { judgeCallsPerRun: 20, judgeCallsPerDay: 500, judgeUsdPerDay: DEFAULT_JUDGE_USD_PER_DAY },
   };
 }
 
@@ -80,7 +92,16 @@ export function createRouter(policy = defaultPolicy()) {
     route({ kind = 'turn' } = {}) {
       const tier = this.tierFor(kind);
       const spec = policy.tiers[tier];
-      return { tier, provider: spec.provider, model: spec.model || null };
+      const override = policy.stepModels && policy.stepModels[kind];
+      return { tier, provider: spec.provider, model: override || spec.model || null };
+    },
+    caps() {
+      const c = policy.caps || {};
+      return {
+        judgeCallsPerRun: c.judgeCallsPerRun ?? 20,
+        judgeCallsPerDay: c.judgeCallsPerDay ?? 500,
+        judgeUsdPerDay: c.judgeUsdPerDay ?? DEFAULT_JUDGE_USD_PER_DAY,
+      };
     },
   };
 }

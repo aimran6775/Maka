@@ -1,7 +1,7 @@
 // INSPECT window: the card for whatever was clicked in the park. Shows only what the
 // harness has emitted this session: no projections, no placeholders for phase 2 features.
 import { el, createWindow, setChildren, fmtUsd } from './windows.js';
-import { grantedTools, toolUses, lastModel, pendingGate, recentGate } from '../state.js';
+import { grantedTools, toolUses, lastModel, pendingGate, recentGate, judgeVerdicts } from '../state.js';
 import { LEASH_LEVEL_LABELS, resolveAllLeash } from '../../shared/leash.js';
 
 export function createInspect({ parent, getState, x, y, w }) {
@@ -26,6 +26,7 @@ export function createInspect({ parent, getState, x, y, w }) {
       run ? row('brief', run.prompt) : null,
       row('model', model ? `${model.tier ? model.tier + ' · ' : ''}${model.provider}/${model.model}` : run ? `${run.provider}/${run.model} (no turn finished yet)` : '—'),
       run ? row('spend', `${fmtUsd(run.spentUsd)} reconciled${run.unreconciledTurns ? ` · ${run.unreconciledTurns} unpriced turn(s)` : ''}`) : null,
+      run ? row('judge', judgeVerdicts(run).length ? judgeVerdicts(run).map((v) => `${v.scope} ${v.verdict}${v.notes ? ` (${v.notes})` : v.reason ? ` (${v.reason})` : ''}`).join('; ') : 'not consulted yet') : null,
       row('at the Gate', waiting.length ? waiting.map((it) => `${it.domain}: ${it.summary}`).join('; ') : 'nothing waiting'),
       el('div', { class: 'k', text: 'leash (per domain, enforced by the gate)' }),
       leash.length
@@ -85,6 +86,7 @@ export function createInspect({ parent, getState, x, y, w }) {
       el('div', { class: 'muted small', text: 'The control centre. Phase 1 shows what the harness has done this session; ventures, the Chief Ranger and connector ledgers arrive in phase 2.' }),
       row('ventures', 'no ventures yet'),
       row('gate queue', `${pendingGate(s).length} waiting`),
+      row('judge today', s.judge ? `${fmtUsd(s.judge.today.usd)} of $${s.judge.caps.judgeUsdPerDay} cap · ${s.judge.today.calls} call(s) · ${s.judge.provider}/${s.judge.model || 'default'}` : 'no judge wired'),
       row('spend', `${fmtUsd(s.spend.totalUsd)} reconciled${s.spend.unreconciledTurns ? ` · ${s.spend.unreconciledTurns} unpriced turn(s)` : ''}`),
       row('workspace', s.workspace ? (s.workspace.online ? `online · ${s.workspace.root}` : `OFFLINE (${s.workspace.reason || 'unreachable'}) · ${s.workspace.root}`) : '—'),
       row('runs', runs.length ? `${runs.length} this session` : 'none this session'),

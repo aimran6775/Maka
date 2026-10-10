@@ -336,3 +336,31 @@ Phase 1 read `leash.json` once at boot and never wrote it (D21). Now `PUT /api/l
 approved proposals write it atomically through the store, so a hand edit and an in-park
 change land in the same file. Editing it by hand while the sidecar runs is still only
 picked up at the next boot.
+
+## D41. The judge reviews only what the leash lets a Ranger do alone, plus the closing answer
+
+Draft-level actions already stop at the Gate for the Superintendent, Observe refuses, and
+research is read-only, so a judge call there would be spend without a decision. The judge
+is consulted for tool calls in a non-research domain at Act with cap / Act freely, and
+once before every run ends. A turn mixing reviewed and unreviewed calls is reviewed whole.
+
+## D42. A judge that cannot run falls back to the Gate, never to silence
+
+At the daily USD or call caps, without an Anthropic key, or when the judge call fails, the
+action is escalated to the Gate as Draft for review (the gate reads `ctx.review.escalate`)
+and a `judge.verdict { verdict: 'skipped', reason }` is emitted; the closing answer is
+then not reviewed and the run ends. A judge answer that is not a readable verdict is a
+reject carrying the raw text, so the worker and the park both see what happened.
+
+## D43. The judge's cost is a run cost
+
+Each judge call emits `cost.estimate { tier: 'judge' }` on the run, the loop adds the
+reconciled amount to the run's spend so the budget guard sees it, and the ledger keeps a
+separate judge total per day for the cap. Nothing is counted twice: the ledger is not a
+spend readout.
+
+## D44. Step models: sonnet reviews, opus plans and reflects
+
+`policy.stepModels` overrides the tier's model per step kind. The default policy puts
+`plan` and `reflect` on `claude-opus-5-5` and leaves `review` on the judge tier's
+`claude-sonnet-5-5`, per the owner's defaults. `reflect` is a new step kind for step 6.

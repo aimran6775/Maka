@@ -2,12 +2,13 @@
 // reconciled spend, and persists the run record through the store.
 //
 //   createRunManager({ bus, store, getLayout, workspaceRoot, env, keystorePath, fetch,
-//                      clock, makeProvider, policy, leash | leashState, ledger, gateQueue })
+//                      clock, makeProvider, policy, leash | leashState, ledger, gateQueue, judge })
 //     -> { start(opts), cancel(runId), answer(permissionResponse), active(), pending(), policy }
 //
 // Leash (phase 2 step 1): the gate for every run reads the live leash policy (leashState),
 // checks daily caps against the ledger and parks draft-level actions in the Gate queue.
-// When the run ends, its pending Gate items expire.
+// When the run ends, its pending Gate items expire. `judge` (sidecar/judge.js) supplies the
+// loop's review hook per run; without one, no turn is reviewed.
 //
 // Model choice: an explicit { provider, model } in start() wins; otherwise the router picks
 // the worker tier from the policy (phase 1 runs are routine 'turn' steps). The tier is
@@ -52,6 +53,7 @@ export function createRunManager({
   leashState = null, // { get() } live policy; wins over the static `leash`
   ledger = null, // sidecar/leash-ledger.js
   gateQueue = null, // sidecar/gate-queue.js
+  judge = null, // sidecar/judge.js
   workspaceOnline = () => true, // the watcher's view; a run never starts while offline
 } = {}) {
   if (!bus || !store || typeof getLayout !== 'function' || !workspaceRoot) {
@@ -89,6 +91,7 @@ export function createRunManager({
     pending: () => [...pendingPrompts.entries()].map(([promptId, p]) => ({ promptId, runId: p.runId })),
 
     policy: router.policy,
+    judge: () => (judge ? judge.status() : null),
     get leash() {
       return leashState ? leashState.get() : leash;
     },
@@ -199,6 +202,7 @@ export function createRunManager({
         submit: gateQueue ? { submit: (item) => gateQueue.submit({ ...item, runId, agentId }), log: (item) => gateQueue.log({ ...item, runId, agentId }) } : null,
       });
 
+      const review = judge ? judge.forRun({ runId, agentId, gate, brief: prompt }) : null;
       active = { runId, agentId, abort: () => ac.abort(), record, flush };
       await flush();
 
@@ -246,6 +250,7 @@ export function createRunManager({
             maxTurns,
             budgetUsd,
             price,
+            review,
           });
         } catch (err) {
           // runLoop itself failed (a bug or an emit failure). Report it as a run error.

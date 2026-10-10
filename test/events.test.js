@@ -23,6 +23,7 @@ const SAMPLES = {
   'workspace.online': { root: '/Volumes/LaCie/Maka/workspace' },
   'gate.item': { itemId: 'g1', agentId: 'ranger', kind: 'action', domain: 'money_out', tool: 'pay.supplier', summary: 'pay $12', status: 'pending', runId: 'r1', callId: 'c1', turn: 2, level: 'draft', amountUsd: 12, evidence: [{ kind: 'said', text: 'ordering stock', ref: 'r1' }], reason: 'leash is draft' },
   'agent.waiting': { runId: 'r1', agentId: 'ranger', itemId: 'g1', domain: 'money_out', tool: 'pay.supplier' },
+  'judge.verdict': { agentId: 'ranger', runId: 'r1', turn: 2, verdict: 'revise', scope: 'action', provider: 'anthropic', model: 'claude-sonnet-5-5', usd: 0.004, reconciled: true, notes: 'quote first', tools: ['pay.supplier'] },
 };
 
 test('the contract lists exactly the known events and is frozen', () => {
@@ -87,6 +88,8 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('gate.item', { ...SAMPLES['gate.item'], kind: 'wish' });
   bad('gate.item', { ...SAMPLES['gate.item'], evidence: [{ text: 'no kind' }] });
   bad('agent.waiting', { runId: 'r1', agentId: 'a' });
+  bad('judge.verdict', { ...SAMPLES['judge.verdict'], verdict: 'shrug' });
+  assert.equal(validate_('judge.verdict', { agentId: 'a', runId: 'r', turn: 1, verdict: 'skipped', scope: 'final', reason: 'cap', usd: null, reconciled: false }).ok, true);
   assert.equal(validate_('gate.item', { itemId: 'g2', agentId: 'ranger', kind: 'proposal', domain: 'publishing', tool: 'leash.loosen', summary: 'loosen?', status: 'pending', proposal: { from: 'draft', to: 'act_capped' } }).ok, true);
   assert.equal(validate_('cost.estimate', { ...SAMPLES['cost.estimate'], usd: null, reconciled: false }).ok, true);
   assert.throws(() => assertEvent({ v: 1, id: 'x', type: 'agent.token', ts: 1, payload: {} }), /agent\.token payload failed validation/);

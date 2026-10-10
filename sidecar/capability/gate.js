@@ -168,6 +168,11 @@ export function createToolGate({
             }
           }
         }
+        // The judge could not review this turn (cap reached, not wired): fall back to Draft.
+        if (!viaGate && ctx.review && ctx.review.escalate) {
+          viaGate = true;
+          gateReason = ctx.review.reason || 'the judge could not review this action; falls back to Draft for review';
+        }
         if (viaGate) {
           if (!submit || typeof submit.submit !== 'function') return { ok: false, code: 'GATE_UNAVAILABLE', error: `${call.name} needs a decision at the Entrance Gate and no Gate queue is available` };
           let decision;

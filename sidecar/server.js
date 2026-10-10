@@ -188,6 +188,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         activeRun: runs.active(),
         pendingPrompts: runs.pending(),
         policy: runs.policy,
+        judge: runs.judge ? runs.judge() : null,
         leash: leashState ? leashState.get() : null,
         ledger: ledger ? ledger.summary() : null,
         gate: gateQueue ? { pending: gateQueue.pending(), recent: gateQueue.recent(20) } : null,

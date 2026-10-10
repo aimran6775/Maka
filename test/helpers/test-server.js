@@ -8,6 +8,8 @@ import { createEventBus } from '../../sidecar/bus.js';
 import { createRunManager } from '../../sidecar/runs.js';
 import { createLeashLedger, createLeashState } from '../../sidecar/leash-ledger.js';
 import { createGateQueue } from '../../sidecar/gate-queue.js';
+import { createJudge } from '../../sidecar/judge.js';
+import { createRouter, defaultPolicy } from '../../sidecar/router.js';
 import { defaultLeash } from '../../shared/leash.js';
 import { createWorkspaceWatcher } from '../../sidecar/workspace.js';
 import { createApp, createHttpServer, createLayoutState } from '../../sidecar/server.js';
@@ -19,7 +21,9 @@ import { REPO_ROOT } from '../../sidecar/index.js';
 // `localFetch` stands in for the Ollama probe/requests so tests never touch a real server.
 const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash } = {}) {
+// `judgeProvider`: a (name, opts) => { provider, model, price } factory for the judge tier; when
+// absent no judge is wired, so runs are not reviewed (the phase 1 behaviour).
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -35,7 +39,8 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const ledger = await createLeashLedger({ store, clock, earnApprovals: leash && leash.earn && leash.earn.approvals }).init();
   const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
   const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, intervalMs: 60000, onOffline: () => runsRef && runsRef.cancel() });
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, fetch: localFetch, workspaceOnline: () => workspace.state().online });
+  const judge = judgeProvider ? createJudge({ router: createRouter(policy || defaultPolicy()), makeProvider: judgeProvider, ledger, bus, clock, env, keystorePath, log: { error() {} } }) : null;
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, fetch: localFetch, workspaceOnline: () => workspace.state().online });
   runsRef = runs;
   await workspace.check();
   const app = createApp({

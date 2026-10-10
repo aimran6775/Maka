@@ -278,6 +278,41 @@ test('Entrance Gate over HTTP: a draft-level action waits as a gate.item, approv
   }
 });
 
+test('judge over HTTP: an act_free action is reviewed on the judge tier; verdicts, judge cost and the ledger show up in the state', async () => {
+  const layout = (await import('../shared/world.js')).defaultLayout();
+  layout.objects.push({ id: 'sc', kind: 'supply_cache', roomId: 'ranger-station', x: 2, y: 2 });
+  // Research at act_free is not judged (D38), so judge the final answer only, then check the judge cost is reconciled.
+  const judgeProvider = async (name, opts) => ({ provider: fakeProvider([[text('{"verdict":"approve","notes":"fine"}'), end('end_turn', { inputTokens: 500, outputTokens: 20 })]], { name }), model: opts.model, price: PRICE });
+  const srv = await startTestServer({ layout, makeProvider: scripted([[...toolCall('c1', 'fs.read', { path: 'notes.txt' }), end('tool_use')], [text('done'), end()]]), judgeProvider });
+  try {
+    await fsp.mkdir(path.join(srv.workspaceRoot, 'ranger'), { recursive: true });
+    await fsp.writeFile(path.join(srv.workspaceRoot, 'ranger', 'notes.txt'), 'milk');
+    const before = await srv.get('/api/state');
+    assert.deepEqual(before.body.judge.today, { usd: 0, calls: 0 });
+    assert.equal(before.body.judge.model, 'claude-sonnet-5-5');
+    assert.equal(before.body.judge.wired, false);
+    const stream = await srv.sse();
+    const { body: { runId } } = await srv.post('/api/run', { prompt: 'read notes' });
+    const verdict = await stream.waitFor((e) => e.type === 'judge.verdict');
+    assert.deepEqual([verdict.payload.scope, verdict.payload.verdict, verdict.payload.notes, verdict.payload.turn], ['final', 'approve', 'fine', 2]);
+    await stream.waitFor((e) => e.type === 'agent.run.end');
+    await srv.runs.waitForIdle();
+    const costs = stream.events.filter((e) => e.type === 'cost.estimate').map((e) => [e.payload.tier, e.payload.model]);
+    assert.deepEqual(costs, [['worker', 'fake-model'], ['worker', 'fake-model'], ['judge', 'claude-sonnet-5-5']]);
+    const after = await srv.get('/api/state');
+    assert.equal(after.body.judge.today.calls, 1);
+    assert.equal(after.body.judge.today.usd, (500 * 1 + 20 * 2) / 1e6);
+    assert.equal(after.body.judge.wired, true);
+    assert.equal(after.body.ledger.judge.calls, 1);
+    const rec = await srv.get(`/api/runs/${runId}`);
+    assert.ok(rec.body.events.some((e) => e.type === 'judge.verdict'), 'the verdict is in the run record');
+    assert.ok(Math.abs(rec.body.spentUsd - ((500 * 1 + 20 * 2) / 1e6 + 2 * (10 * 1 + 5 * 2) / 1e6)) < 1e-12, 'run spend includes the judge call');
+    stream.close();
+  } finally {
+    await srv.close();
+  }
+});
+
 test('provider failure becomes agent.run.error and the run record says so; NO_KEY is a 400 before any event', async () => {
   const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([() => { const e = new Error('upstream 500'); e.code = 'HTTP_500'; throw e; }]), model: 'm', price: null }) });
   try {

@@ -17,6 +17,7 @@ export function initialState() {
     lastSeq: 0,
     providers: {},
     policy: null, // router policy from the snapshot (worker / judge tiers)
+    judge: null, // { provider, model, caps, today: { usd, calls }, wired } from the snapshot
     leash: null, // leash policy from the snapshot (shared/leash.js shape)
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
@@ -66,6 +67,7 @@ export function applySnapshot(state, snap) {
   next.lastSeq = Math.max(state.lastSeq, next.snapshotSeq);
   next.providers = snap.providers || {};
   next.policy = snap.policy || null;
+  next.judge = snap.judge || null;
   next.leash = snap.leash || null;
   next.workspace = snap.workspace || null;
   next.keystore = snap.keystore || { path: '', problem: null };
@@ -252,6 +254,13 @@ export function applyEvent(state, event) {
       }
       break;
     }
+    case 'judge.verdict': {
+      next = updateRun(next, p.runId, (run) => ({
+        ...run,
+        items: [...run.items, { kind: 'judge', turn: p.turn, scope: p.scope, verdict: p.verdict, notes: p.notes || '', reason: p.reason || '', provider: p.provider || '', model: p.model || '', usd: typeof p.usd === 'number' ? p.usd : null, reconciled: Boolean(p.reconciled), tools: p.tools || [] }],
+      }));
+      break;
+    }
     case 'agent.waiting': {
       const run = next.runs[p.runId];
       if (run && run.status === 'running') next = setAgent(next, p.agentId, 'waiting', p.runId);
@@ -306,6 +315,11 @@ export function toolUses(state, toolNames) {
     }
   }
   return out;
+}
+
+// Judge verdicts of a run, in order.
+export function judgeVerdicts(run) {
+  return run ? run.items.filter((it) => it.kind === 'judge') : [];
 }
 
 // The most recent cost line of a run, i.e. which model last ran a turn for it.

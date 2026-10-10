@@ -197,6 +197,24 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     proposal: { type: 'object', required: ['from', 'to'], additionalProperties: false, properties: { from: { type: 'string', enum: LEASH_LEVEL_ENUM }, to: { type: 'string', enum: LEASH_LEVEL_ENUM } } },
     away: bool,
   }),
+  // Added v1 (phase 2 step 2): the judge model reviewed a worker turn. `scope` is 'action'
+  // (before the turn's tool calls run) or 'final' (before the run ends). 'skipped' means no
+  // judge call was made (cap reached or judge not wired) and says why in `reason`; the
+  // action then falls back to Draft for review at the Gate.
+  'judge.verdict': payload(['agentId', 'runId', 'turn', 'verdict', 'scope'], {
+    agentId: nonEmpty,
+    runId: nonEmpty,
+    turn: int1,
+    verdict: { type: 'string', enum: ['approve', 'revise', 'reject', 'skipped'] },
+    scope: { type: 'string', enum: ['action', 'final'] },
+    provider: str,
+    model: str,
+    usd: { type: ['number', 'null'], minimum: 0 },
+    reconciled: bool,
+    notes: str,
+    reason: str,
+    tools: { type: 'array', items: nonEmpty },
+  }),
   // Added v1 (phase 2 step 1): a run is parked on a pending Gate item; the Ranger waits at
   // the Gate until a gate.item with that itemId leaves 'pending'.
   'agent.waiting': payload(['runId', 'agentId', 'itemId'], {

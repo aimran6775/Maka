@@ -34,6 +34,14 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 2 done: the judge step. `sidecar/judge.js` supplies the loop's review hook:
+before a worker's tool calls in a non-research domain at Act with cap / Act freely, and
+before every run ends, Claude (`claude-sonnet-5-5` by default) answers approve / revise /
+reject with notes; revise and reject go back to the worker as its next turn (bounded).
+Each judge call is a `judge.verdict` plus a `cost.estimate { tier: 'judge' }`, counted in
+the ledger against a 10 USD daily cap; at the cap, without a key, or on a failed call the
+verdict is `skipped` and the action falls back to the Gate as Draft for review.
+
 Phase 2 step 1 done: leash enforcement. Every tool with a leash domain now goes through
 `resolveLeash` (agent override → zone default → park default) in the capability gate:
 Observe refuses, Draft for review parks the call as a `gate.item` until the Superintendent
@@ -71,6 +79,14 @@ The ledger (`sidecar/leash-ledger.js`) is the only counter of "what ran today" p
 and the only source for the daily caps. Everything the Gate decides is a `gate.item` event
 with the same `itemId` across its status changes.
 
+### The judge (`sidecar/judge.js`)
+
+A second model never rewrites the first. The judge sees the brief, what the worker said,
+and the tool calls with their leash levels, and returns one JSON verdict. The loop turns a
+revise / reject into error tool results (for actions) or a new user turn (for the closing
+answer). The judge's cost is a reconciled cost event like any other, with `tier: 'judge'`,
+so SPEND and the Peak show it; when the judge cannot run, the event says so.
+
 ### The loop (`sidecar/loop.js`)
 
 One turn = one provider call + the tool calls it asked for. Before every provider call the
@@ -86,6 +102,6 @@ an unpriced model cannot be budget-capped (the UI shows its tokens as unreconcil
 1. `shared/events.js` — the vocabulary.
 2. `sidecar/loop.js` — the behaviour.
 3. `sidecar/capability/`, `shared/leash.js`, `sidecar/gate-queue.js`, `sidecar/leash-ledger.js` — the permission model.
-4. `sidecar/router.js` and `sidecar/providers/` — which model runs and what it costs.
+4. `sidecar/router.js`, `sidecar/judge.js` and `sidecar/providers/` — which model runs and what it costs.
 5. `sidecar/index.js` — how it is served and persisted.
 6. `frontend/app.js` — how it is shown.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, applySnapshot, applyEvent, grantedTools, currentRun, AGENT_STATES, pendingGate, recentGate } from '../frontend/state.js';
+import { initialState, applySnapshot, applyEvent, grantedTools, currentRun, AGENT_STATES, pendingGate, recentGate, judgeVerdicts } from '../frontend/state.js';
 import { makeEvent } from '../shared/events.js';
 import { defaultLayout, OBJECT_KINDS } from '../shared/world.js';
 
@@ -177,4 +177,18 @@ test('gate.item and agent.waiting: the Ranger waits at the Gate until the item i
   assert.equal(recentGate(s)[0].itemId, 'g2');
   s = reduce(s, [ev('gate.item', { itemId: 'g0', agentId: 'ranger', kind: 'proposal', domain: 'publishing', tool: 'leash.loosen', summary: 'loosen?', status: 'rejected' })]);
   assert.equal(pendingGate(s).length, 0);
+});
+
+test('judge.verdict lands in the run transcript as a judge item; the snapshot carries judge status', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ judge: { provider: 'anthropic', model: 'claude-sonnet-5-5', caps: { judgeUsdPerDay: 10 }, today: { usd: 0.2, calls: 3 }, wired: true } }));
+  assert.equal(s.judge.today.calls, 3);
+  s = reduce(s, [
+    ev('agent.run.start', { runId: 'r', agentId: 'ranger', provider: 'p', model: 'm', prompt: 'x', maxTurns: 3, budgetUsd: 1, tools: [] }),
+    ev('judge.verdict', { agentId: 'ranger', runId: 'r', turn: 1, verdict: 'revise', scope: 'action', provider: 'anthropic', model: 'claude-sonnet-5-5', usd: 0.01, reconciled: true, notes: 'add a price', tools: ['social.post'] }),
+    ev('judge.verdict', { agentId: 'ranger', runId: 'r', turn: 2, verdict: 'skipped', scope: 'final', reason: 'cap', usd: null, reconciled: false }),
+  ]);
+  const v = judgeVerdicts(s.runs.r);
+  assert.deepEqual(v.map((x) => [x.turn, x.scope, x.verdict, x.notes, x.reason, x.usd]), [[1, 'action', 'revise', 'add a price', '', 0.01], [2, 'final', 'skipped', '', 'cap', null]]);
+  assert.equal(s.agentStates.ranger, 'thinking', 'a verdict does not change the body state');
 });
