@@ -285,7 +285,7 @@ brief the judge reviews and the Chief decides on) are on disk. All eighteen step
 
 The ledger desk fixture, Google Trends (no official API), ad sets / ad groups and
 creatives (the connectors manage campaigns and budgets only), supplier / dropship
-purchasing (no platform API for it; D80), mail briefings (reflection briefings still go to station notes files rather than station mailboxes),   away mode and the evidence log, distance LOD, the WebGPU renderer
+purchasing (no platform API for it; D80), mail briefings (reflection briefings still go to station notes files rather than station mailboxes), distance LOD, the WebGPU renderer
 path, MCP, channels. Of phase 3, what this environment could not run (the Mac build,
 signing, notarization, the Keychain itself, the clean-account launch) is scripted and
 written down in `docs/RELEASE_RUNBOOK.md`, not verified here. None of these have stubs in the UI; when they arrive they get a row here first.
