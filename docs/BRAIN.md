@@ -40,6 +40,17 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 16 done: the storefronts. Shopify (a custom app's Admin API token and the
+shop domain) and Etsy (an OAuth sign-in approved at the Gate, the app keystring as the
+client id) sync their products or listings, orders and stock into the local store; the
+Listings and Sales camp cards and the Storefront Ranger's tools read from there. A Park
+Store placed in a camp grants the reads (research), listing creation and updates
+(publishing: a new Etsy listing is always a draft until a separate update activates it)
+and price changes (money_in). Neither platform's API buys from a supplier, so no
+money_out tool exists for the storefronts and the park does not pretend one does. A
+connected platform with an empty store syncs at boot, so the camps show figures within
+seconds of a restart.
+
 Phase 2 step 15 done: Stripe. `STRIPE_API_KEY` (or a key approved at the Gate) connects
 it; every 15 minutes and on demand the balance, charges, payouts and refunds are read into
 the local store, and that store is what the Finance camp card, the Books Ranger's tools

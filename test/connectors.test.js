@@ -107,7 +107,7 @@ async function harness({ env = {}, specs = null, fake } = {}) {
   const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
   const scheduler = await createScheduler({ store, clock, tickMs: 60_000, log: { error() {} } }).init();
   const keystorePath = path.join(dir, 'home', 'keystore.json');
-  const connectors = createConnectors({ bus, store, scheduler, gateQueue, env, keystorePath, clock, fetch: globalThis.fetch, config: { oauthPort: 0 }, log: { error() {}, warn() {} } });
+  const connectors = createConnectors({ bus, store, scheduler, gateQueue, env, keystorePath, clock, fetch: globalThis.fetch, config: { oauthPort: 0, syncOnBoot: false }, log: { error() {}, warn() {} } });
   for (const spec of specs || [fakeSpec({ baseUrl: fake.url })]) connectors.define(spec);
   await connectors.init();
   const gate = createToolGate({ getLayout: layoutState.get, agentId: 'ranger', workspaceDir: path.join(dir, 'ws', 'ranger'), registry: { ...connectors.tools }, grants: allGrantsFor, toolContext: { connectors }, getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId: 'run-1', agentId: 'ranger' }), log: (item) => gateQueue.log({ ...item, runId: 'run-1', agentId: 'ranger' }) } });
@@ -121,7 +121,7 @@ test('an API key given through the UI is a Gate item: approve stores it 0600, co
   const h = await harness({ fake });
   try {
     assert.deepEqual(h.connectors.kinds(), ['fakeshop']);
-    assert.deepEqual(CONNECTOR_SPECS.map((c) => c.kind), ['stripe'], 'the platforms defined at boot (step 15 on)');
+    assert.deepEqual(CONNECTOR_SPECS.map((c) => c.kind), ['stripe', 'shopify', 'etsy'], 'the platforms defined at boot (steps 15–16)');
     const before = h.connectors.status('fakeshop');
     assert.equal(before.connected, false);
     assert.equal(before.auth, 'api_key');
@@ -245,7 +245,7 @@ test('an environment variable connects without the Gate; init restores a keystor
     try {
       await setKey('oshop', JSON.stringify({ ...stored, expiresAt: h4.clock.now() - 1 }), { env: {}, keystorePath: h4.keystorePath });
       await setKey('oshopClientId', fake.clientId, { env: {}, keystorePath: h4.keystorePath });
-      const c2 = createConnectors({ bus: h4.bus, store: h4.store, scheduler: h4.scheduler, gateQueue: h4.gateQueue, env: {}, keystorePath: h4.keystorePath, clock: h4.clock, config: { oauthPort: 0 }, log: { error() {}, warn() {} } });
+      const c2 = createConnectors({ bus: h4.bus, store: h4.store, scheduler: h4.scheduler, gateQueue: h4.gateQueue, env: {}, keystorePath: h4.keystorePath, clock: h4.clock, config: { oauthPort: 0, syncOnBoot: false }, log: { error() {}, warn() {} } });
       c2.define(fakeSpec({ kind: 'oshop', label: 'OAuth Shop', auth: 'oauth2', baseUrl: fake.url }));
       await c2.init();
       assert.equal(c2.status('oshop').connected, true);
@@ -266,13 +266,14 @@ test('an environment variable connects without the Gate; init restores a keystor
 });
 
 test('the Park Store grants the framework tools (research): connector.status and connector.sync through the gate', async () => {
-  assert.deepEqual(OBJECT_KINDS.park_store.grants, ['connector.status', 'connector.sync']);
+  assert.deepEqual(OBJECT_KINDS.park_store.grants.slice(0, 2), ['connector.status', 'connector.sync']);
+  assert.ok(OBJECT_KINDS.park_store.grants.every((t) => t in TOOL_DOMAINS));
   assert.equal(TOOL_DOMAINS['connector.status'], 'research');
   assert.equal(TOOL_DOMAINS['connector.sync'], 'research');
   const fake = await startFakeConnector();
   const h = await harness({ fake, env: { FAKESHOP_API_KEY: fake.apiKey } });
   try {
-    assert.deepEqual(h.gate.definitions().map((d) => d.name), ['connector.status', 'connector.sync']);
+    assert.deepEqual(h.gate.definitions().map((d) => d.name), ['connector.status', 'connector.sync'], 'this registry holds only the framework tools');
     const st = JSON.parse((await h.gate.execute({ id: 'c1', name: 'connector.status', input: {} }, { runId: 'run-1' })).output);
     assert.equal(st[0].kind, 'fakeshop');
     assert.equal(st[0].connected, true);
@@ -293,7 +294,7 @@ test('HTTP: /api/connectors rows and data, connect and disconnect are 202 Gate i
   const layout = defaultLayout();
   layout.objects.push({ id: 'shop', kind: 'park_store', roomId: 'ranger-station', x: 2, y: 2 });
   const provider = fakeProvider([[...toolCall('s1', 'connector.status', {}), end('tool_use')], [text('checked'), end()]]);
-  const srv = await startTestServer({ layout, makeProvider: async () => ({ provider, model: 'm', price: null }), connectors: [fakeSpec({ baseUrl: fake.url })], connectorConfig: { oauthPort: 0 } });
+  const srv = await startTestServer({ layout, makeProvider: async () => ({ provider, model: 'm', price: null }), connectors: [fakeSpec({ baseUrl: fake.url })], connectorConfig: { oauthPort: 0, syncOnBoot: false } });
   try {
     assert.ok((await srv.get('/api/state')).body.objectKinds.park_store);
     const list = await srv.get('/api/connectors');

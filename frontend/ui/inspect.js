@@ -139,7 +139,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
   // local store: fetched when inspected, refreshed after a sync event.
   const connCache = { key: null, rows: [], loading: false };
   async function loadConnectorData(s, room) {
-    const mine = s.connectors.filter((c) => c.zoneKind === room.kind);
+    const mine = s.connectors.filter((c) => (c.zoneKinds || [c.zoneKind]).includes(room.kind));
     const key = `${room.id}:${mine.map((c) => `${c.kind}:${c.syncedAt || 0}:${c.connected}`).join(',')}`;
     if (!mine.length || connCache.key === key || connCache.loading) return;
     connCache.loading = true;
@@ -172,10 +172,33 @@ export function createInspect({ parent, getState, api, x, y, w }) {
         ...d.charges.slice(0, 5).map((ch) => el('div', { class: `use ${ch.status === 'succeeded' ? 'ok' : ch.status === 'failed' ? 'failed' : ''}`, text: `${new Date(ch.created).toLocaleDateString()} · ${money(ch.amount, ch.currency)} · ${ch.status}${ch.refunded ? ' · refunded' : ch.amountRefunded ? ` · ${money(ch.amountRefunded, ch.currency)} refunded` : ''} · ${ch.description || ch.customer || ch.id}` })),
       ];
     }
+    if (c.kind === 'shopify') {
+      const week = Date.now() - 7 * 86_400_000;
+      const recent = (d.orders || []).filter((o) => o.createdAt && Date.parse(o.createdAt) >= week && o.financialStatus === 'paid');
+      const cur = (d.shop && d.shop.currency) || '';
+      const stock = (d.products || []).flatMap((p) => p.variants.map((v) => v.inventoryQuantity)).filter((q) => typeof q === 'number');
+      return [
+        row('Shopify', `${d.shop ? `${d.shop.name} (${d.shop.domain}) · ` : ''}${head}`),
+        row('products', `${d.products.length} (${d.products.filter((p) => p.status === 'active').length} active, ${d.products.filter((p) => p.status === 'draft').length} draft) · stock ${stock.reduce((n, q) => n + q, 0)} unit(s) across ${stock.length} variant(s)${stock.some((q) => q <= 0) ? ` · ${stock.filter((q) => q <= 0).length} out of stock` : ''}`),
+        row('orders', `${d.orders.length} in the store · last 7 days: ${recent.length} paid, ${recent.reduce((n, o) => n + (Number(o.totalPrice) || 0), 0).toFixed(2)} ${cur} · ${d.orders.filter((o) => o.financialStatus === 'paid' && o.fulfillmentStatus !== 'fulfilled').length} paid and unfulfilled`),
+        ...d.orders.slice(0, 5).map((o) => el('div', { class: `use ${o.financialStatus === 'paid' ? 'ok' : ''}`, text: `${o.createdAt ? new Date(o.createdAt).toLocaleDateString() : ''} · ${o.name} · ${o.totalPrice} ${o.currency} · ${o.financialStatus} / ${o.fulfillmentStatus} · ${o.customer || ''}` })),
+      ];
+    }
+    if (c.kind === 'etsy') {
+      const week = Date.now() - 7 * 86_400_000;
+      const recent = (d.receipts || []).filter((r) => r.createdAt >= week && r.paid);
+      const cur = (d.shop && d.shop.currency) || '';
+      return [
+        row('Etsy', `${d.shop ? `${d.shop.name} · ` : ''}${head}`),
+        row('listings', `${d.listings.length} (${d.listings.filter((l) => l.state === 'active').length} active, ${d.listings.filter((l) => l.state === 'draft').length} draft) · stock ${d.listings.reduce((n, l) => n + (l.quantity || 0), 0)} unit(s)`),
+        row('orders', `${d.receipts.length} receipt(s) · last 7 days: ${recent.length} paid, ${recent.reduce((n, r) => n + (r.grandTotal || 0), 0).toFixed(2)} ${cur} · ${d.receipts.filter((r) => r.paid && !r.shipped).length} to ship`),
+        ...d.receipts.slice(0, 5).map((r) => el('div', { class: `use ${r.paid ? 'ok' : ''}`, text: `${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ''} · #${r.receiptId} · ${(r.grandTotal || 0).toFixed(2)} ${r.currency} · ${r.paid ? 'paid' : 'unpaid'}${r.shipped ? ', shipped' : ''} · ${r.buyer || ''}` })),
+      ];
+    }
     return [row(c.label, `${head}${c.summary ? ` · ${c.summary}` : ''}`)];
   }
   function connectorSection(s, room) {
-    const mine = (s.connectors || []).filter((c) => c.zoneKind === room.kind);
+    const mine = (s.connectors || []).filter((c) => (c.zoneKinds || [c.zoneKind]).includes(room.kind));
     if (!mine.length) return [];
     loadConnectorData(s, room);
     const rows = connCache.key && connCache.key.startsWith(`${room.id}:`) ? connCache.rows : mine.map((c) => ({ ...c, data: null }));

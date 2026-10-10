@@ -654,3 +654,30 @@ The kickoff fixture table says Park Store = commerce (Shopify / Stripe), Fee boo
 payments. Stripe is payments, so its tools hang on the Fee booth and the Park Store keeps
 the storefront connectors (step 16); both also grant the framework's own `connector.*`
 reads. A camp without the fixture has no Stripe tools, whatever the leash says.
+
+## D80. Storefront writes are listings (publishing) and prices (money_in); there is no supplier purchase
+
+The brief maps listing create / update to publishing, a price change to money_in and a
+supplier or dropship order to money_out. Shopify's Admin API and Etsy's Open API create
+and edit listings and prices but buy nothing from suppliers, so the first two mappings
+are tools and the third is not: a tool that pretended to order from a supplier would be a
+fake action, and Maka shows nothing it cannot do. A supplier connector, if one is ever
+wired, is money_out from the start. A new Etsy listing is created as a draft and goes
+live only through `etsy.update_listing` with `state: active`: two publishing decisions,
+the second with the finished listing in front of the Superintendent.
+
+## D81. One store, one Shopify shop and one Etsy shop, keyed by the owner's own apps
+
+Shopify connects with a custom app's Admin API access token and the shop domain from
+config (no public-app OAuth, which needs a hosted app URL Maka does not have). Etsy has
+no token-only path, so it signs in through the framework's PKCE flow with the owner's app
+keystring (`ETSY_CLIENT_ID`) and the registered local redirect on 127.0.0.1. Both tokens
+live in the keystore like every other secret; the keystring is not a secret but lives
+there too so the park never asks for it twice.
+
+## D82. Connected platforms sync at boot
+
+A connected connector whose local store is empty syncs as soon as the sidecar boots (and
+then on its schedule). Without this the camps would show nothing for up to fifteen
+minutes after every restart, and a Ranger's first read would be empty. Boot waits for
+nothing: the syncs run in the background and `booted` settles when they are done.

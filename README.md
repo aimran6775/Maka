@@ -172,8 +172,16 @@ Step 15, Stripe: set `STRIPE_API_KEY` (or connect at the Peak) and the balance, 
 payouts and refunds sync into the local store; click the Finance camp to read them. Place
 a Fee booth there and its Rangers can read the same figures and refund a charge, which is
 money out: it waits at the Gate with its amount (or runs under the daily cap at
-act_capped) and is tagged `maka:<ranger>` at Stripe. Shopify, Etsy and the ad networks are
-steps 16–17.
+act_capped) and is tagged `maka:<ranger>` at Stripe.
+
+Step 16, storefronts: Shopify needs `SHOPIFY_ACCESS_TOKEN` (a custom app's Admin API
+token) and the shop domain (`"connectors": { "shopify": { "shop": "lanterns" } }` in
+`config.json` or `SHOPIFY_SHOP`); Etsy needs `ETSY_CLIENT_ID` (your app's keystring) and a
+sign-in started at the Peak. Products, listings, orders and stock sync into the local
+store; click the Listings or Sales camp to read them. Place a Park Store there and its
+Rangers can read the same, create or update listings (publishing; a new Etsy listing is a
+draft until a second update activates it) and change prices (money_in). The ad networks
+are step 17.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

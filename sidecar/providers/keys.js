@@ -21,6 +21,8 @@ export const ENV_VARS = Object.freeze({
   resendWebhook: 'RESEND_WEBHOOK_SECRET',
   huggingface: 'HF_TOKEN',
   stripe: 'STRIPE_API_KEY',
+  shopify: 'SHOPIFY_ACCESS_TOKEN',
+  etsyClientId: 'ETSY_CLIENT_ID',
 });
 
 export function defaultKeystorePath(env = process.env) {

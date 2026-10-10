@@ -77,7 +77,7 @@ async function harness({ fake, env, leash: leashPatch = {} } = {}) {
   const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
   const scheduler = await createScheduler({ store, clock, tickMs: 60_000, log: { error() {} } }).init();
   const keystorePath = path.join(dir, 'home', 'keystore.json');
-  const connectors = createConnectors({ bus, store, scheduler, gateQueue, env: env || { STRIPE_API_KEY: fake.apiKey }, keystorePath, clock, log: { error() {}, warn() {} } });
+  const connectors = createConnectors({ bus, store, scheduler, gateQueue, env: env || { STRIPE_API_KEY: fake.apiKey }, keystorePath, clock, config: { syncOnBoot: false }, log: { error() {}, warn() {} } });
   connectors.define(stripeSpec({ baseUrl: fake.url }));
   await connectors.init();
   const gate = createToolGate({ getLayout: layoutState.get, agentId: 'books', workspaceDir: path.join(dir, 'ws', 'books'), registry: { ...connectors.tools }, grants: allGrantsFor, toolContext: { connectors }, getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId: 'run-1', agentId: 'books' }), log: (item) => gateQueue.log({ ...item, runId: 'run-1', agentId: 'books' }) } });

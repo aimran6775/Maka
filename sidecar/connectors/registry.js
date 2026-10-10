@@ -13,8 +13,9 @@
 //     .tools             the generic tools (connector.status, connector.sync)
 //
 // SPEC = { kind, label, auth: 'api_key' | 'oauth2', keyName (keystore / ENV_VARS name),
-//          zoneKind, syncEveryMs, oauth: { authorizeUrl, tokenUrl, clientIdKey,
-//          clientSecretKey?, scopes, extraAuthParams? }, makeClient({ token, fetch, env }),
+//          zoneKind | zoneKinds (the camps whose cards show it), syncEveryMs,
+//          oauth: { authorizeUrl, tokenUrl, clientIdKey, clientSecretKey?, scopes,
+//          extraAuthParams? }, makeClient({ token, fetch, env, config, keys }) (may be async),
 //          sync({ client, data, emit }) -> { data, counts }, tools: { name: tool } }
 //
 // Credentials: an environment variable (ENV_VARS) connects a kind without ceremony, as
@@ -88,10 +89,11 @@ export function createConnectors({ bus, store, scheduler = null, gateQueue = nul
     return t;
   }
 
+  const keys = { get: (name) => resolveKey(name, { env, keystorePath }) };
   async function clientFor(kind) {
     const { spec } = rt(kind);
     const t = await freshToken(kind);
-    return spec.makeClient({ token: t, fetch: fetchImpl, env, config: config[kind] || {} });
+    return spec.makeClient({ token: t, fetch: fetchImpl, env, config: config[kind] || {}, keys });
   }
 
   async function runSync(kind, reason) {
@@ -174,12 +176,18 @@ export function createConnectors({ bus, store, scheduler = null, gateQueue = nul
       if (!CONNECTOR_AUTH_KINDS.includes(spec.auth)) throw new TypeError(`connector ${spec.kind}: auth must be ${CONNECTOR_AUTH_KINDS.join(' or ')}`);
       if (typeof spec.makeClient !== 'function' || typeof spec.sync !== 'function') throw new TypeError(`connector ${spec.kind}: makeClient and sync are required`);
       if (spec.auth === 'oauth2' && !(spec.oauth && spec.oauth.authorizeUrl && spec.oauth.tokenUrl && spec.oauth.clientIdKey)) throw new TypeError(`connector ${spec.kind}: oauth needs authorizeUrl, tokenUrl, clientIdKey`);
-      specs.set(spec.kind, { keyName: spec.kind, syncEveryMs: DEFAULT_SYNC_MS, tools: {}, zoneKind: null, ...spec });
+      const zoneKinds = spec.zoneKinds || (spec.zoneKind ? [spec.zoneKind] : []);
+      specs.set(spec.kind, { keyName: spec.kind, syncEveryMs: DEFAULT_SYNC_MS, tools: {}, ...spec, zoneKinds, zoneKind: zoneKinds[0] || null });
       runtime.set(spec.kind, { data: spec.emptyData ? spec.emptyData() : {}, connected: false, auth: null, lastSync: null, lastError: null, flow: null, pendingItem: null, syncing: false, by: null, connectedAt: null });
       Object.assign(api.tools, spec.tools || {});
       return api;
     },
+    // Loads each kind's store and, for the connected ones, wires the sync job and starts a
+    // first sync when the store is empty (config.syncOnBoot false turns that off; tests).
+    // `booted` settles when those first syncs are done.
+    booted: Promise.resolve(),
     async init() {
+      const firstSyncs = [];
       for (const [kind, spec] of specs) {
         const r = runtime.get(kind);
         r.data = await store.loadConnector(kind, r.data);
@@ -189,8 +197,10 @@ export function createConnectors({ bus, store, scheduler = null, gateQueue = nul
           r.auth = t.apiKey ? (spec.auth === 'api_key' ? 'api_key' : 'oauth2') : 'oauth2';
           r.by = env[spec.envVar || ''] ? 'env' : 'keystore';
           wireJob(kind);
+          if (config.syncOnBoot !== false && !r.data.syncedAt) firstSyncs.push(runSync(kind, 'boot').catch(() => {}));
         }
       }
+      api.booted = Promise.allSettled(firstSyncs);
       return api;
     },
     kinds: () => [...specs.keys()],
@@ -203,6 +213,7 @@ export function createConnectors({ bus, store, scheduler = null, gateQueue = nul
           label: spec.label,
           auth: spec.auth,
           zoneKind: spec.zoneKind,
+          zoneKinds: spec.zoneKinds,
           connected: r.connected,
           by: r.by,
           connectedAt: r.connectedAt,

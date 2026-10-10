@@ -58,6 +58,21 @@ export const TOOL_DOMAINS = deepFreeze({
   'stripe.payouts': 'research',
   'stripe.refunds': 'research',
   'stripe.refund': 'money_out',
+  // Phase 2 step 16: storefronts. Listing create / update is publishing; a price change is
+  // money_in. A supplier or dropship purchase would be money_out, but neither platform's
+  // API buys from suppliers, so no such tool exists (docs/DECISIONS.md D80).
+  'shopify.products': 'research',
+  'shopify.orders': 'research',
+  'shopify.inventory': 'research',
+  'shopify.create_product': 'publishing',
+  'shopify.update_product': 'publishing',
+  'shopify.set_price': 'money_in',
+  'etsy.listings': 'research',
+  'etsy.receipts': 'research',
+  'etsy.inventory': 'research',
+  'etsy.create_listing': 'publishing',
+  'etsy.update_listing': 'publishing',
+  'etsy.set_price': 'money_in',
   // Phase 2 step 13: every browser action is browser_control, reads included (a real
   // browser with the Ranger's cookies is never just research).
   'browser.open': 'browser_control',

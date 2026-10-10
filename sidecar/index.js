@@ -7,7 +7,7 @@
 //   "resendRegion": "us-east-1", "mailPollMs": 60000,
 //   "mailCeilings": { "perAgentPerHour": 30, "perStationPerHour": 120, "campaignRecipientsPerHour": 500 },
 //   "browser": { "chromiumPath": "/Applications/Chromium.app/Contents/MacOS/Chromium", "headless": false },
-//   "connectors": { "syncEveryMs": 900000, "oauthPort": 8765 } };
+//   "connectors": { "syncEveryMs": 900000, "oauthPort": 8765, "shopify": { "shop": "lanterns.myshopify.com" } } };
 //   the env var wins over the file for the root. The root may go away (external drive): runs pause.
 //
 // Everything here is wiring; behaviour lives in loop.js, capability/, providers/, runs.js,
@@ -187,7 +187,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
 }
 
 function validateConfig(data) {
-  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } }, connectors: { type: 'object', additionalProperties: true, properties: { syncEveryMs: { type: 'integer', minimum: 60000 }, oauthPort: { type: 'integer', minimum: 0, maximum: 65535 } } } } }, data);
+  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } }, connectors: { type: 'object', additionalProperties: true, properties: { syncEveryMs: { type: 'integer', minimum: 60000 }, oauthPort: { type: 'integer', minimum: 0, maximum: 65535 }, shopify: { type: 'object', additionalProperties: false, properties: { shop: { type: 'string', minLength: 1 } } } } } } }, data);
 }
 
 async function loadOrDefault(file, validateFn, defaultFn, log, label) {

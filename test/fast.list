@@ -28,3 +28,4 @@ test/hosted-worker.test.js
 test/browser.test.js
 test/connectors.test.js
 test/stripe.test.js
+test/storefront.test.js
