@@ -213,7 +213,7 @@ model, and the rule that every visual state maps to a real event. Awaiting the n
 - Leash domains add account_creation and browser_control.
 - Mail stack: domain on Cloudflare (DNS via API token scoped Zone:DNS:Edit), Fastmail via
   JMAP for mailbox/alias creation, sync and sending. Cloudflare R2 as optional encrypted
-  offsite backup only. Secret names: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_DNS_TOKEN,
+  offsite backup only. Secret names: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN,
   R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, FASTMAIL_API_TOKEN.
 - Domain: makapark.com (Cloudflare). Ranger mail is <role>-<venture>@makapark.com; the .dmg
   download page and update manifest are served from makapark.com in phase 3.
@@ -287,3 +287,9 @@ Gate, so no layout record changes and the sidecar needs no new route. `ZONE_KIND
   money-out cap 0 USD/day until raised at the Gate; judge models claude-sonnet-5-5 (review)
   and claude-opus-5-5 (Chief planning/reflection), configurable. Phase 2 and 3 briefs in
   docs/PHASE2_BRIEF.md and docs/PHASE3_BRIEF.md.
+- 2026-10-10 owner: Resend is the only mail provider (it receives and sends for
+  makapark.com); Fastmail dropped. Addresses are Maka routing rules over Resend's domain
+  receiving; inbound by polling the Receiving API, webhook optional via tunnel. The owner's
+  Cloudflare token is account-scoped; secret name CLOUDFLARE_API_TOKEN (replaces
+  CLOUDFLARE_API_TOKEN). Hugging Face Inference Providers added as an optional metered
+  `hosted_worker` tier (HF_TOKEN).

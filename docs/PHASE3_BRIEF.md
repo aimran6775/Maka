@@ -7,7 +7,7 @@ Prerequisite: phase 2 on main and green. Read the same docs first.
    one window on the park; menu bar item with the Gate queue count and Away toggle; login
    item option so Maka starts at boot and runs 24/7.
 2. Keychain: Rust `credentials.rs` owns all secrets (ANTHROPIC_API_KEY, OPENROUTER_API_KEY,
-   FASTMAIL_API_TOKEN, RESEND_API_KEY, CLOUDFLARE_*, R2_*, connector tokens) and hands the
+   RESEND_API_KEY, CLOUDFLARE_*, R2_*, connector tokens) and hands the
    sidecar a session-scoped handle; the 0600 keystore file becomes a dev-only fallback.
 3. First run: pick the workspace root (default the LaCie if mounted), paste or sign in for
    the judge key, detect Ollama and offer to pull a model sized to free memory, the Chief

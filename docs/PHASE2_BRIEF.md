@@ -76,26 +76,34 @@ small and obviously correct. A separate live-test session runs them against real
 
 ## Part B: mail and browser (steps 9-13)
 
-9. Cloudflare DNS step. `sidecar/mail/dns.js`: given the zone id and a DNS token,
-   computes the full record set for Fastmail (MX, SPF, DKIM, DMARC) plus Resend (DKIM
-   selector, return-path) for makapark.com, shows a dry-run diff via `/api/mail/dns/plan`,
-   and applies via `/api/mail/dns/apply` only as a Gate item (account_settings). Fake
-   Cloudflare server in tests.
-10. Fastmail JMAP. `sidecar/mail/jmap.js`: session discovery, mailbox listing, alias /
-    mailbox creation (station mailboxes peak@, rangers@, visitors@, sales@, marketing@,
-    finance@, support@, research@, listings@, gate@ at park setup; Ranger aliases
-    `<role>-<venture>@` on demand under account_creation), incremental sync into a local
-    mail store (`sidecar/mail/store.js`, threads, labels, venture tags), sending replies
-    under outbound_messages. Fake JMAP server in tests.
-11. Resend. `sidecar/mail/resend.js`: bulk/transactional sends with unsubscribe link
-    injection, suppression list, and a webhook receiver (`/api/mail/resend/webhook`,
-    signature verified) that writes delivered / bounced / complained / opened into the mail
-    store. Routing rule in `sidecar/mail/send.js`: one-to-one replies → Fastmail; campaigns
-    and notifications or > N/hour → Resend. Both under leashes.
+9. Cloudflare DNS step. `sidecar/mail/dns.js`: given the zone (looked up by name
+   makapark.com) and the account API token, computes Resend's record set (MX, SPF, DKIM,
+   DMARC, return-path) from Resend's domain API response, shows a dry-run diff via
+   `/api/mail/dns/plan`, and applies via `/api/mail/dns/apply` only as a Gate item
+   (account_settings). Fake Cloudflare and fake Resend domain endpoints in tests.
+10. Resend mail store and addresses. `sidecar/mail/store.js`: local atomic store of
+    messages, threads, labels, venture tags, station ownership; `sidecar/mail/addresses.js`:
+    station addresses created at park setup and Ranger aliases on demand as routing rules
+    (account_creation leash); unknown recipients route to visitors@. `sidecar/mail/resend.js`:
+    inbound by polling the Receiving API (interval from config, cursor persisted; fetch body,
+    headers, attachments), optional webhook receiver `/api/mail/resend/webhook` with
+    signature verification for instant delivery when a tunnel exists; outbound sends for
+    replies (thread headers preserved) and campaigns (unsubscribe link injected,
+    suppression list enforced); delivery / bounce / complaint events into the store. Fake
+    Resend server in tests covering receive, send and events.
+11. Mail routing and policy. `sidecar/mail/send.js`: which address a Ranger may send from
+    (its aliases + its station), hourly send ceilings, outbound_messages vs publishing
+    leash by message kind, judge review for anything to a new external recipient while the
+    domain is at Draft for review.
 12. Mail tools and UI. Tools `mail.search`, `mail.read`, `mail.draft`, `mail.send`,
     `mail.create_address` with leash domains; Visitor Center card shows station inboxes,
     threads by venture, outbox; Ranger card shows their addresses. Classification
     (customer / supplier / platform notice / spam) by the worker model, judge on ambiguity.
+12b. Hugging Face provider. `sidecar/providers/huggingface.js`: OpenAI-compatible chat
+    completions with tools against Hugging Face Inference Providers using HF_TOKEN, metered
+    with its own daily cap in the ledger; the router gains a third tier `hosted_worker`
+    used when Ollama is unreachable or a task's policy asks for a larger open model. Fake
+    server in tests; model ids configurable in policy.json.
 13. Browser over CDP. `sidecar/browser/cdp.js`: launch a Chromium (path from config or
     discovered), connect over the DevTools WebSocket with core modules only, one profile
     directory per Ranger. Tools `browser.open`, `browser.read` (accessibility tree + text),
@@ -135,7 +143,7 @@ keystore. Spend and revenue figures shown anywhere come only from these syncs.
   deliverable in the outbox → ledger matches the fake provider's reported usage →
   reflection posts. The headless browser check shows the crew moving in the park.
 - A `docs/LIVE_TEST.md` runbook for the live session: which env vars, which fakes to
-  disable, the exact sequence to prove the chain against real Claude, Fastmail, Resend,
-  Cloudflare.
+  disable, the exact sequence to prove the chain against real Claude, Resend,
+  Cloudflare and Hugging Face.
 When done, send the parent session a summary via `mcp__claude-code-remote__send_message`
 (session id in the first message of this session).

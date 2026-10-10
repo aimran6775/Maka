@@ -184,51 +184,33 @@ a zone (camp) with its own Rangers, fixtures, leashes and sub-budget. A venture 
 trailhead whose trails run to the camps that serve it; the same Marketing Ranger may serve
 several ventures, and the park shows which trail they are on.
 
-### Email: Maka runs its own mail (owner decisions 2026-10-10: domain on Cloudflare, Fastmail)
-Rangers create and operate their own addresses. The Maka domain is makapark.com, managed in
-Cloudflare; the mail provider is Fastmail. Every station (zone) has its own
-mailbox, and Rangers get venture-specific aliases on top (owner decision 2026-10-10):
-- Station mailboxes, created at park setup: peak@ (Chief Ranger, control centre),
-  rangers@ (Ranger Station, HQ), visitors@ (Visitor Center, the public front door),
-  sales@, marketing@, finance@, support@ (Operations & Support), research@ (Scout),
-  listings@ (Product & Listings), gate@ (Entrance Gate: approval notifications to the
-  Superintendent). A station mailbox is owned by the zone; every Ranger assigned to that
-  zone can read it, and can send from it within their leash. Threads are shared, so a
-  handoff inside a station never loses the conversation.
-- Ranger aliases, created on demand: <role>-<venture>@makapark.com (e.g.
-  sales-lanternco@makapark.com), routed into the owning station's mailbox and tagged with
-  the venture, so the park can show which trail a thread belongs to.
-- The Superintendent's own address on the domain is never used by Rangers. Mail to the
-  Superintendent goes to gate@ and is mirrored to the Gate card in the park. Mechanics:
-- DNS: the sidecar sets MX, SPF, DKIM and DMARC for the domain through the Cloudflare API
-  (an API token scoped to Zone:DNS:Edit on that one zone). This is a one-time, Gate-approved
-  setup step with a dry-run preview of the records.
-- Mailboxes/aliases: created on demand through Fastmail's JMAP API with a Fastmail API
-  token. Inbound sync and one-to-one conversational replies (customer support, supplier
-  threads) go through JMAP. Fastmail's sending limits are respected by construction.
-- Bulk and transactional outbound: Resend (owner decision 2026-10-10; makapark.com is
-  verified there). Marketing campaigns, order notifications, and any send above a small
-  per-hour count go through the Resend API from the same Ranger addresses, with Resend's
-  webhooks (delivered / bounced / complained / opened) fed back into the local mail store
-  so Rangers see outcomes. Bounces and complaints suppress the recipient automatically.
-  Marketing sends obey the publishing and outbound_messages leashes and always carry a
-  working unsubscribe link (CAN-SPAM and platform rules).
-- DNS on makapark.com therefore carries Fastmail's MX/SPF/DKIM/DMARC plus Resend's DKIM
-  selector and return-path; both coexist on one domain. Maka's DNS step sets all of them.
-- Cloudflare R2 (S3-compatible object storage; account-scoped R2 token): optional
-  encrypted offsite backup target for the workspace ledgers, mail store and deliverables,
-  on a schedule, under the Superintendent's control. Never a primary store: the LaCie
-  workspace root stays the source of truth.
-- Secrets involved, all held in Keychain in the app and in environment secrets for cloud
-  test sessions, never in chat or git: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_DNS_TOKEN
-  (Zone:DNS:Edit), R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, FASTMAIL_API_TOKEN, RESEND_API_KEY.
-A Ranger requests an address (e.g. sales-<venture>@makapark.com); creation is an
-account_creation leash action; the mailbox then belongs to that Ranger's workspace. The
-sidecar runs the mail system: IMAP/JMAP sync into a local store, threading, classification
-(customer / supplier / platform notice / spam), drafting, scheduled sends, and a shared
-view at the Visitor Center. Outbound mail is under the outbound_messages leash. Every sent
-message is signed off by the Ranger role and logged. Platform signups that demand a phone
-number, identity, or payment card are Gate items for the Superintendent, always.
+### Email: Maka runs its own mail (owner decisions 2026-10-10: Resend only, domain on Cloudflare)
+Every station has its own address and Rangers get venture aliases; all of it runs on Resend,
+which both sends and receives for makapark.com. Fastmail is dropped.
+- Addresses: Resend receives for the whole domain (MX for makapark.com, or for an
+  inbound subdomain if the root must stay free), so an address exists the moment Maka
+  decides to route it. Station addresses: peak@, rangers@, visitors@, sales@, marketing@,
+  finance@, support@, research@, listings@, gate@. Ranger aliases:
+  <role>-<venture>@makapark.com. "Creating" an address is a routing rule in Maka's mail
+  store under the account_creation leash; no provider call is needed. Mail to an unknown
+  address lands in visitors@ for triage.
+- Inbound: Resend stores received messages; Maka polls the Receiving API (local-first, no
+  public endpoint needed) and fetches body, headers and attachments; optionally a
+  Cloudflare Tunnel exposes the `email.received` webhook for instant delivery. Threads,
+  labels and venture tags live in Maka's local mail store, shared per station.
+- Outbound: one-to-one replies and campaigns both go through the Resend API from the
+  station or alias address; replies keep thread headers; campaigns carry an unsubscribe
+  link; bounces and complaints suppress the recipient. Delivery events come from the
+  Receiving/Events API or webhooks into the store. All under outbound_messages and
+  publishing leashes.
+- DNS on makapark.com: Resend's MX, SPF, DKIM and DMARC records, set through the
+  Cloudflare API. The owner's Cloudflare API token is account-scoped (covers DNS, R2 and
+  more); Maka uses it only for the DNS plan/apply step (a Gate item with a dry-run diff)
+  and for R2 backups.
+- Cloudflare R2: optional encrypted offsite backup target, never a primary store.
+- Secrets, held in Keychain in the app and in environment secrets for cloud test sessions,
+  never in chat or git: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, R2_ACCESS_KEY_ID,
+  R2_SECRET_ACCESS_KEY, RESEND_API_KEY, ANTHROPIC_API_KEY, HF_TOKEN.
 
 ### Browser: full control when needed
 A real Chromium controlled from the sidecar over the Chrome DevTools Protocol (WebSocket,
@@ -274,6 +256,11 @@ account_creation, browser_control, research.
   machine with enough unified memory. The judge pattern catches errors, it does not make a
   weak worker strong. Maka reports worker model quality from real outcomes (judge verdict
   rates), never from benchmarks.
+- Hugging Face (owner decision 2026-10-10): an optional third tier for open-weight models
+  hosted by Hugging Face Inference Providers (OpenAI-compatible endpoint, HF_TOKEN). Used
+  when the local worker is unavailable or too small for a task, or to run a larger open
+  model for 24/7 work when the Mac is off; metered, so it counts against its own daily cap
+  and is routed explicitly like the judge. Also the source for pulling model weights.
 - Phase 1 addition: an `ollama` provider (OpenAI-compatible chat completions with tools at
   127.0.0.1:11434) alongside Anthropic and OpenRouter, and a `router.js` that picks the model
   per step from a policy object. Phase 2 adds the judge step in the loop and the verdict
