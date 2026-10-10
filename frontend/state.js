@@ -28,6 +28,9 @@ export function initialState() {
     mailDns: [], // mail.dns payloads this session, oldest first
     mailMessages: [], // mail.message payloads this session, oldest first (bounded)
     mailEvents: [], // mail.event payloads this session, oldest first (bounded)
+    browser: null, // { chromium, wired, headless, sessions, pending } from the snapshot
+    browserHandoffs: {}, // handoffId -> latest browser.handoff payload (+ ts)
+    browserHandoffOrder: [], // handoffIds, oldest first
     leash: null, // leash policy from the snapshot (shared/leash.js shape)
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
@@ -90,6 +93,17 @@ export function applySnapshot(state, snap) {
   next.reflection = snap.reflection || null;
   next.away = snap.away || null;
   next.mail = snap.mail || null;
+  next.browser = snap.browser || null;
+  if (snap.browser && Array.isArray(snap.browser.pending)) {
+    const handoffs = { ...next.browserHandoffs };
+    const order = [...next.browserHandoffOrder];
+    for (const h of snap.browser.pending) {
+      if (!handoffs[h.handoffId]) order.push(h.handoffId);
+      handoffs[h.handoffId] = { ...h, ts: h.since || 0 };
+    }
+    next.browserHandoffs = handoffs;
+    next.browserHandoffOrder = order;
+  }
   next.spendByAgent = (snap.reflection && snap.reflection.spentByAgent) || {};
   next.leash = snap.leash || null;
   next.workspace = snap.workspace || null;
@@ -357,6 +371,20 @@ export function applyEvent(state, event) {
       next.mailDns = [...next.mailDns, { ...p, ts: event.ts }];
       break;
     }
+    case 'browser.handoff': {
+      const prev = next.browserHandoffs[p.handoffId];
+      next.browserHandoffs = { ...next.browserHandoffs, [p.handoffId]: { ...(prev || {}), ...p, ts: event.ts } };
+      if (!prev) next.browserHandoffOrder = [...next.browserHandoffOrder, p.handoffId].slice(-100);
+      const run = p.runId ? next.runs[p.runId] : null;
+      if (run && run.status === 'running') {
+        if (p.status === 'waiting') next = setAgent(next, p.agentId, 'waiting', p.runId);
+        else {
+          next = updateRun(next, p.runId, (r) => ({ ...r, items: [...r.items, { kind: 'note', text: `Browser handoff (${p.kind}) ${p.status}${p.notes ? ` — ${p.notes}` : ''}` }] }));
+          if (p.status === 'returned') next = setAgent(next, p.agentId, 'tool-running', p.runId);
+        }
+      }
+      break;
+    }
     case 'away.changed': {
       next.away = { ...(next.away || {}), away: p.away, since: p.since, actions: p.actions || 0, waiting: p.waiting || 0 };
       break;
@@ -428,6 +456,10 @@ export function workFor(state, agentId) {
 }
 
 // Gate items still waiting on the Superintendent, oldest first.
+export function pendingHandoffs(state) {
+  return state.browserHandoffOrder.map((id) => state.browserHandoffs[id]).filter((h) => h && h.status === 'waiting');
+}
+
 export function pendingGate(state) {
   return state.gateOrder.map((id) => state.gateItems[id]).filter((it) => it && it.status === 'pending');
 }

@@ -40,6 +40,17 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 13 done: the browser. A Field office placed in a camp grants its Rangers a
+real Chromium driven over the DevTools protocol with core modules only: open, read (text
+and accessibility tree), click, type, upload (workspace files only), download (into the
+workspace) and screenshot, every action under the browser_control leash and appended to
+a per-Ranger trace with a screenshot. Each Ranger has its own profile directory in the
+workspace, so a login survives; the browser closes with the run. When a page asks for a
+password, a one-time code, a captcha or card details, the action parks, the Peak and the
+Gate show a BROWSER HANDOFF, the window comes to the front, and the Ranger continues when
+the Superintendent hands the page back (with a note). Headless mode is for tests and
+servers; on the desktop the window is real so the handoff can be done.
+
 Phase 2 steps 12 and 12b done. Mail tools: a Radio tower placed in a camp grants its
 Rangers `mail.search`, `mail.read`, `mail.draft`, `mail.send` and `mail.create_address`;
 reads are research, sends follow the leash by kind (replies and notifications are

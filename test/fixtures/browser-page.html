@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Maka test shop</title></head>
+<body>
+  <h1>Maka test shop</h1>
+  <p id="intro">Paper lanterns for every trail.</p>
+  <nav>
+    <a href="/about.html" id="about-link">About the shop</a>
+    <a href="/login.html">Sign in</a>
+    <a href="/report.csv" id="dl" download>Download the sales report</a>
+  </nav>
+  <form id="search" onsubmit="event.preventDefault(); document.getElementById('result').textContent = 'You searched for ' + document.getElementById('q').value;">
+    <label for="q">Search products</label>
+    <input id="q" name="q" placeholder="search">
+    <button type="submit" id="go">Search</button>
+  </form>
+  <p id="result"></p>
+  <button id="counter" onclick="this.textContent = 'Clicked ' + (++window.__n) + ' time(s)'">Click me</button>
+  <script>window.__n = 0;</script>
+  <form id="uploadForm">
+    <label for="file">Attach a file</label>
+    <input type="file" id="file" name="file" onchange="document.getElementById('uploaded').textContent = Array.from(this.files).map((f) => f.name + ':' + f.size).join(',')">
+  </form>
+  <p id="uploaded"></p>
+</body>
+</html>

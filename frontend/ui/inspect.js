@@ -1,7 +1,7 @@
 // INSPECT window: the card for whatever was clicked in the park. Shows only what the
 // harness has emitted this session: no projections, no placeholders for phase 2 features.
 import { el, createWindow, setChildren, fmtUsd } from './windows.js';
-import { grantedTools, toolUses, lastModel, pendingGate, recentGate, judgeVerdicts, workInTransit, workFor } from '../state.js';
+import { grantedTools, toolUses, lastModel, pendingGate, pendingHandoffs, recentGate, judgeVerdicts, workInTransit, workFor } from '../state.js';
 import { LEASH_LEVEL_LABELS, LEASH_LEVELS, DOMAINS, resolveAllLeash, resolveLeash } from '../../shared/leash.js';
 
 export function createInspect({ parent, getState, api, x, y, w }) {
@@ -59,6 +59,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       run ? row('spend', `${fmtUsd(run.spentUsd)} reconciled${run.unreconciledTurns ? ` · ${run.unreconciledTurns} unpriced turn(s)` : ''}`) : null,
       run ? row('judge', judgeVerdicts(run).length ? judgeVerdicts(run).map((v) => `${v.scope} ${v.verdict}${v.notes ? ` (${v.notes})` : v.reason ? ` (${v.reason})` : ''}`).join('; ') : 'not consulted yet') : null,
       row('at the Gate', waiting.length ? waiting.map((it) => `${it.domain}: ${it.summary}`).join('; ') : 'nothing waiting'),
+      s.browser ? row('browser', (() => { const mine = pendingHandoffs(s).filter((h) => h.agentId === agent.id); const open = (s.browser.sessions || []).find((b) => b.agentId === agent.id); if (mine.length) return `HANDOFF: ${mine.map((h) => `${h.kind} at ${h.url}`).join('; ')}`; if (open) return `open at ${open.url}`; return s.browser.wired ? `closed · trace at ${agent.id}/browser-trace/` : 'not wired (no Chromium found)'; })()) : null,
       row('spend', `${fmtUsd(s.spendByAgent[agent.id] || 0)} since the mission${typeof agent.budgetUsd === 'number' ? ` of $${agent.budgetUsd.toFixed(2)} budget` : ''}`),
       s.mail ? row('addresses', (() => { const mine = mailCache.addresses.filter((a) => a.agentId === agent.id || (a.kind === 'station' && a.station === agent.roomId)); if (!mailCache.addresses.length) loadMail(s, { id: agent.roomId, kind: 'zone' }); return mine.length ? mine.map((a) => a.address).join(', ') : 'none loaded'; })()) : null,
       s.queuedRuns.some((r) => r.agentId === agent.id) ? row('queued', `${s.queuedRuns.filter((r) => r.agentId === agent.id).length} run(s) waiting for this Ranger`) : null,
@@ -263,6 +264,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
         el('button', { class: 'btn', text: 'Apply DNS (via the Gate)', disabled: !(s.mail.keys.resend && s.mail.keys.cloudflare), onclick: async () => { const r = await api.post('/api/mail/dns/apply', {}); missionNotice.textContent = r.ok ? (r.body.itemId ? `DNS change waiting at the Gate (${r.body.itemId}).` : r.body.status) : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } }),
       ) : null,
       row('gate queue', `${pendingGate(s).length} waiting`),
+      s.browser ? row('browser', `${s.browser.wired ? `${s.browser.chromium}${s.browser.headless ? ' (headless)' : ''}` : 'not wired: no Chromium found (browser.chromiumPath or CHROMIUM)'} · ${(s.browser.sessions || []).length} open · ${pendingHandoffs(s).length} handoff(s) waiting`) : null,
       row('judge today', s.judge ? `${fmtUsd(s.judge.today.usd)} of $${s.judge.caps.judgeUsdPerDay} cap · ${s.judge.today.calls} call(s) · ${s.judge.provider}/${s.judge.model || 'default'}` : 'no judge wired'),
       row('spend', `${fmtUsd(s.spend.totalUsd)} reconciled${s.spend.unreconciledTurns ? ` · ${s.spend.unreconciledTurns} unpriced turn(s)` : ''}`),
       row('workspace', s.workspace ? (s.workspace.online ? `online · ${s.workspace.root}` : `OFFLINE (${s.workspace.reason || 'unreachable'}) · ${s.workspace.root}`) : '—'),

@@ -49,6 +49,15 @@ export const TOOL_DOMAINS = deepFreeze({
   'mail.draft': null,
   'mail.send': 'outbound_messages',
   'mail.create_address': 'account_creation',
+  // Phase 2 step 13: every browser action is browser_control, reads included (a real
+  // browser with the Ranger's cookies is never just research).
+  'browser.open': 'browser_control',
+  'browser.read': 'browser_control',
+  'browser.click': 'browser_control',
+  'browser.type': 'browser_control',
+  'browser.upload': 'browser_control',
+  'browser.download': 'browser_control',
+  'browser.screenshot': 'browser_control',
 });
 
 // One domain entry. `dailyCapUsd` and `dailyCapActions` matter at 'act_capped': an action

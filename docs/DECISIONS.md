@@ -587,3 +587,27 @@ a policy step, an agent's own policy or an explicit request names it, or when th
 opts into `fallback.worker: 'hosted_worker'` and Ollama is unreachable; the run then
 records tier `hosted_worker` and the park shows it. D19 (no silent fallback to a paid
 provider) stands: the fallback is a written opt-in and every turn says which tier ran.
+
+## D72. The Field office grants the browser, and every browser action is browser_control
+
+The kickoff fixture table has no browser fixture, so phase 2 adds one: the Field office.
+Its seven tools are all `browser_control`, reads included: a real browser carrying the
+Ranger's cookies is never plain research, and the leash for that domain decides whether
+each step waits at the Gate. Uploads obey the same sandbox as `fs.*` (workspace files
+only); downloads land in `downloads/` in the workspace.
+
+## D73. One Chromium per Ranger, closed with the run, profile kept
+
+A Ranger's browser launches on first use with its own profile under the workspace and is
+killed when the run ends; the profile directory stays, so a login done at a handoff
+survives into the next run without any cookie handling in Maka. Keeping a Chromium per
+idle Ranger would eat the machine's memory for nothing (16 GB with a local model).
+
+## D74. The handoff is detected from the page, parks the action, and is never re-raised for the same page
+
+Detection is pure heuristics on what the page says about itself (fields, widgets, URL,
+text); the tool call blocks until the Superintendent hands the page back or the run ends
+(abandoned). A page handed back unchanged is not raised again in that session: the human
+has seen it and chose to return it, and the Ranger gets the note. `browser.read` never
+raises, so a Ranger can always look at where it is. The sandbox flag is passed only when
+the sidecar runs as root (containers, CI); on the owner's Mac Chromium keeps its sandbox.

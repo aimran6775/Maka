@@ -370,6 +370,21 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     agent: obj,
     by: str,
   }),
+  // Added v1 (phase 2 step 13): BROWSER HANDOFF. A Ranger's browser reached a page that
+  // needs a human (login, one-time code, captcha, payment): 'waiting' while the window is
+  // the Superintendent's, 'returned' when handed back, 'abandoned' when the run ended first.
+  'browser.handoff': payload(['handoffId', 'agentId', 'status', 'kind'], {
+    handoffId: nonEmpty,
+    agentId: nonEmpty,
+    status: { type: 'string', enum: ['waiting', 'returned', 'abandoned'] },
+    kind: { type: 'string', enum: ['login', 'two_factor', 'captcha', 'payment'] },
+    runId: str,
+    url: str,
+    title: str,
+    reason: str,
+    notes: str,
+    headless: bool,
+  }),
   // Added v1 (phase 2 step 1): a run is parked on a pending Gate item; the Ranger waits at
   // the Gate until a gate.item with that itemId leaves 'pending'.
   'agent.waiting': payload(['runId', 'agentId', 'itemId'], {

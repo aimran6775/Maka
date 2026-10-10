@@ -3,7 +3,7 @@
 // proposals). Buttons post the answer; a card disappears only when the sidecar echoes the
 // decision (or the run ends), never on click alone.
 import { el } from './windows.js';
-import { pendingGate } from '../state.js';
+import { pendingGate, pendingHandoffs } from '../state.js';
 import { LEASH_LEVEL_LABELS } from '../../shared/leash.js';
 
 export function createPermission({ parent, getState, api }) {
@@ -36,6 +36,30 @@ export function createPermission({ parent, getState, api }) {
         el('button', { class: 'btn primary', text: 'Allow', onclick: () => answer(q, true) }),
         el('button', { class: 'btn', text: 'Deny', onclick: () => answer(q, false) }),
         el('span', { class: 'muted small', text: `run ${q.runId}` }),
+      ),
+    );
+  }
+
+  async function handBack(h, notesEl) {
+    const btns = host.querySelectorAll('button');
+    btns.forEach((b) => (b.disabled = true));
+    const res = await api.post(`/api/browser/handoff/${encodeURIComponent(h.handoffId)}/return`, { notes: notesEl ? notesEl.value.trim() : '' });
+    if (!res.ok) btns.forEach((b) => (b.disabled = false));
+  }
+
+  function handoffCard(s, h) {
+    const agent = s.layout.agents.find((a) => a.id === h.agentId);
+    const who = agent ? agent.name : h.agentId;
+    const notes = el('textarea', { class: 'perm-notes', rows: 2, placeholder: 'a note for the Ranger (what you did, or why not)' });
+    return el('div', { class: 'perm-card gate-item handoff' },
+      el('div', { class: 'perm-gate', text: `BROWSER HANDOFF · ${h.kind.replace('_', ' ').toUpperCase()}` }),
+      el('div', { class: 'perm-title', text: `${who}'s browser needs you: ${h.reason || h.kind}` }),
+      el('div', { class: 'muted small', text: `${h.title ? `${h.title} · ` : ''}${h.url || ''}` }),
+      h.headless ? el('div', { class: 'perm-leash', text: 'the browser is headless, so there is no window to show; hand it back to let the Ranger continue' }) : el('div', { class: 'perm-leash', text: 'the window is in front: finish the step there, then hand the page back' }),
+      notes,
+      el('div', { class: 'row' },
+        el('button', { class: 'btn primary', text: 'Hand back', onclick: () => handBack(h, notes) }),
+        el('span', { class: 'muted small', text: h.runId ? `run ${h.runId}` : '' }),
       ),
     );
   }
@@ -75,10 +99,11 @@ export function createPermission({ parent, getState, api }) {
     render() {
       const s = getState();
       const items = pendingGate(s);
-      const key = s.pendingPrompts.map((q) => q.promptId).concat(items.map((i) => i.itemId)).join('|');
+      const handoffs = pendingHandoffs(s);
+      const key = s.pendingPrompts.map((q) => q.promptId).concat(items.map((i) => i.itemId), handoffs.map((h) => h.handoffId)).join('|');
       if (key === shown) return;
       shown = key;
-      host.replaceChildren(...s.pendingPrompts.map(promptCard), ...items.map((it) => itemCard(s, it)));
+      host.replaceChildren(...s.pendingPrompts.map(promptCard), ...items.map((it) => itemCard(s, it)), ...handoffs.map((h) => handoffCard(s, h)));
     },
   };
 }

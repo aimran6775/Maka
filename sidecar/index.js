@@ -5,7 +5,8 @@
 //   $MAKA_HOME/config.json may set { "workspaceRoot": "/Volumes/LaCie/Maka/workspace",
 //   "maxConcurrentRuns": 4, "reflectAt": "07:00", "mailDomain": "makapark.com",
 //   "resendRegion": "us-east-1", "mailPollMs": 60000,
-//   "mailCeilings": { "perAgentPerHour": 30, "perStationPerHour": 120, "campaignRecipientsPerHour": 500 } };
+//   "mailCeilings": { "perAgentPerHour": 30, "perStationPerHour": 120, "campaignRecipientsPerHour": 500 },
+//   "browser": { "chromiumPath": "/Applications/Chromium.app/Contents/MacOS/Chromium", "headless": false } };
 //   the env var wins over the file for the root. The root may go away (external drive): runs pause.
 //
 // Everything here is wiring; behaviour lives in loop.js, capability/, providers/, runs.js,
@@ -30,6 +31,7 @@ import { createReflect } from './reflect.js';
 import { createAway } from './away.js';
 import { createMailSetup } from './mail/setup.js';
 import { createMailSystem } from './mail/system.js';
+import { createBrowserControl } from './browser/control.js';
 import { TOOLS } from './capability/tools.js';
 import { CREW_TOOLS } from './capability/crew.js';
 import { createRouter } from './router.js';
@@ -94,6 +96,9 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const mail = await createMailSystem({ bus, store, scheduler, getLayout: layoutState.get, env, keystorePath, workspaceRoot, domain: config.mailDomain || undefined, pollMs: config.mailPollMs || undefined, ceilings: config.mailCeilings || {}, router, ledger, log }).init();
   Object.assign(registry, mail.tools);
   toolContext.mail = mail;
+  const browser = await createBrowserControl({ bus, env, workspaceRoot, config: config.browser || {}, log }).init();
+  Object.assign(registry, browser.tools);
+  toolContext.browser = browser;
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -116,6 +121,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     away,
     mailSetup,
     mail,
+    browser,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -148,6 +154,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   if (away.state().away) log.info(`  away since ${new Date(away.state().since).toISOString()}: ${away.state().actions} action(s) so far, ${away.state().waiting} waiting`);
   const mailStatus = await mailSetup.status();
   const mailSys = await mail.status();
+  const browserStatus = await browser.status();
+  log.info(`  browser: ${browserStatus.chromium ? `${browserStatus.chromium} (${browserStatus.headless ? 'headless' : 'windowed'})` : 'not wired (no Chromium found; set browser.chromiumPath or CHROMIUM)'}`);
   log.info(`  mail: ${mailStatus.domain} · resend ${mailStatus.keys.resend ? 'key configured' : 'not wired (RESEND_API_KEY)'} · cloudflare ${mailStatus.keys.cloudflare ? 'token configured' : 'not wired (CLOUDFLARE_API_TOKEN)'} · webhook ${mailSys.keys.webhook ? 'secret configured' : 'not wired (RESEND_WEBHOOK_SECRET)'} · ${mailSys.addresses} address(es), ${mailSys.counts.messages} message(s), poll every ${mailSys.sync.pollMs / 1000}s`);
   log.info(`  reflection: daily at ${config.reflectAt || '07:00'}, next ${new Date(scheduler.state().reflection.nextRunAt).toISOString()}${reflect.latest() ? `, last ${reflect.latest().id} (${reflect.latest().status})` : ', none yet'}`);
   log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${judge.route.provider}/${judge.route.model || 'default'} (cap $${judge.caps.judgeUsdPerDay}/day, $${ledger.judgeToday().usd.toFixed(2)} used today)`);
@@ -157,15 +165,16 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     workspace.stop();
     runs.cancel();
     await runs.waitForIdle();
+    await browser.close();
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, close };
 }
 
 function validateConfig(data) {
-  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } } } }, data);
+  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } } } }, data);
 }
 
 async function loadOrDefault(file, validateFn, defaultFn, log, label) {

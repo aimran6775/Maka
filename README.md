@@ -152,6 +152,14 @@ Step 12b, hosted worker: set `HF_TOKEN` and `policy.json` can route turns to
 `hosted_worker` (Hugging Face Inference Providers, `Qwen/Qwen2.5-72B-Instruct` by
 default) or opt into `"fallback": { "worker": "hosted_worker" }` for when Ollama is down.
 It is metered by calls per day (`hostedWorkerCallsPerDay`), shown as unpriced spend.
+
+Step 13, the browser: place a Field office in a camp (BUILD) and its Rangers drive a real
+Chromium (found automatically, or `browser.chromiumPath` in `config.json` / `CHROMIUM`):
+open, read, click, type, upload, download, screenshot, each under the browser_control
+leash and traced with screenshots under `<workspace>/<ranger>/browser-trace/`. A login,
+one-time code, captcha or payment page raises a BROWSER HANDOFF card at the Gate: finish
+the step in the window, add a note, hand it back. Set `"browser": { "headless": true }` or
+`MAKA_BROWSER_HEADLESS=1` for a server without a display.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

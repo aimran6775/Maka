@@ -37,6 +37,10 @@
 //   POST /api/mail/send        the Superintendent sends from a station address (policy: ceilings,
 //                              suppression; no leash, the owner is the principal) → the stored copy
 //   POST /api/mail/resend/webhook   Resend webhook (raw body, svix signature)
+//   GET  /api/browser          chromium found?, headless, open sessions, pending handoffs
+//   GET  /api/browser/handoffs recent BROWSER HANDOFFs, oldest first
+//   POST /api/browser/handoff/:id/return   { notes? } the Superintendent hands the page back
+//   GET  /api/browser/trace/:agentId?limit   the Ranger's browser trace, newest first
 //   GET  /api/away             away state (flag, since, counters, last digest)
 //   POST /api/away             { away: true|false } → away.changed (+ away.digest and the digest on return)
 //   GET  /api/away/log         the evidence log lines (JSON array)
@@ -184,7 +188,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -253,6 +257,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         reflection: reflect ? reflect.state() : null,
         away: away ? away.state() : null,
         mail: await mailStatus(),
+        browser: browser ? await browser.status() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -428,6 +433,31 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         if (['NO_KEY', 'NO_ZONE', 'NETWORK', 'BAD_RESPONSE', 'CLOUDFLARE'].includes(err.code) || /^HTTP_/.test(err.code || '')) throw new HttpError(502, err.message, err.code);
         throw err;
       }
+    }
+    if (p === '/api/browser' && method === 'GET') {
+      if (!browser) throw new HttpError(404, 'no browser control');
+      return sendJson(res, 200, await browser.status());
+    }
+    if (p === '/api/browser/handoffs' && method === 'GET') {
+      if (!browser) throw new HttpError(404, 'no browser control');
+      return sendJson(res, 200, browser.handoffs());
+    }
+    if (p.startsWith('/api/browser/handoff/') && p.endsWith('/return') && method === 'POST') {
+      if (!browser) throw new HttpError(404, 'no browser control');
+      const id = decodeURIComponent(p.slice('/api/browser/handoff/'.length, -'/return'.length));
+      const body = await readJsonBody(req);
+      try {
+        return sendJson(res, 200, browser.returnHandoff(id, { notes: typeof body.notes === 'string' ? body.notes.trim() : '' }));
+      } catch (err) {
+        if (err.code === 'NOT_FOUND') throw new HttpError(404, err.message, err.code);
+        if (err.code === 'NOT_WAITING') throw new HttpError(409, err.message, err.code);
+        throw err;
+      }
+    }
+    if (p.startsWith('/api/browser/trace/') && method === 'GET') {
+      if (!browser) throw new HttpError(404, 'no browser control');
+      const agentId = decodeURIComponent(p.slice('/api/browser/trace/'.length));
+      return sendJson(res, 200, await browser.trace(agentId, { limit: Number(url.searchParams.get('limit')) || 50 }));
     }
     if (p === '/api/away' && method === 'GET') {
       if (!away) throw new HttpError(404, 'no away mode');

@@ -28,7 +28,7 @@ const ASSETS = {
   rock: ['nature-kit/rock_largeA.glb', 'nature-kit/rock_largeB.glb', 'nature-kit/rock_smallA.glb'],
   station: { structure: 'survival-kit/structure.glb', tent: 'survival-kit/tent.glb', campfire: 'survival-kit/campfire-pit.glb', signpost: 'survival-kit/signpost.glb', tentOpen: 'nature-kit/tent_detailedOpen.glb', crate: 'survival-kit/box.glb', logs: 'nature-kit/campfire_logs.glb', fenceGate: 'nature-kit/fence_gate.glb', fenceSimple: 'nature-kit/fence_simple.glb' },
   gate: { doorway: 'survival-kit/fence-doorway.glb', fence: 'survival-kit/fence.glb', signpost: 'survival-kit/signpost.glb' },
-  fixtures: { trailhead_sign: 'nature-kit/sign.glb', supply_cache: 'survival-kit/chest.glb' }, // radio_tower is built in code (makeTower)
+  fixtures: { trailhead_sign: 'nature-kit/sign.glb', supply_cache: 'survival-kit/chest.glb' }, // radio_tower and field_office are built in code (makeTower, makeFieldOffice)
   ranger: { body: 'characters/characterMedium.fbx', skin: 'characters/skaterMaleA.png', clips: { idle: 'characters/idle.fbx', run: 'characters/run.fbx' } },
 };
 
@@ -597,6 +597,30 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     return g;
   }
 
+  // Field office (step 13): a small cabin with a lit screen, built from primitives.
+  function makeFieldOffice() {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x8a6a46, roughness: 0.9 });
+    const roofM = new THREE.MeshStandardMaterial({ color: 0x4e5b4a, roughness: 0.8 });
+    const glow = new THREE.MeshStandardMaterial({ color: 0x9fd8ff, emissive: 0x3aa0ff, emissiveIntensity: 0.8 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 2.0), wood);
+    body.position.y = 0.8;
+    body.castShadow = true;
+    g.add(body);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.0, 4), roofM);
+    roof.rotation.y = Math.PI / 4;
+    roof.position.y = 2.1;
+    roof.castShadow = true;
+    g.add(roof);
+    const screen = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.05), glow);
+    screen.position.set(0, 1.0, 1.03);
+    g.add(screen);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.4, 6), new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 0.5 }));
+    mast.position.set(0.9, 3.0, -0.6);
+    g.add(mast);
+    return g;
+  }
+
   function syncFixtures(state) {
     if (!model) return;
     const wanted = new Map(model.fixtures.map((f) => [f.id, f]));
@@ -611,7 +635,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     for (const f of model.fixtures) {
       if (dynamic.fixtures.has(f.id)) continue;
       const proto = kit.fixtures[f.kind];
-      const obj = proto ? proto.clone() : f.kind === 'radio_tower' ? makeTower() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+      const obj = proto ? proto.clone() : f.kind === 'radio_tower' ? makeTower() : f.kind === 'field_office' ? makeFieldOffice() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
       place(obj, f.x, f.y, f.z, { scale: proto ? 3.2 : 1 });
       obj.userData.pick = { type: 'object', id: f.id };
       obj.traverse((o) => (o.userData.pick = obj.userData.pick));

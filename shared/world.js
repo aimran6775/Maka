@@ -19,6 +19,9 @@ export const OBJECT_KINDS = deepFreeze({
   // outbound_messages (replies, notifications) or publishing (campaigns); a new address is
   // account_creation. Each is enforced by the leash at the Entrance Gate.
   radio_tower: { label: 'Radio tower', grants: ['mail.search', 'mail.read', 'mail.draft', 'mail.send', 'mail.create_address'], hint: "Rangers in this zone can read their station's mail, draft and send replies, notifications and campaigns, and ask for a venture address; sends and new addresses follow the leash." },
+  // Phase 2 step 13: a real Chromium per Ranger, every action under browser_control;
+  // logins, one-time codes, captchas and payment pages are handed to the Superintendent.
+  field_office: { label: 'Field office', grants: ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.download', 'browser.screenshot'], hint: 'Rangers in this zone drive a real browser with their own profile (open, read, click, type, upload, download, screenshot) under the browser_control leash; a login, code, captcha or payment page is handed to you.' },
 });
 
 export const OBJECT_KIND_NAMES = deepFreeze(Object.keys(OBJECT_KINDS));

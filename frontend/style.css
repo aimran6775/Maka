@@ -100,6 +100,7 @@ body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--sans); ov
 /* Entrance Gate items (phase 2): pending actions and loosening proposals. */
 .perm-card.gate-item { border-color: var(--accent); }
 .perm-card.gate-item.proposal { border-style: dashed; }
+.perm-card.gate-item.handoff { border-color: var(--warn); }
 .perm-card .perm-notes { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; background: #0f1a14; color: var(--text); border: 1px solid var(--panel-border); border-radius: 4px; padding: 4px 6px; resize: vertical; }
 .evidence { font-size: 11px; color: var(--muted); white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow: auto; }
 .evidence .ek { font-family: var(--mono); color: var(--accent); margin-right: 4px; }

@@ -32,7 +32,8 @@ test('world: default layout validates; grants derive from objects in the agent r
   assert.deepEqual(grantsFor(other, 'ranger'), []);
   assert.deepEqual(grantsFor(other, 'nobody'), []);
   const { MAIL_TOOLS } = await import('../sidecar/capability/../mail/tools.js');
-  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t) || t in MAIL_TOOLS, `${t} exists`);
+  const { BROWSER_TOOLS } = await import('../sidecar/browser/tools.js');
+  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t) || t in MAIL_TOOLS || t in BROWSER_TOOLS, `${t} exists`);
   assert.equal(tileInRoom(layout.rooms[0], 1, 1), true);
   assert.equal(tileInRoom(layout.rooms[0], 13, 1), false);
   const bad = layoutWith(['piano']);

@@ -17,6 +17,7 @@ import { createReflect } from '../../sidecar/reflect.js';
 import { createAway } from '../../sidecar/away.js';
 import { createMailSetup } from '../../sidecar/mail/setup.js';
 import { createMailSystem } from '../../sidecar/mail/system.js';
+import { createBrowserControl } from '../../sidecar/browser/control.js';
 import { TOOLS } from '../../sidecar/capability/tools.js';
 import { CREW_TOOLS } from '../../sidecar/capability/crew.js';
 import { createRouter, defaultPolicy } from '../../sidecar/router.js';
@@ -33,7 +34,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 
 // `judgeProvider`: a (name, opts) => { provider, model, price } factory for the judge tier; when
 // absent no judge is wired, so runs are not reviewed (the phase 1 behaviour).
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {} } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -70,6 +71,13 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const mailSystem = await createMailSystem({ bus, store, scheduler, getLayout: layoutState.get, env, keystorePath, clock, workspaceRoot, log: { error() {} }, resendBaseUrl: mail.resendBaseUrl, router: createRouter(policy || defaultPolicy()), makeProvider: mail.classifyProvider || null, ledger, classify: Boolean(mail.classifyProvider) }).init();
   Object.assign(registry, mailSystem.tools);
   toolContext.mail = mailSystem;
+  // `browser`: { driver } injects a fake page factory; { real: true } launches a headless
+  // Chromium (tests skip when none is installed). Absent: no browser control is wired.
+  const browserControl = browser ? await createBrowserControl({ bus, env, workspaceRoot, clock, config: { headless: true, chromiumPath: browser.chromiumPath }, driver: browser.driver, log: { error() {} } }).init() : null;
+  if (browserControl) {
+    Object.assign(registry, browserControl.tools);
+    toolContext.browser = browserControl;
+  }
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, log: { error() {} } }).init();
   await workspace.check();
   const app = createApp({
@@ -87,6 +95,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     away,
     mailSetup,
     mail: mailSystem,
+    browser: browserControl,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -118,6 +127,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     away,
     mailSetup,
     mail: mailSystem,
+    browser: browserControl,
     workspace,
     async get(p) {
       const res = await fetch(url + p);
@@ -182,6 +192,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
       workspace.stop();
       runs.cancel();
       await runs.waitForIdle();
+      if (browserControl) await browserControl.close();
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
       await fsp.rm(tmp, { recursive: true, force: true });
