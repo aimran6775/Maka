@@ -40,7 +40,18 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 4 done: Ollama
+Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 5 done: the
+offsite backup (`sidecar/backup/`). A snapshot is a tar of the Peak's files, the mail
+store, every Ranger's outbox and the home's ledgers and records (never transcripts,
+browser profiles or the keystore), gzipped and sealed with AES-256-GCM under a 32-byte
+key that lives in the Keychain (the keystore without the app) and is shown once when
+backups are enabled; it is `PUT` to Cloudflare R2 with a hand-written Signature V4
+client over `fetch` (checked against AWS's own example) under `<prefix>/<host>/`, with
+an unencrypted `latest.json` index beside it. The Superintendent enables it on the Peak
+(daily at a time, into a bucket), runs one now, verifies the latest (opened and listed,
+nothing written) or restores it into a fresh `workspace/_restore/<stamp>/`, never over
+live data. Every outcome is a `backup.snapshot` / `backup.restore` event; "not wired"
+names the variables that are missing. Step 4 done: Ollama
 management on the Peak as well as at first run, from one shared module
 (`frontend/ui/worker.js` over `sidecar/ollama.js`): found or not with the install hint
 and a Start button, the pulled models each with their file size, a resident estimate

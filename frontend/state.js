@@ -35,6 +35,8 @@ export function initialState() {
     setupChanges: [], // setup.changed payloads this session, oldest first
     ollama: null, // the local worker summary from the snapshot (/api/ollama shape without a fresh probe)
     ollamaPull: null, // the latest ollama.pull payload (+ ts), null when nothing is being pulled
+    backup: null, // the R2 backup status from the snapshot (/api/backup shape)
+    backupEvents: [], // backup.snapshot / backup.restore payloads this session, oldest first (bounded)
     browser: null, // { chromium, wired, headless, sessions, pending } from the snapshot
     browserHandoffs: {}, // handoffId -> latest browser.handoff payload (+ ts)
     browserHandoffOrder: [], // handoffIds, oldest first
@@ -105,6 +107,7 @@ export function applySnapshot(state, snap) {
   next.research = snap.research || null;
   next.setup = snap.setup || null;
   next.ollama = snap.ollama || null;
+  next.backup = snap.backup || null;
   if (next.ollama && !next.ollama.pulling && next.ollamaPull && next.ollamaPull.done) next.ollamaPull = null;
   if (snap.browser && Array.isArray(snap.browser.pending)) {
     const handoffs = { ...next.browserHandoffs };
@@ -415,6 +418,13 @@ export function applyEvent(state, event) {
     case 'ollama.pull': {
       next.ollamaPull = { ...p, ts: event.ts };
       if (next.ollama) next.ollama = { ...next.ollama, pulling: p.done ? null : { model: p.model, status: p.status, completed: p.completed || 0, total: p.total || 0 } };
+      break;
+    }
+    case 'backup.snapshot':
+    case 'backup.restore': {
+      next.backupEvents = [...next.backupEvents.slice(-19), { type: event.type, ...p, ts: event.ts }];
+      if (next.backup && event.type === 'backup.snapshot') next.backup = { ...next.backup, running: p.status === 'started' ? { startedAt: event.ts, reason: p.reason } : null, last: p.status === 'started' ? next.backup.last : { at: event.ts, reason: p.reason, status: p.status, key: p.key || null, files: p.files ?? null, error: p.error || null } };
+      if (next.backup && event.type === 'backup.restore' && p.status === 'done') next.backup = { ...next.backup, lastRestore: { at: event.ts, key: p.key, into: p.into || null, files: p.files ?? null } };
       break;
     }
     case 'setup.changed': {

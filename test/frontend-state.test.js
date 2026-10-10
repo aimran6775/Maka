@@ -365,3 +365,17 @@ test('first run and the local worker: the snapshot carries setup and ollama; oll
   s = applySnapshot(s, { seq: 5, layout: { version: 1, rooms: [], objects: [], agents: [] }, providers: {}, ollama: { reachable: true, models: [{ name: 'qwen2.5:7b' }], pulling: null } });
   assert.equal(s.ollamaPull, null);
 });
+
+test('backup: the snapshot carries the status; backup.snapshot and backup.restore keep last / running / lastRestore current', () => {
+  let s = applySnapshot(initialState(), { seq: 0, layout: { version: 1, rooms: [], objects: [], agents: [] }, providers: {}, backup: { wired: true, enabled: true, last: null, running: null, lastRestore: null } });
+  assert.equal(s.backup.wired, true);
+  s = reduce(s, [ev('backup.snapshot', { status: 'started', reason: 'scheduled' })]);
+  assert.equal(s.backup.running.reason, 'scheduled');
+  assert.equal(s.backup.last, null);
+  s = reduce(s, [ev('backup.snapshot', { status: 'done', reason: 'scheduled', key: 'maka/mac/x.enc', files: 3, bytes: 99 })]);
+  assert.equal(s.backup.running, null);
+  assert.deepEqual([s.backup.last.status, s.backup.last.key, s.backup.last.files], ['done', 'maka/mac/x.enc', 3]);
+  s = reduce(s, [ev('backup.restore', { status: 'done', key: 'maka/mac/x.enc', into: '/ws/_restore/1', files: 3 })]);
+  assert.equal(s.backup.lastRestore.into, '/ws/_restore/1');
+  assert.equal(s.backupEvents.length, 3);
+});

@@ -22,6 +22,7 @@ import { createConnectors } from '../../sidecar/connectors/registry.js';
 import { createResearch } from '../../sidecar/research/index.js';
 import { createOllama } from '../../sidecar/ollama.js';
 import { createSetup } from '../../sidecar/setup.js';
+import { createBackup } from '../../sidecar/backup/index.js';
 import { TOOLS } from '../../sidecar/capability/tools.js';
 import { CREW_TOOLS } from '../../sidecar/capability/crew.js';
 import { createRouter, defaultPolicy } from '../../sidecar/router.js';
@@ -38,7 +39,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 
 // `judgeProvider`: a (name, opts) => { provider, model, price } factory for the judge tier; when
 // absent no judge is wired, so runs are not reviewed (the phase 1 behaviour).
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, ollama: ollamaUrl = null, setup: setupOpts = null } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -106,6 +107,8 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const ollama = ollamaUrl ? createOllama({ env: { ...env, OLLAMA_HOST: ollamaUrl }, bus, clock, log: { error() {} } }) : null;
   const restartCalls = [];
   const setup = setupOpts ? await createSetup({ home, workspaceRoot, env, keystorePath, bus, ollama, chief, agents, providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch, probeLocal: false }), restart: setupOpts.restart || (() => restartCalls.push(clock ? clock.now() : Date.now())), fetch: globalThis.fetch, fs: setupOpts.fs, platform: setupOpts.platform, clock, verifyUrls: setupOpts.verifyUrls, log: { error() {} } }).init() : null;
+  // `backup`: { endpoint, config } wires the R2 backup against a fake S3 endpoint.
+  const backup = backupOpts ? await createBackup({ store, scheduler, bus, home, workspaceRoot, env, keystorePath, config: backupOpts.config || {}, fetch: globalThis.fetch, clock, hostname: backupOpts.hostname || 'test-mac', endpoint: backupOpts.endpoint, log: { error() {} } }).init() : null;
   const app = createApp({
     bus,
     store,
@@ -126,6 +129,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     research,
     setup,
     ollama,
+    backup,
     restart: setup ? (setupOpts.restart || (() => restartCalls.push(clock ? clock.now() : Date.now()))) : null,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch }),
@@ -163,6 +167,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     research,
     setup,
     ollama,
+    backup,
     restartCalls,
     workspace,
     keystorePath,

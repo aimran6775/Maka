@@ -440,6 +440,26 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     change: { type: 'string', enum: ['done', 'completed', 'skipped', 'restarting'] },
     detail: str,
   }),
+  // Added v1 (phase 3 step 5): an offsite snapshot to R2 started / done / failed /
+  // skipped (not wired, no key, disabled), with the object key, the files and bytes it
+  // carried, and the reason it ran (scheduled, missed, manual).
+  'backup.snapshot': payload(['status', 'reason'], {
+    status: { type: 'string', enum: ['started', 'done', 'failed', 'skipped'] },
+    reason: nonEmpty,
+    key: str,
+    files: int0,
+    bytes: int0,
+    error: str,
+  }),
+  // Added v1 (phase 3 step 5): a snapshot restored from R2 into a fresh directory (never
+  // over live data), or verified (opened and listed without writing).
+  'backup.restore': payload(['status', 'key'], {
+    status: { type: 'string', enum: ['done', 'failed', 'verified'] },
+    key: nonEmpty,
+    into: str,
+    files: int0,
+    error: str,
+  }),
 });
 
 export const EVENT_TYPES = deepFreeze(Object.keys(PAYLOAD_SCHEMAS));

@@ -7,6 +7,7 @@
 //   "resendRegion": "us-east-1", "mailPollMs": 60000,
 //   "mailCeilings": { "perAgentPerHour": 30, "perStationPerHour": 120, "campaignRecipientsPerHour": 500 },
 //   "browser": { "chromiumPath": "/Applications/Chromium.app/Contents/MacOS/Chromium", "headless": false },
+//   "backup": { "enabled": true, "at": "03:00", "bucket": "maka-backups", "prefix": "maka" },
 //   "connectors": { "syncEveryMs": 900000, "oauthPort": 8765, "shopify": { "shop": "lanterns.myshopify.com" },
 //                   "meta_ads": { "adAccountId": "act_123" }, "google_ads": { "customerId": "123-456-7890" } } };
 //   the env var wins over the file for the root. The root may go away (external drive): runs pause.
@@ -39,6 +40,7 @@ import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { createResearch } from './research/index.js';
 import { createOllama } from './ollama.js';
 import { createSetup } from './setup.js';
+import { createBackup } from './backup/index.js';
 import { TOOLS } from './capability/tools.js';
 import { CREW_TOOLS } from './capability/crew.js';
 import { createRouter } from './router.js';
@@ -117,6 +119,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const research = createResearch({ env, keystorePath, judge, workspaceRoot });
   Object.assign(registry, research.tools);
   toolContext.judge = judge;
+  const backup = await createBackup({ store, scheduler, bus, home, workspaceRoot, env, keystorePath, config: config.backup || {}, log }).init();
   const ollama = createOllama({ env, bus, log });
   ollama.status().catch(() => {});
   const setup = await createSetup({ home, configPath: path.join(home, 'config.json'), workspaceRoot, env, keystorePath, bus, ollama, chief, agents, providerStatus: () => providerStatus({ env, keystorePath, probeLocal: false }), restart, log }).init();
@@ -147,6 +150,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     research,
     setup,
     ollama,
+    backup,
     restart,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
@@ -192,6 +196,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
 
   async function close() {
     scheduler.stop();
+    backup.close();
     workspace.stop();
     runs.cancel();
     await runs.waitForIdle();
@@ -201,14 +206,16 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await new Promise((resolve) => server.close(resolve));
   }
 
+  const backupStatus = await backup.status();
+  log.info(`  backup: ${backupStatus.wired ? `R2 bucket ${backupStatus.bucket} under ${backupStatus.prefix}/` : `not wired (${backupStatus.missing.join(', ')})`} · ${backupStatus.enabled ? `daily at ${backupStatus.at}` : 'disabled'}${backupStatus.last ? ` · last ${backupStatus.last.status} ${new Date(backupStatus.last.at).toISOString()}` : ''}`);
   const setupState = await setup.state();
   log.info(`  first run: ${setupState.firstRun ? 'yes (the park shows the first-run card)' : `done ${new Date(setupState.completedAt).toISOString()}${setupState.skipped ? ' (skipped)' : ''}`} · worker ${ollama.summary().worker}`);
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, research, setup, ollama, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, research, setup, ollama, backup, close };
 }
 
 function validateConfig(data) {
-  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } }, connectors: { type: 'object', additionalProperties: true, properties: { syncEveryMs: { type: 'integer', minimum: 60000 }, oauthPort: { type: 'integer', minimum: 0, maximum: 65535 }, shopify: { type: 'object', additionalProperties: false, properties: { shop: { type: 'string', minLength: 1 } } }, meta_ads: { type: 'object', additionalProperties: false, properties: { adAccountId: { type: 'string', minLength: 1 } } }, google_ads: { type: 'object', additionalProperties: false, properties: { customerId: { type: 'string', minLength: 1 }, loginCustomerId: { type: 'string', minLength: 1 } } } } } } }, data);
+  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } }, backup: { type: 'object', additionalProperties: false, properties: { enabled: { type: 'boolean' }, at: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, bucket: { type: 'string', minLength: 3 }, prefix: { type: 'string', minLength: 1 } } }, connectors: { type: 'object', additionalProperties: true, properties: { syncEveryMs: { type: 'integer', minimum: 60000 }, oauthPort: { type: 'integer', minimum: 0, maximum: 65535 }, shopify: { type: 'object', additionalProperties: false, properties: { shop: { type: 'string', minLength: 1 } } }, meta_ads: { type: 'object', additionalProperties: false, properties: { adAccountId: { type: 'string', minLength: 1 } } }, google_ads: { type: 'object', additionalProperties: false, properties: { customerId: { type: 'string', minLength: 1 }, loginCustomerId: { type: 'string', minLength: 1 } } } } } } }, data);
 }
 
 async function loadOrDefault(file, validateFn, defaultFn, log, label) {

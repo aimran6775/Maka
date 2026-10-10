@@ -854,3 +854,40 @@ A model's resident footprint is not something the sidecar can measure before it 
 size as "about … resident" with the factor printed, and the headroom against half the
 machine's memory. Total and free memory are the OS's own figures. Nothing in the line is
 a measurement dressed up as one.
+
+## D102. The backup is a sealed tarball, not per-file objects
+
+One snapshot = one object: a ustar tar of the files, gzipped, then AES-256-GCM with the
+`MAKA1` header as associated data. Per-file objects would leak the file names and sizes
+of the mail store and the deliverables to the bucket's listing, and would need hundreds
+of signed requests a night; one sealed object leaks only its size, and the index beside
+it (`latest.json`) carries the paths so a restore can be checked before it runs. The
+snapshot stays under 512 MB; past that the run fails naming the file, rather than
+quietly uploading a transcript archive.
+
+## D103. The snapshot key is made once, shown once, kept in the Keychain
+
+Enabling backups with no key makes 32 random bytes, stores them as `backupKey` through
+`keys.js` (the Keychain in the app, the 0600 keystore in development) and returns the
+hex once with the instruction to write it down. Deriving the key from a passphrase would
+be weaker and would ask the owner to invent one; storing it in R2 next to the snapshot
+would make the encryption decorative. A restore on another machine needs the key typed
+in (`MAKA_BACKUP_KEY`), which is the point.
+
+## D104. Restore goes into a fresh directory, and is not a Gate item
+
+A restore writes under `workspace/_restore/<stamp>/` (or an empty directory the owner
+names) and refuses a non-empty target, so it can never overwrite live data; moving files
+into place is the owner's deliberate step. Because nothing it does is destructive or
+outward-facing, it is not parked at the Gate: the Gate is for actions with outside
+effect (D62), and the restore button is already the Superintendent's own click.
+
+## D105. What a snapshot holds, and what it leaves out
+
+In: `_peak/` (the evidence log and digests), `_mail/` (threads, messages, attachments,
+suppression), every Ranger's `outbox/` (the deliverables), and the home's ledgers and
+records (spend, leash ledger, leash, layout, Gate and work items, mission, plan, away,
+mail addresses, scheduler state, setup, reflections, connector syncs). Out: run
+transcripts (large, and the ledgers carry what the reflection and SPEND need), browser
+profiles (cookies and sessions belong on the machine that was logged in), and the
+keystore (secrets never leave the machine; the Keychain is the store in the app).

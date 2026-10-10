@@ -50,6 +50,7 @@ Local models are smaller than Claude and must support tool calling (`ollama show
 lists it). The judge pattern catches errors; it does not make a weak worker strong.
 
 Environment: `PORT` (8790), `HOST` (127.0.0.1), `MAKA_HOME` (`./.maka`, data and keystore),
+`MAKA_BACKUP_KEY` (the snapshot key when restoring on another machine),
 `MAKA_WORKSPACE` (default `~/Maka/workspace`, or `workspaceRoot` in `$MAKA_HOME/config.json`;
 one directory per Ranger, deliverables land in `outbox/`). The workspace root may live on an
 external drive: when it is unmounted Maka pauses runs and shows "workspace offline", and
@@ -246,6 +247,15 @@ estimated resident footprint and the headroom against half the machine's memory,
 Remove button, and one recommended pull with real progress. Without a reachable worker a
 run is refused with `OLLAMA_UNREACHABLE` and the message says what to do; nothing falls
 back to a paid provider unless `policy.json` says so.
+
+Step 5, offsite backup: set `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY` (or the keystore / Keychain names) and a bucket (`backup.bucket`
+in `config.json` or `R2_BUCKET`), then Enable on the Peak: every night at the time you
+set, the Peak's files, the mail store, the Rangers' outboxes and the ledgers are tarred,
+encrypted with a key Maka makes once and shows once (write it down; it lives in the
+Keychain), and put in the bucket under `maka/<your-mac>/`. Back up now, Verify latest
+and Restore latest (into a fresh `workspace/_restore/<time>/`, never over live data) are
+on the same card. Run transcripts, browser profiles and secrets are never uploaded.
 
 The signed, notarized `.dmg` and the download page come with steps 6 and 7
 (`docs/RELEASE_RUNBOOK.md`).

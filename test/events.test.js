@@ -36,6 +36,8 @@ const SAMPLES = {
   'connector.status': { connector: 'shopify', change: 'authorizing', connected: false, auth: 'oauth2', by: 'superintendent', authorizeUrl: 'https://example/authorize?x' },
   'ollama.pull': { model: 'qwen2.5:7b', status: 'pulling manifest', completed: 1024, total: 4096, done: false },
   'setup.changed': { step: 'workspace', change: 'done', detail: '/Volumes/LaCie/Maka/workspace' },
+  'backup.snapshot': { status: 'done', reason: 'scheduled', key: 'maka/mac/2026-10-10T03-00-00Z.tar.gz.enc', files: 12, bytes: 4096 },
+  'backup.restore': { status: 'done', key: 'maka/mac/2026-10-10T03-00-00Z.tar.gz.enc', into: '/ws/_restore/2026', files: 12 },
   'browser.handoff': { handoffId: 'hand-1', agentId: 'ranger-1', status: 'waiting', kind: 'login', runId: 'run-1', url: 'https://shop.example/login', title: 'Sign in', reason: 'the page asks for a password', headless: false },
   'mail.classified': { messageId: 'msg-1', classification: 'customer', by: 'worker', confidence: 0.92, reason: 'asks about an order' },
   'mail.dns': { domain: 'makapark.com', change: 'applied', itemId: 'gate-1', create: 4, update: 1, remove: 0, unchanged: 2, errors: [], message: '5 change(s) written' },
@@ -110,6 +112,8 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('ollama.pull', { model: 'm', status: 's', done: 'yes' });
   bad('ollama.pull', { model: 'm', status: 's', done: true, completed: -1 });
   bad('setup.changed', { step: 'coffee', change: 'done' });
+  bad('backup.snapshot', { status: 'done' });
+  bad('backup.restore', { status: 'done', key: '' });
   bad('judge.verdict', { ...SAMPLES['judge.verdict'], verdict: 'shrug' });
   bad('crew.agent', { agentId: 'x', change: 'cloned' });
   bad('plan.updated', { missionId: 'm', change: 'dreamt' });

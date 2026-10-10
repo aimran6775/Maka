@@ -43,6 +43,11 @@ export const ENV_VARS = Object.freeze({
   googleAdsClientSecret: 'GOOGLE_ADS_CLIENT_SECRET',
   googleAdsDeveloperToken: 'GOOGLE_ADS_DEVELOPER_TOKEN',
   braveSearch: 'BRAVE_SEARCH_API_KEY',
+  // Phase 3 step 5: the offsite backup to Cloudflare R2 and the snapshot key.
+  cloudflareAccountId: 'CLOUDFLARE_ACCOUNT_ID',
+  r2AccessKeyId: 'R2_ACCESS_KEY_ID',
+  r2SecretAccessKey: 'R2_SECRET_ACCESS_KEY',
+  backupKey: 'MAKA_BACKUP_KEY',
 });
 
 export function defaultKeystorePath(env = process.env) {

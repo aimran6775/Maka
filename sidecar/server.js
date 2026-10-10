@@ -47,6 +47,12 @@
 //   POST /api/ollama/start     start the installed Ollama (the app or `ollama serve`)
 //   DELETE /api/ollama/models/:name
 //   POST /api/restart          restart the sidecar in-process (202); the page reconnects
+//   GET  /api/backup           R2 backup: wired?, enabled, schedule, last snapshots (phase 3 step 5)
+//   POST /api/backup/config    { enabled?, at?, bucket?, prefix? } → config.json; enabling makes the key (returned once)
+//   POST /api/backup/now       one snapshot now → the entry (backup.snapshot events meanwhile)
+//   GET  /api/backup/list      snapshots in the bucket under this machine's prefix, newest first
+//   POST /api/backup/verify    { key? } opens a snapshot (latest by default) and lists it; writes nothing
+//   POST /api/backup/restore   { key?, into? } restores into a fresh directory (workspace/_restore/<stamp>)
 //   GET  /api/research         the Scout kit: search provider, trend sources, judge wired
 //   GET  /api/briefs           venture briefs from every Ranger's outbox, newest first
 //   GET  /api/connectors       one status row per connector (connected, last sync, summary)
@@ -205,7 +211,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, research = null, workspace = null, setup = null, ollama = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, research = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -279,6 +285,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         research: research ? await research.status() : null,
         setup: setup ? await setup.state() : null,
         ollama: ollama ? ollama.summary() : null,
+        backup: backup ? await backup.status() : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -502,6 +509,32 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p.startsWith('/api/ollama/models/') && method === 'DELETE') {
       if (!ollama) throw new HttpError(404, 'no Ollama manager');
       return sendJson(res, 200, await rethrow(() => ollama.remove(decodeURIComponent(p.slice('/api/ollama/models/'.length)))));
+    }
+    if (p === '/api/backup' && method === 'GET') {
+      if (!backup) throw new HttpError(404, 'no backup module');
+      return sendJson(res, 200, await backup.status());
+    }
+    if (p === '/api/backup/config' && method === 'POST') {
+      if (!backup) throw new HttpError(404, 'no backup module');
+      return sendJson(res, 200, await rethrow(async () => backup.configure(await readJsonBody(req))));
+    }
+    if (p === '/api/backup/now' && method === 'POST') {
+      if (!backup) throw new HttpError(404, 'no backup module');
+      return sendJson(res, 200, await rethrow(() => backup.snapshot({ reason: 'manual' })));
+    }
+    if (p === '/api/backup/list' && method === 'GET') {
+      if (!backup) throw new HttpError(404, 'no backup module');
+      return sendJson(res, 200, await rethrow(() => backup.list()));
+    }
+    if (p === '/api/backup/verify' && method === 'POST') {
+      if (!backup) throw new HttpError(404, 'no backup module');
+      const body = await readJsonBody(req);
+      return sendJson(res, 200, await rethrow(() => backup.verify({ key: typeof body.key === 'string' && body.key ? body.key : null })));
+    }
+    if (p === '/api/backup/restore' && method === 'POST') {
+      if (!backup) throw new HttpError(404, 'no backup module');
+      const body = await readJsonBody(req);
+      return sendJson(res, 200, await rethrow(() => backup.restore({ key: typeof body.key === 'string' && body.key ? body.key : null, into: typeof body.into === 'string' && body.into ? body.into : null })));
     }
     if (p === '/api/restart' && method === 'POST') {
       if (typeof restart !== 'function') throw new HttpError(404, 'this sidecar cannot restart itself (run it through sidecar/index.js)');

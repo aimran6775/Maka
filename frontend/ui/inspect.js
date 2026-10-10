@@ -377,6 +377,46 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     return r;
   }
 
+  // Offsite backup (step 5): what the sidecar reports, and the owner's actions.
+  const backupNotice = { text: '', key: null };
+  const backupAt = el('input', { class: 'inp num', value: '03:00', title: 'daily, local time (HH:MM)' });
+  const backupBucket = el('input', { class: 'inp', placeholder: 'R2 bucket name' });
+  async function backupAct(label, req) {
+    backupNotice.text = `${label}…`;
+    if (selectionRefresh) selectionRefresh();
+    const r = await req();
+    backupNotice.text = r.ok ? `${label}: ok${r.body && r.body.key ? ` · ${r.body.key}` : ''}${r.body && r.body.into ? ` → ${r.body.into}` : ''}${r.body && typeof r.body.files === 'number' ? ` · ${r.body.files} file(s)` : ''}` : `${label}: ${r.body.code || r.status}: ${r.body.error || 'failed'}`;
+    if (r.ok && r.body && r.body.keyHex) backupNotice.key = r.body.keyHex;
+    const snap = await fetch('/api/state');
+    if (snap.ok && window.maka && window.maka.refresh) await window.maka.refresh(await snap.json());
+    if (selectionRefresh) selectionRefresh();
+    return r;
+  }
+  function backupSection(s) {
+    const b = s.backup;
+    if (!b) return [];
+    if (!backupBucket.value && b.bucket) backupBucket.value = b.bucket;
+    if (b.at && backupAt.value === '03:00' && b.at !== '03:00') backupAt.value = b.at;
+    const last = b.last;
+    return [
+      el('div', { class: 'k', text: 'offsite backup (Cloudflare R2, encrypted)' }),
+      row('wired', b.wired ? `yes · ${b.bucket} under ${b.prefix}/` : `no: set ${b.missing.join(', ')}`),
+      row('schedule', b.enabled ? `daily at ${b.at}${b.job && b.job.nextRunAt ? ` · next ${new Date(b.job.nextRunAt).toLocaleString()}` : ''}` : 'disabled'),
+      row('key', b.hasKey ? 'in the Keychain (keystore without the app)' : 'none yet: enabling makes one and shows it once'),
+      row('last', b.running ? `running (${b.running.reason}) since ${new Date(b.running.startedAt).toLocaleTimeString()}` : last ? `${last.status} · ${new Date(last.at).toLocaleString()} · ${last.reason}${typeof last.files === 'number' ? ` · ${last.files} file(s)` : ''}${last.error ? ` · ${last.error}` : ''}` : 'no snapshot yet'),
+      b.lastRestore ? row('restored', `${new Date(b.lastRestore.at).toLocaleString()} → ${b.lastRestore.into}`) : null,
+      el('div', { class: 'row' }, el('label', { text: 'daily at' }), backupAt, el('label', { text: 'bucket' }), backupBucket,
+        el('button', { class: `btn ${b.enabled ? '' : 'primary'}`, text: b.enabled ? 'Disable' : 'Enable', onclick: () => backupAct(b.enabled ? 'Disable' : 'Enable', () => api.post('/api/backup/config', { enabled: !b.enabled, at: backupAt.value.trim(), bucket: backupBucket.value.trim() || undefined })) })),
+      el('div', { class: 'row' },
+        el('button', { class: 'btn', text: 'Back up now', disabled: !b.wired || !b.hasKey || Boolean(b.running), onclick: () => backupAct('Snapshot', () => api.post('/api/backup/now', {})) }),
+        el('button', { class: 'btn', text: 'Verify latest', disabled: !b.wired || !b.hasKey, title: 'Downloads the latest snapshot, opens it with the key and lists it; writes nothing', onclick: () => backupAct('Verify', () => api.post('/api/backup/verify', {})) }),
+        el('button', { class: 'btn', text: 'Restore latest', disabled: !b.wired || !b.hasKey, title: 'Restores into workspace/_restore/<time>/; never over live data', onclick: () => { if (window.confirm('Restore the latest snapshot into a fresh _restore/ folder under the workspace?')) backupAct('Restore', () => api.post('/api/backup/restore', {})); } }),
+      ),
+      backupNotice.key ? el('div', { class: 'small warn', text: `Snapshot key (shown once; write it down): ${backupNotice.key}` }) : null,
+      el('div', { class: 'notice', text: backupNotice.text }),
+    ];
+  }
+
   function renderPeak(s) {
     setTitle('INSPECT · Mountain Peak');
     const runs = s.runOrder.map((id) => s.runs[id]).reverse();
@@ -412,6 +452,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ...connectorsSection(s),
       ...briefsSection(s),
       s.browser ? row('browser', `${s.browser.wired ? `${s.browser.chromium}${s.browser.headless ? ' (headless)' : ''}` : 'not wired: no Chromium found (browser.chromiumPath or CHROMIUM)'} · ${(s.browser.sessions || []).length} open · ${pendingHandoffs(s).length} handoff(s) waiting`) : null,
+      ...backupSection(s),
       row('judge today', s.judge ? `${fmtUsd(s.judge.today.usd)} of $${s.judge.caps.judgeUsdPerDay} cap · ${s.judge.today.calls} call(s) · ${s.judge.provider}/${s.judge.model || 'default'}` : 'no judge wired'),
       s.ollama ? el('div', { class: 'k', text: 'worker (local model, Ollama)' }) : null,
       ...(s.ollama ? workerLines({ s, w: s.ollama, api, act: peakAct, busy: false, step: 'worker', showRemove: true }) : []),
