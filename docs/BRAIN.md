@@ -40,7 +40,16 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 1 done: the Tauri 2
+Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 2 done: the shell
+owns every secret in the macOS Keychain (`src-tauri/src/credentials.rs`) and hands the
+sidecar a session-scoped handle instead: a Unix socket plus a random token
+(`src-tauri/src/broker.rs`, `MAKA_CREDENTIALS_SOCKET` / `MAKA_CREDENTIALS_TOKEN`) that
+die with the session. `sidecar/providers/keys.js` resolves a key from the environment,
+then the broker when there is one, else the 0600 keystore file, which is now the
+development fallback only: with a broker configured the file is never read, and a broker
+that refuses or is gone is a reported "no key". Every write (a connector key approved at
+the Gate, an OAuth token, the first-run key of step 3) goes through the same `setKey`,
+so the Keychain is the one store in the app. Step 1 done: the Tauri 2
 shell in `src-tauri/`. It is a thin host, not a second application: it finds the bundled
 Node and the bundled `sidecar/` + `shared/` + `frontend/`, starts `node sidecar/index.js`
 on a free loopback port with the app-data directory as `MAKA_HOME`, waits for

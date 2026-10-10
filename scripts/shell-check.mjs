@@ -22,4 +22,9 @@ if (!existsSync(placeholder)) {
 const args = ['check', '--target', target, ...process.argv.slice(2)];
 console.log(`cargo ${args.join(' ')} (in src-tauri/, DOCS_RS=1)`);
 const r = spawnSync('cargo', args, { cwd: shell, stdio: 'inherit', env: { ...process.env, DOCS_RS: '1' } });
-process.exit(r.status ?? 1);
+if (r.status !== 0) process.exit(r.status ?? 1);
+// The platform-independent modules (credentials, the broker, the HTTP client) run as
+// unit tests on this host through src-tauri/host-tests, which includes them by path.
+console.log('cargo test (in src-tauri/host-tests/)');
+const t = spawnSync('cargo', ['test'], { cwd: path.join(shell, 'host-tests'), stdio: 'inherit' });
+process.exit(t.status ?? 1);

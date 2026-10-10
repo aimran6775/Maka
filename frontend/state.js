@@ -35,7 +35,7 @@ export function initialState() {
     browserHandoffs: {}, // handoffId -> latest browser.handoff payload (+ ts)
     browserHandoffOrder: [], // handoffIds, oldest first
     leash: null, // leash policy from the snapshot (shared/leash.js shape)
-    keystore: { path: '', problem: null },
+    keystore: { path: '', problem: null, broker: false },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
     objectKinds: {},
     activeRun: null, // { runId, agentId, startedAt } the first active run (compat)
@@ -112,7 +112,7 @@ export function applySnapshot(state, snap) {
   next.spendByAgent = (snap.reflection && snap.reflection.spentByAgent) || {};
   next.leash = snap.leash || null;
   next.workspace = snap.workspace || null;
-  next.keystore = snap.keystore || { path: '', problem: null };
+  next.keystore = snap.keystore || { path: '', problem: null, broker: false };
   next.layout = snap.layout;
   next.objectKinds = snap.objectKinds || {};
   next.ledger = snap.ledger || null;

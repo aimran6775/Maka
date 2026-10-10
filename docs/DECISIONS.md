@@ -769,3 +769,33 @@ SIGTERM so it flushes its stores.
 the public key at release time. The shell registers the updater plugin only when the
 config it was built with names one, and a dev build's tray says "Updates: not configured
 in this build" instead of pretending to check.
+
+## D93. The sidecar gets a broker, not the Keychain
+
+The brief says `credentials.rs` owns all secrets and hands the sidecar a session-scoped
+handle. The handle is a Unix socket in a 0700 per-session directory and a random token,
+both passed in the sidecar's environment; the sidecar asks `GET name` and gets the value
+back for that one request. Alternatives weighed: injecting every secret as an environment
+variable at launch (simple, but a key pasted at first run would need a sidecar restart,
+and every secret would sit in the process environment for its whole life), or a Node
+native module (forbidden: core modules only). The socket keeps `keys.js` core-only, lets
+a key stored during the session be used at once, and keeps the Keychain behind one Rust
+module. The protocol is one line per request with base64 values so a newline in a token
+cannot break the framing, and the token is checked before any store access.
+
+## D94. With a broker, the keystore file is not a fallback
+
+When the shell configured a broker, `keys.js` never reads `keystore.json`: a broker that
+refuses (bad token, locked Keychain) or is gone (the session ended) answers "no key" with
+the reason in the sidecar's log and `/api/state.keystore.problem`. Falling back to a file
+would make the app's behaviour depend on whether a dev file happened to exist in the
+app-data directory, and would hide a Keychain problem behind a stale key. Without the
+shell (development, tests) the file works exactly as before.
+
+## D95. The Keychain's "list" is an index item
+
+`SecItemCopyMatching` can enumerate generic passwords by service, but
+`security-framework`'s simple password API is get / set / delete by (service, account).
+Rather than widen the Rust surface, the store keeps one more item, `maka.index`, with
+the names it holds, updated on every set and delete. The sidecar uses the list only for
+diagnostics (which names exist), never for values, so a stale index costs nothing.

@@ -1,0 +1,18 @@
+# Runs the shell's platform-independent modules (the credential store, the broker
+# protocol and socket, the loopback HTTP client) as unit tests on any host, Linux
+# included, where the full Tauri crate cannot build (it needs the macOS frameworks or
+# GTK). The modules are included by path, so what is tested is the shell's own source.
+#   cargo test --manifest-path src-tauri/host-tests/Cargo.toml   (npm run shell:check does it)
+[package]
+name = "maka-host-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "=1.0.152"
+
+[workspace]

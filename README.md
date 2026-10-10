@@ -55,9 +55,10 @@ one directory per Ranger, deliverables land in `outbox/`). The workspace root ma
 external drive: when it is unmounted Maka pauses runs and shows "workspace offline", and
 never writes anywhere else.
 
-Keystore alternative to env vars: `$MAKA_HOME/keystore.json` containing
-`{ "anthropic": "sk-ant-...", "openrouter": "..." }` with file mode `0600`. The sidecar
-refuses to read a keystore with looser permissions.
+Keystore alternative to env vars (development, without the app): `$MAKA_HOME/keystore.json`
+containing `{ "anthropic": "sk-ant-...", "openrouter": "..." }` with file mode `0600`. The
+sidecar refuses to read a keystore with looser permissions. Inside the macOS app the
+Keychain replaces the file (phase 3, below).
 
 ## What you can do in phase 1
 
@@ -223,6 +224,13 @@ the Tauri CLI (`cargo install tauri-cli --version ^2 --locked`):
 ```bash
 cargo tauri dev --config src-tauri/tauri.conf.json   # from the repo root; uses `node` on PATH
 ```
+
+Step 2, the Keychain: in the app every secret lives in the macOS Keychain (service
+`com.makapark.maka`), owned by the shell. The sidecar never reads the Keychain: it asks
+the shell's credential broker, a Unix socket plus a token that exist for the session
+only, through the same `keys.js` that reads environment variables and, without the app,
+the 0600 keystore file. A key you give at the Gate or at first run goes straight into the
+Keychain; the status bar says which store is in use.
 
 The signed, notarized `.dmg` and the download page come with steps 6 and 7
 (`docs/RELEASE_RUNBOOK.md`).

@@ -245,7 +245,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         workspaceRoot,
         workspace: workspace ? workspace.state() : { root: workspaceRoot, online: true, known: false, since: 0, reason: null },
         providers,
-        keystore: { path: keystore.path, problem: keystore.problem },
+        keystore: { path: keystore.path, problem: keystore.problem, broker: Boolean(keystore.broker) },
         layout: layoutState.get(),
         objectKinds: OBJECT_KINDS,
         activeRun: runs.active()[0] || null,

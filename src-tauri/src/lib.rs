@@ -10,6 +10,8 @@
 //!     (credentials.rs, broker.rs; phase 3 step 2).
 //! Closing the window hides it; the app keeps running (24/7 is the point) until Quit.
 
+pub mod broker;
+pub mod credentials;
 pub mod local_http;
 pub mod sidecar;
 pub mod tray;
@@ -35,6 +37,8 @@ pub struct Shell {
     /// The splash page's own URL (tauri://localhost/index.html), kept so an error can be shown
     /// after the window moved to the park.
     pub splash: Mutex<Option<String>>,
+    /// The credential broker (step 2): one per session, closed on exit.
+    pub broker: Mutex<Option<broker::Broker>>,
 }
 
 pub type ShellState = Arc<Shell>;
@@ -87,6 +91,10 @@ pub fn run() {
                 let taken = shell.sidecar.lock().unwrap().take();
                 if let Some(mut s) = taken {
                     s.stop(STOP_GRACE);
+                }
+                let taken = shell.broker.lock().unwrap().take();
+                if let Some(b) = taken {
+                    b.close();
                 }
             }
             #[cfg(target_os = "macos")]
@@ -215,8 +223,23 @@ fn supervise(app: AppHandle, shell: ShellState) {
     }
 }
 
-/// Environment the shell adds to every sidecar launch. Step 2 fills this with the
-/// credential broker's socket and session token; until then it is empty.
-pub fn session_env(_app: &AppHandle, _shell: &Shell, _launch: &sidecar::Launch) -> Vec<(String, String)> {
-    Vec::new()
+/// Environment the shell adds to every sidecar launch: the credential broker's socket and
+/// session token (`MAKA_CREDENTIALS_SOCKET`, `MAKA_CREDENTIALS_TOKEN`). The broker is
+/// started once per session over the platform store (the Keychain on macOS); when it
+/// cannot start, the sidecar is told nothing and falls back to its dev keystore file,
+/// and the reason goes to the shell's stderr.
+pub fn session_env(_app: &AppHandle, shell: &Shell, launch: &sidecar::Launch) -> Vec<(String, String)> {
+    let mut guard = shell.broker.lock().unwrap();
+    if guard.is_none() {
+        let store: Arc<dyn credentials::Store> = Arc::from(credentials::open(&launch.home));
+        let base = std::env::temp_dir();
+        match broker::start(store.clone(), &base) {
+            Ok(b) => {
+                println!("maka: credentials from {} via {}", store.describe(), b.socket.display());
+                *guard = Some(b);
+            }
+            Err(e) => eprintln!("maka: credential broker not started ({e}); the sidecar uses its keystore file"),
+        }
+    }
+    guard.as_ref().map(|b| b.env()).unwrap_or_default()
 }

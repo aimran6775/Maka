@@ -120,6 +120,8 @@ function renderStatus() {
     el('span', { class: state.workspace && !state.workspace.online ? 'warn' : '', text: state.workspace ? (state.workspace.online ? 'workspace: online' : `workspace: OFFLINE (${state.workspace.reason || 'unreachable'}) · runs paused`) : 'workspace: unknown' }),
     el('span', { class: 'sep' }),
     el('span', { class: parkError || parkStatus.problems.length ? 'warn' : '', text: parkText, title: parkStatus.problems.join('\n') }),
+    el('span', { class: 'sep' }),
+    el('span', { text: state.keystore.broker ? 'secrets: Keychain (via the app)' : 'secrets: keystore file (dev)' }),
     state.keystore.problem ? el('span', { class: 'warn', text: ` · keystore: ${state.keystore.problem}` }) : null,
     state.invalidEvents ? el('span', { class: 'warn', text: ` · ${state.invalidEvents} invalid event(s) rejected` }) : null,
   );
