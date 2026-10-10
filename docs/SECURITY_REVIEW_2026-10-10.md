@@ -21,7 +21,7 @@ before the first Mac build. Status column is updated by the fix session.
 | L5 | LOW | The Chief is unjudged by design (D51); a connector fixture at the Peak would let it act in money domains without a judge. | Refuse connector fixtures at the Peak, or judge the Chief's money-domain actions. | fixed 9ea28a6 |
 
 Also: `npm run test:fast` showed one non-reproducing failure in three runs (213/214 once). Find and
-fix the flaky test. Status: fixed (sha in the next commit). The failing assertion was
+fix the flaky test. Status: fixed 1730a41. The failing assertion was
 `test/ads.test.js` reading `.counts` of a manual Google Ads sync that had been answered
 `{ skipped: true, why: 'already syncing' }` because a tool's `after-write` background sync was
 still in flight; `sidecar/connectors/registry.js` now queues syncs of one kind (D124) and
