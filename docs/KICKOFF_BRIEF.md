@@ -186,9 +186,20 @@ several ventures, and the park shows which trail they are on.
 
 ### Email: Maka runs its own mail (owner decisions 2026-10-10: domain on Cloudflare, Fastmail)
 Rangers create and operate their own addresses. The Maka domain is makapark.com, managed in
-Cloudflare; the mail provider is Fastmail. Ranger addresses take the form
-<role>-<venture>@makapark.com; the Superintendent's own address on the domain is never
-used by Rangers. Mechanics:
+Cloudflare; the mail provider is Fastmail. Every station (zone) has its own
+mailbox, and Rangers get venture-specific aliases on top (owner decision 2026-10-10):
+- Station mailboxes, created at park setup: peak@ (Chief Ranger, control centre),
+  rangers@ (Ranger Station, HQ), visitors@ (Visitor Center, the public front door),
+  sales@, marketing@, finance@, support@ (Operations & Support), research@ (Scout),
+  listings@ (Product & Listings), gate@ (Entrance Gate: approval notifications to the
+  Superintendent). A station mailbox is owned by the zone; every Ranger assigned to that
+  zone can read it, and can send from it within their leash. Threads are shared, so a
+  handoff inside a station never loses the conversation.
+- Ranger aliases, created on demand: <role>-<venture>@makapark.com (e.g.
+  sales-lanternco@makapark.com), routed into the owning station's mailbox and tagged with
+  the venture, so the park can show which trail a thread belongs to.
+- The Superintendent's own address on the domain is never used by Rangers. Mail to the
+  Superintendent goes to gate@ and is mirrored to the Gate card in the park. Mechanics:
 - DNS: the sidecar sets MX, SPF, DKIM and DMARC for the domain through the Cloudflare API
   (an API token scoped to Zone:DNS:Edit on that one zone). This is a one-time, Gate-approved
   setup step with a dry-run preview of the records.

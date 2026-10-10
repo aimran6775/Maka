@@ -220,3 +220,6 @@ model, and the rule that every visual state maps to a real event. Awaiting the n
 - Outbound bulk/transactional mail: Resend on makapark.com (verified), webhooks into the
   local mail store, automatic suppression on bounce/complaint. Fastmail stays for mailboxes,
   inbound and conversational replies. Secret name: RESEND_API_KEY.
+- Every station has its own mailbox (peak@, rangers@, visitors@, sales@, marketing@, finance@,
+  support@, research@, listings@, gate@ on makapark.com), zone-owned and shared by its Rangers;
+  Ranger venture aliases route into the owning station mailbox.
