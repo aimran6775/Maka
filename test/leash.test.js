@@ -58,7 +58,8 @@ test('resolution order: agent override → zone default → park default → dra
   leash.zones = { camp: { domains: { publishing: { level: 'act_capped', dailyCapActions: 3 } } } };
   leash.agents = { ada: { domains: { publishing: { level: 'act_free' } } } };
   assert.equal(validateLeash(leash).ok, true);
-  assert.deepEqual(resolveLeash(leash, { agentId: 'ada', roomId: 'camp' }, 'publishing'), { domain: 'publishing', level: 'act_free', dailyCapUsd: null, dailyCapActions: null, scope: 'agent' });
+  // the agent entry sets the level; the cap it omits is inherited from the zone (safety review M2, test/safety.test.js)
+  assert.deepEqual(resolveLeash(leash, { agentId: 'ada', roomId: 'camp' }, 'publishing'), { domain: 'publishing', level: 'act_free', dailyCapUsd: null, dailyCapActions: 3, scope: 'agent' });
   assert.deepEqual(resolveLeash(leash, { agentId: 'bob', roomId: 'camp' }, 'publishing'), { domain: 'publishing', level: 'act_capped', dailyCapUsd: null, dailyCapActions: 3, scope: 'zone' });
   assert.deepEqual(resolveLeash(leash, { agentId: 'bob', roomId: 'hq' }, 'publishing').scope, 'park');
   assert.deepEqual(resolveLeash(leash, { agentId: 'bob', roomId: 'hq' }, 'money_out'), { domain: 'money_out', level: 'draft', dailyCapUsd: 0, dailyCapActions: null, scope: 'park' });

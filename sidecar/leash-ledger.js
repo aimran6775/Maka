@@ -13,6 +13,8 @@
 // The ledger is the sidecar's memory for "what did the leash let through today" and
 // "how many approvals in a row has this Ranger earned". It holds, persisted atomically:
 //   days[YYYY-MM-DD].domains[domain] = { usd, actions }   executed actions per domain per day
+//   days[YYYY-MM-DD].agents[agentId][domain] = { usd, actions }  the same, per agent (M2:
+//                                             an agent-scoped cap is checked against these)
 //   days[YYYY-MM-DD].judge           = { usd, calls }     judge-tier spend per day (step 2)
 //   days[YYYY-MM-DD].hosted          = { calls, tokens }  hosted worker calls per day (step 12b)
 //   streaks[agentId][domain]         = { approvals }      Gate approvals since the last
@@ -44,14 +46,15 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
   let saving = Promise.resolve();
   const reserved = new Map(); // domain -> { usd, actions } in flight today (dayKey tracked per entry)
   let reservedDay = null;
-  const reservedRow = (domain) => {
+  const reservedRow = (domain, agentId = null) => {
     const key = localDayKey(clock.now());
     if (reservedDay !== key) {
       reserved.clear();
       reservedDay = key;
     }
-    if (!reserved.has(domain)) reserved.set(domain, { usd: 0, actions: 0 });
-    return reserved.get(domain);
+    const k = reserveKey(domain, agentId);
+    if (!reserved.has(k)) reserved.set(k, { usd: 0, actions: 0 });
+    return reserved.get(k);
   };
 
   const save = () => {
@@ -72,6 +75,15 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
     if (!d.domains[domain]) d.domains[domain] = { usd: 0, actions: 0 };
     return d.domains[domain];
   };
+  const agentRow = (agentId, domain) => {
+    const d = day();
+    if (!d.agents) d.agents = {};
+    if (!d.agents[agentId]) d.agents[agentId] = {};
+    if (!d.agents[agentId][domain]) d.agents[agentId][domain] = { usd: 0, actions: 0 };
+    return d.agents[agentId][domain];
+  };
+  // Reservation rows are keyed by domain, and by domain@agent for the agent's own view.
+  const reserveKey = (domain, agentId) => (agentId ? `${domain}@${agentId}` : domain);
 
   return {
     async init() {
@@ -81,49 +93,62 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
     },
     dayKey: () => localDayKey(clock.now()),
     earnApprovals,
-    spentToday(domain) {
+    // Executed money and actions today in `domain`: the park's total, or one agent's own
+    // with { agentId } (safety M2).
+    spentToday(domain, { agentId = null } = {}) {
       const d = data.days[localDayKey(clock.now())];
-      const row = d && d.domains[domain];
+      const row = agentId ? d && d.agents && d.agents[agentId] && d.agents[agentId][domain] : d && d.domains[domain];
       return row ? { usd: row.usd, actions: row.actions } : { usd: 0, actions: 0 };
     },
-    // Money and actions reserved by actions still running today (safety M1).
-    reservedToday(domain) {
-      const r = reservedRow(domain);
+    // Money and actions reserved by actions still running today (safety M1), park-wide or
+    // one agent's with { agentId }.
+    reservedToday(domain, { agentId = null } = {}) {
+      const r = reservedRow(domain, agentId);
       return { usd: r.usd, actions: r.actions };
     },
     // Would an action of `amountUsd` in `domain` stay under the day's caps? A null cap is
     // no cap. The money cap counts the action itself (0 + amount <= cap), so a 0 USD cap
     // sends every priced action to the Gate and lets free ones through. What other
-    // actions have reserved and not yet committed counts as spent.
-    checkCap({ domain, amountUsd = 0, dailyCapUsd = null, dailyCapActions = null }) {
-      const t = this.spentToday(domain);
-      const r = this.reservedToday(domain);
+    // actions have reserved and not yet committed counts as spent. With `scope: 'agent'`
+    // (the cap came from the agent's own leash entry) the agent's own rows are compared;
+    // a zone or park cap is compared with the park-wide rows (M2).
+    checkCap({ domain, amountUsd = 0, dailyCapUsd = null, dailyCapActions = null, agentId = null, scope = 'park' }) {
+      const own = scope === 'agent' && agentId ? { agentId } : {};
+      const who = own.agentId ? ` for ${own.agentId}` : '';
+      const t = this.spentToday(domain, own);
+      const r = this.reservedToday(domain, own);
       if (typeof dailyCapUsd === 'number' && t.usd + r.usd + amountUsd > dailyCapUsd) {
-        return { ok: false, reason: `daily cap for ${domain} is $${dailyCapUsd}; $${t.usd.toFixed(2)} used today${r.usd ? ` and $${r.usd.toFixed(2)} reserved by actions in flight` : ''}, this action is $${amountUsd.toFixed(2)}` };
+        return { ok: false, reason: `daily cap for ${domain}${who} is $${dailyCapUsd}; $${t.usd.toFixed(2)} used today${r.usd ? ` and $${r.usd.toFixed(2)} reserved by actions in flight` : ''}, this action is $${amountUsd.toFixed(2)}` };
       }
       if (typeof dailyCapActions === 'number' && t.actions + r.actions + 1 > dailyCapActions) {
-        return { ok: false, reason: `daily cap for ${domain} is ${dailyCapActions} action(s); ${t.actions} used today${r.actions ? ` and ${r.actions} reserved by actions in flight` : ''}` };
+        return { ok: false, reason: `daily cap for ${domain}${who} is ${dailyCapActions} action(s); ${t.actions} used today${r.actions ? ` and ${r.actions} reserved by actions in flight` : ''}` };
       }
       return { ok: true, reason: null };
     },
     // Checks the caps and, when they hold, reserves the amount and the action in the same
     // synchronous step. Returns { ok, reason, commit(), release() }: commit() records the
     // action (the reservation becomes spend), release() drops it (the action failed or
-    // never ran). Either is final; the other is then a no-op.
-    reserve({ domain, amountUsd = 0, dailyCapUsd = null, dailyCapActions = null }) {
+    // never ran). Either is final; the other is then a no-op. The reservation is held in
+    // the park-wide row and, with an agentId, in the agent's row too.
+    reserve({ domain, amountUsd = 0, dailyCapUsd = null, dailyCapActions = null, agentId = null, scope = 'park' }) {
       if (!DOMAINS.includes(domain)) throw new Error(`unknown domain "${domain}"`);
-      const cap = this.checkCap({ domain, amountUsd, dailyCapUsd, dailyCapActions });
+      const cap = this.checkCap({ domain, amountUsd, dailyCapUsd, dailyCapActions, agentId, scope });
       if (!cap.ok) return { ok: false, reason: cap.reason, commit: async () => null, release: () => false };
-      const row = reservedRow(domain);
+      const rows = [reservedRow(domain)];
+      if (agentId) rows.push(reservedRow(domain, agentId));
       const day = reservedDay;
-      row.usd += amountUsd;
-      row.actions += 1;
+      for (const row of rows) {
+        row.usd += amountUsd;
+        row.actions += 1;
+      }
       let settled = false;
       const drop = () => {
         if (settled) return false;
         settled = true;
-        if (reservedDay === day && reserved.has(domain)) {
-          const r = reserved.get(domain);
+        if (reservedDay !== day) return true;
+        for (const k of [reserveKey(domain, null), ...(agentId ? [reserveKey(domain, agentId)] : [])]) {
+          const r = reserved.get(k);
+          if (!r) continue;
           r.usd = Math.max(0, r.usd - amountUsd);
           r.actions = Math.max(0, r.actions - 1);
         }
@@ -134,17 +159,23 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
         reason: null,
         commit: async () => {
           if (!drop()) return null;
-          return this.recordAction({ domain, amountUsd });
+          return this.recordAction({ domain, amountUsd, agentId });
         },
         release: drop,
       };
     },
-    // An action in a leash domain was executed (not merely allowed): count it.
-    async recordAction({ domain, amountUsd = 0 }) {
+    // An action in a leash domain was executed (not merely allowed): count it, park-wide
+    // and under the agent that did it.
+    async recordAction({ domain, amountUsd = 0, agentId = null }) {
       if (!DOMAINS.includes(domain)) throw new Error(`unknown domain "${domain}"`);
       const row = domainRow(domain);
       row.usd += amountUsd;
       row.actions += 1;
+      if (agentId) {
+        const mine = agentRow(agentId, domain);
+        mine.usd += amountUsd;
+        mine.actions += 1;
+      }
       await save();
       return { usd: row.usd, actions: row.actions };
     },
@@ -197,7 +228,7 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
     summary() {
       const key = localDayKey(clock.now());
       const d = data.days[key] || { domains: {}, judge: { usd: 0, calls: 0 } };
-      return { day: key, domains: JSON.parse(JSON.stringify(d.domains)), judge: { ...d.judge }, hosted: { ...(d.hosted || { calls: 0, tokens: 0 }) }, streaks: JSON.parse(JSON.stringify(data.streaks)), earnApprovals };
+      return { day: key, domains: JSON.parse(JSON.stringify(d.domains)), agents: JSON.parse(JSON.stringify(d.agents || {})), judge: { ...d.judge }, hosted: { ...(d.hosted || { calls: 0, tokens: 0 }) }, streaks: JSON.parse(JSON.stringify(data.streaks)), earnApprovals };
     },
     state: () => data,
     flushed: () => saving,

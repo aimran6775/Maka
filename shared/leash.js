@@ -6,7 +6,8 @@
 //
 // Resolution order for an agent's level in a domain (resolveLeash):
 //   leash.agents[agentId].domains[d]  →  leash.zones[roomId].domains[d]  →  leash.domains[d]
-//   →  'draft' when nothing names the domain.
+//   →  'draft' when nothing names the domain. Caps are inherited from the layers further
+//   out when the winning layer omits them (safety review M2).
 
 import { deepFreeze, validate } from './schema.js';
 
@@ -180,19 +181,29 @@ export function nextLooser(level) {
 }
 
 // Resolves the effective entry for one agent and domain: agent override → zone default →
-// park default → { level: 'draft' }. `scope` says which layer answered. Caps are taken
-// from the same layer that set the level (an override replaces the whole entry).
+// park default → { level: 'draft' }. `scope` says which layer set the level. The caps
+// are inherited (safety review M2): a layer that sets a level without a cap takes the
+// cap of the next layer out (zone, then park), so an agent override `{ level:
+// 'act_capped' }` cannot drop the park's hard daily cap on money. A layer that names a
+// cap keeps its own.
 export function resolveLeash(leash, { agentId, roomId } = {}, domain) {
-  const pick = (entry, scope) => (entry ? { domain, level: entry.level, dailyCapUsd: entry.dailyCapUsd ?? null, dailyCapActions: entry.dailyCapActions ?? null, scope } : null);
-  if (!leash || !DOMAINS.includes(domain)) return pick({ level: 'draft' }, 'default');
+  const none = { domain, level: 'draft', dailyCapUsd: null, dailyCapActions: null, scope: 'default' };
+  if (!leash || !DOMAINS.includes(domain)) return none;
   const agent = agentId && leash.agents && leash.agents[agentId] && leash.agents[agentId].domains[domain];
-  if (agent) return pick(agent, 'agent');
   const zone = roomId && leash.zones && leash.zones[roomId] && leash.zones[roomId].domains[domain];
-  if (zone) return pick(zone, 'zone');
   const park = leash.domains && leash.domains[domain];
-  if (park) return pick(park, 'park');
-  return pick({ level: 'draft' }, 'default');
+  const layers = [[agent, 'agent'], [zone, 'zone'], [park, 'park']].filter(([entry]) => entry);
+  if (!layers.length) return none;
+  const [top, scope] = layers[0];
+  const inherited = (key) => {
+    for (const [entry] of layers) if (typeof entry[key] === 'number') return entry[key];
+    return null;
+  };
+  return { domain, level: top.level, dailyCapUsd: inherited('dailyCapUsd'), dailyCapActions: inherited('dailyCapActions'), scope };
 }
+
+// The domains where money leaves or enters: their caps hold at every level (M2).
+export const MONEY_DOMAINS = deepFreeze(['money_out', 'money_in']);
 
 // Every domain resolved for one agent (for the inspector and the Gate card).
 export function resolveAllLeash(leash, agent) {

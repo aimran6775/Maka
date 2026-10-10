@@ -15,7 +15,8 @@
 //   act_capped  reserves the amount in the ledger (safety M1: reserve → run → commit or
 //               release, so concurrent runs cannot all pass the same cap) and runs while
 //               the daily caps hold, else a Gate item
-//   act_free    runs; logged in the ledger (and at the Gate for non-research domains)
+//   act_free    runs; logged in the ledger (and at the Gate for non-research domains);
+//               in money_out / money_in a daily cap still holds here (safety M2)
 //
 // A tool's domain is `tool.domain` when the tool declares one (a string, or a function of
 // the input for tools whose domain depends on what they send), else shared/leash.js
@@ -34,7 +35,7 @@
 //   later steps grant tools without a fixture).
 
 import { grantsFor, agentOf } from '../../shared/world.js';
-import { domainOfTool, resolveLeash, defaultLeash, LEASH_LEVEL_LABELS } from '../../shared/leash.js';
+import { domainOfTool, resolveLeash, defaultLeash, LEASH_LEVEL_LABELS, MONEY_DOMAINS } from '../../shared/leash.js';
 import { TOOLS, inputProblem } from './tools.js';
 
 const DOMAIN_LOGGED_AT_GATE = (domain) => domain !== 'research';
@@ -112,7 +113,7 @@ export function createToolGate({
     const result = await run(tool, call, ctx);
     if (result && result.ok && ledger) {
       try {
-        await ledger.recordAction({ domain, amountUsd });
+        await ledger.recordAction({ domain, amountUsd, agentId });
       } catch (err) {
         console.error('leash ledger record failed:', err);
       }
@@ -201,12 +202,14 @@ export function createToolGate({
         if (amountUnknown) {
           viaGate = true;
           gateReason = `the amount this ${domain} action moves cannot be proven (${call.name} names no campaign-level or record-level figure), so no cap can be checked; it needs a decision at the Entrance Gate`;
-        } else if (entry.level === 'act_capped') {
+        } else if (entry.level === 'act_capped' || (entry.level === 'act_free' && MONEY_DOMAINS.includes(domain) && hasCap(entry))) {
+          // Safety M2: in the money domains a cap holds at Act freely too, so an approved
+          // proposal or a hand-set level never silently removes the hard daily cap.
           if (!ledger) {
             viaGate = true;
-            gateReason = `leash for ${domain} is ${LEASH_LEVEL_LABELS.act_capped} but no ledger can prove the cap`;
+            gateReason = `leash for ${domain} is ${LEASH_LEVEL_LABELS[entry.level]} but no ledger can prove the cap`;
           } else if (!viaGate && !(ctx.review && ctx.review.escalate)) {
-            reservation = ledger.reserve({ domain, amountUsd, dailyCapUsd: entry.dailyCapUsd, dailyCapActions: entry.dailyCapActions });
+            reservation = ledger.reserve({ domain, amountUsd, dailyCapUsd: entry.dailyCapUsd, dailyCapActions: entry.dailyCapActions, agentId, scope: entry.scope });
             if (!reservation.ok) {
               viaGate = true;
               gateReason = reservation.reason;
@@ -252,6 +255,8 @@ export function createToolGate({
     },
   };
 }
+
+const hasCap = (entry) => typeof entry.dailyCapUsd === 'number' || typeof entry.dailyCapActions === 'number';
 
 // A finite amount ≥ 0 the tool proves, else null (unknown). Tools without amountUsd prove
 // nothing; tools outside money domains never need to.

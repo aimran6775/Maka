@@ -983,3 +983,20 @@ failure, a throw or a Gate detour releases it. Reservations stay in memory: a cr
 releases what was in flight, which is the right default because an action that never
 answered may not have happened, and the next sync of the connector is the truth about
 what did. Nothing is written to the day until an action succeeds, as before.
+
+## D114. Money caps are inherited, never earned away, and keyed to their scope (safety M2)
+
+Three gaps let a money cap vanish: an agent or zone entry `{ level: 'act_capped' }`
+without a cap replaced the whole park entry and its cap; five approvals in a row could
+propose Act freely in money_out, where no cap was checked; and an agent's own cap was
+compared with the park-wide spend. Now `resolveLeash` takes the level from the winning
+layer and the caps from the first layer, going outward, that names them (an entry that
+sets its own cap keeps it); no streak proposal goes past Act with cap in money_out or
+money_in, so a Ranger can earn its way to the cap and no further, and the hard cap
+stays the Superintendent's to raise (product law 9); and a cap in a money domain is
+reserved and enforced at Act freely as well, whether the level came from a proposal or
+from the Superintendent's hand, because "act freely" was never meant to read "spend
+freely". An agent-scoped cap (the agent's own leash entry names it) is checked against
+that agent's own ledger rows; a zone or park cap against the park's total, the stricter
+of the two readings for a shared cap. The ledger therefore records every action under
+its agent as well as under its domain.

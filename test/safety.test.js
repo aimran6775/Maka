@@ -22,7 +22,7 @@ import { metaAdsSpec } from '../sidecar/connectors/meta-ads.js';
 import { googleAdsSpec, GOOGLE_ADS_SCOPES } from '../sidecar/connectors/google-ads.js';
 import { setKey } from '../sidecar/providers/keys.js';
 import { defaultLayout, allGrantsFor } from '../shared/world.js';
-import { defaultLeash } from '../shared/leash.js';
+import { defaultLeash, resolveLeash } from '../shared/leash.js';
 import { startFakeMetaAds } from './helpers/fake-meta-ads.js';
 import { startFakeGoogleAds } from './helpers/fake-google-ads.js';
 import { fakeClock, waitUntil } from './helpers/fake-provider.js';
@@ -399,6 +399,130 @@ test('M1 four Rangers spending $40 each under a $50 cap at once: one runs, three
     r2.release();
     assert.deepEqual(ledger.spentToday('money_out'), { usd: 45, actions: 2 }, 'a committed reservation cannot be released');
     assert.equal(ledger.reserve({ domain: 'money_out', amountUsd: 6, dailyCapUsd: 50 }).ok, false);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- M2: money caps cannot be dropped by a looser layer, a proposal or an agent-scoped cap ----------
+
+test('M2 resolveLeash inherits the daily caps from the zone and the park when the winning layer omits them', () => {
+  const leash = defaultLeash(); // park money_out: draft, dailyCapUsd 0
+  leash.domains.publishing = { level: 'draft', dailyCapActions: 3 };
+  leash.zones = { camp: { domains: { money_out: { level: 'act_capped', dailyCapUsd: 20 }, publishing: { level: 'act_capped' } } } };
+  leash.agents = { mia: { domains: { money_out: { level: 'act_capped' }, publishing: { level: 'act_free' } } }, bo: { domains: { money_out: { level: 'act_capped', dailyCapUsd: 30, dailyCapActions: 2 } } } };
+  const mia = resolveLeash(leash, { agentId: 'mia', roomId: 'camp' }, 'money_out');
+  assert.deepEqual(mia, { domain: 'money_out', level: 'act_capped', dailyCapUsd: 20, dailyCapActions: null, scope: 'agent' }, 'an agent entry without a cap takes the zone cap');
+  const miaElsewhere = resolveLeash(leash, { agentId: 'mia', roomId: 'station' }, 'money_out');
+  assert.deepEqual(miaElsewhere, { domain: 'money_out', level: 'act_capped', dailyCapUsd: 0, dailyCapActions: null, scope: 'agent' }, 'no zone entry: the park cap');
+  assert.deepEqual(resolveLeash(leash, { agentId: 'bo', roomId: 'camp' }, 'money_out'), { domain: 'money_out', level: 'act_capped', dailyCapUsd: 30, dailyCapActions: 2, scope: 'agent' }, 'an agent entry with its own caps keeps them');
+  assert.deepEqual(resolveLeash(leash, { agentId: 'zed', roomId: 'camp' }, 'publishing'), { domain: 'publishing', level: 'act_capped', dailyCapUsd: null, dailyCapActions: 3, scope: 'zone' }, 'a zone entry without a cap takes the park cap');
+  assert.deepEqual(resolveLeash(leash, { agentId: 'mia', roomId: 'camp' }, 'publishing'), { domain: 'publishing', level: 'act_free', dailyCapUsd: null, dailyCapActions: 3, scope: 'agent' }, 'act_free still carries the cap it inherits');
+  assert.deepEqual(resolveLeash(leash, { agentId: 'zed', roomId: 'station' }, 'money_out'), { domain: 'money_out', level: 'draft', dailyCapUsd: 0, dailyCapActions: null, scope: 'park' });
+});
+
+test('M2 no proposal loosens a money domain to Act freely; money caps hold at Act freely; an agent-scoped cap counts that agent\'s own spend', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-safety-m2-'));
+  const store = createStore({ root: path.join(dir, 'home') });
+  await store.init();
+  const bus = createEventBus();
+  const clock = fakeClock(1_700_000_000_000);
+  const layout = defaultLayout();
+  layout.rooms.push({ id: 'camp', name: 'Camp', kind: 'marketing', x: 21, y: 1, w: 8, h: 6 });
+  for (const id of ['mia', 'bo', 'pat']) layout.agents.push({ id, name: id, roomId: 'camp', x: 21, y: 1, role: 'ranger' });
+  const layoutState = createLayoutState({ initial: layout, store, bus, clock });
+  const ledger = await createLeashLedger({ store, clock, earnApprovals: 2 }).init();
+  const leash = defaultLeash();
+  leash.earn = { approvals: 2 };
+  leash.domains.money_out = { level: 'draft', dailyCapUsd: 50 };
+  leash.domains.money_in = { level: 'act_capped', dailyCapActions: 0 }; // every price change waits at the Gate
+  leash.domains.publishing = { level: 'act_capped' };
+  const leashState = createLeashState({ initial: leash, store });
+  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
+  const ran = [];
+  const tool = (name, domain) => ({ name, description: name, inputSchema: { type: 'object', additionalProperties: false, properties: { usd: { type: 'number' } } }, confirm: false, domain, amountUsd: (i) => i.usd || 0, summarize: (i) => `${name} $${i.usd || 0}`, async run(input, ctx) { ran.push(`${ctx.agentId}:${name}:${input.usd || 0}`); return { ok: true, output: 'ok' }; } });
+  const registry = { 'pay.out': tool('pay.out', 'money_out'), 'price.set': tool('price.set', 'money_in'), 'post.it': tool('post.it', 'publishing') };
+  const gateFor = (agentId) => createToolGate({ getLayout: layoutState.get, agentId, workspaceDir: path.join(dir, agentId), registry, grants: () => Object.keys(registry), getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId: `run-${agentId}`, agentId }), log: (item) => gateQueue.log({ ...item, runId: `run-${agentId}`, agentId }) } });
+  const call = (agentId, name, usd, id = `${agentId}-${name}-${usd}-${Math.random().toString(36).slice(2, 6)}`) => gateFor(agentId).execute({ id, name, input: { usd } }, { runId: `run-${agentId}` });
+  const decide = async (decision) => {
+    const item = await waitUntil(() => gateQueue.pending().find((it) => it.kind === 'action'));
+    await gateQueue.resolve(item.itemId, { decision, notes: '' });
+    return item;
+  };
+  try {
+    // (1) two approvals in a row at Draft propose Act with cap for money_out; approving keeps the park cap
+    let p = call('mia', 'pay.out', 5);
+    await decide('approve');
+    await p;
+    p = call('mia', 'pay.out', 5);
+    await decide('approve');
+    await p;
+    const first = gateQueue.pending().find((it) => it.kind === 'proposal');
+    assert.ok(first, 'a proposal to loosen money_out from Draft to Act with cap');
+    assert.deepEqual(first.proposal, { from: 'draft', to: 'act_capped' });
+    await gateQueue.resolve(first.itemId, { decision: 'approve' });
+    assert.deepEqual(resolveLeash(leashState.get(), { agentId: 'mia', roomId: 'camp' }, 'money_out'), { domain: 'money_out', level: 'act_capped', dailyCapUsd: 50, dailyCapActions: null, scope: 'agent' });
+    // (2) at Act with cap, two more approvals (over the cap) never propose Act freely for money
+    p = call('mia', 'pay.out', 60);
+    let item = await decide('approve');
+    assert.match(item.reason, /cap/);
+    await p;
+    p = call('mia', 'pay.out', 60);
+    await decide('approve');
+    await p;
+    assert.equal(gateQueue.pending().filter((it) => it.kind === 'proposal').length, 0, 'money_out is never proposed for Act freely');
+    assert.equal(ledger.streak('mia', 'money_out'), 0, 'the streak still resets at the ceiling, so it does not propose forever');
+    // money_in likewise; publishing may still be proposed for Act freely
+    for (let i = 0; i < 2; i++) {
+      p = call('bo', 'price.set', 0);
+      await decide('approve');
+      await p;
+    }
+    assert.equal(gateQueue.pending().filter((it) => it.kind === 'proposal' && it.domain === 'money_in').length, 0, 'money_in is never proposed for Act freely');
+    for (let i = 0; i < 2; i++) {
+      await leashState.update((l) => ({ ...l, domains: { ...l.domains, publishing: { level: 'act_capped', dailyCapActions: 0 } } }));
+      p = call('bo', 'post.it', 0);
+      await decide('approve');
+      await p;
+    }
+    const pub = gateQueue.pending().find((it) => it.kind === 'proposal' && it.domain === 'publishing');
+    assert.ok(pub, 'publishing may be proposed for Act freely');
+    assert.deepEqual(pub.proposal, { from: 'act_capped', to: 'act_free' });
+    await gateQueue.resolve(pub.itemId, { decision: 'reject' });
+    // (3) the Superintendent sets Act freely by hand: the money cap is still enforced
+    await leashState.update((l) => ({ ...l, agents: { ...l.agents, pat: { domains: { money_out: { level: 'act_free' } } } } }));
+    assert.equal(resolveLeash(leashState.get(), { agentId: 'pat', roomId: 'camp' }, 'money_out').dailyCapUsd, 50, 'act_free inherits the park cap');
+    const under = await call('pat', 'pay.out', 40);
+    assert.equal(under.ok, true, under.error);
+    p = call('pat', 'pay.out', 40);
+    item = await decide('reject');
+    assert.equal(item.level, 'act_free');
+    assert.match(item.reason, /cap/);
+    assert.equal((await p).code, 'GATE_REJECT');
+    await leashState.update((l) => ({ ...l, agents: { ...l.agents, pat: { domains: { money_out: { level: 'act_free', dailyCapUsd: 100 } } } } }));
+    assert.equal((await call('pat', 'pay.out', 40)).ok, true, 'a raised cap at act_free is honoured');
+    // (4) an agent-scoped cap is compared with that agent's own spend, not the park's
+    assert.equal(ledger.spentToday('money_out').usd, 210, 'the park total so far (5+5+60+60+40+40)');
+    await leashState.update((l) => ({ ...l, agents: { ...l.agents, bo: { domains: { money_out: { level: 'act_capped', dailyCapUsd: 50 } } } } }));
+    assert.deepEqual(ledger.spentToday('money_out', { agentId: 'bo' }), { usd: 0, actions: 0 });
+    const bo1 = await call('bo', 'pay.out', 40);
+    assert.equal(bo1.ok, true, `bo's own cap counts bo's own spend: ${bo1.error}`);
+    p = call('bo', 'pay.out', 40);
+    item = await decide('reject');
+    assert.match(item.reason, /cap/);
+    assert.match(item.reason, /bo/);
+    assert.equal((await p).code, 'GATE_REJECT');
+    assert.deepEqual(ledger.spentToday('money_out', { agentId: 'bo' }), { usd: 40, actions: 1 });
+    assert.equal(ledger.spentToday('money_out').usd, 250, 'the park total counts every agent');
+    // a park-scoped cap compares the park total: mia at the park level is over
+    await leashState.update((l) => ({ ...l, domains: { ...l.domains, money_out: { level: 'act_capped', dailyCapUsd: 300 } }, agents: {} }));
+    assert.equal(resolveLeash(leashState.get(), { agentId: 'mia', roomId: 'camp' }, 'money_out').scope, 'park');
+    assert.equal((await call('mia', 'pay.out', 40)).ok, true);
+    p = call('mia', 'pay.out', 40);
+    item = await decide('reject');
+    assert.match(item.reason, /cap/);
+    assert.equal((await p).code, 'GATE_REJECT');
+    assert.deepEqual(ran.filter((r) => r.startsWith('bo:pay')), ['bo:pay.out:40']);
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }

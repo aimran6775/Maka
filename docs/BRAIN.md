@@ -51,7 +51,11 @@ a Stripe charge the store does not know) is a Gate item at every leash level, ne
 pass under the cap; a lifetime budget counts in full; activation of a campaign with no
 campaign-level budget is refused outright. M1 done: at Act with cap the ledger reserves
 the amount before the action runs and commits it on success (releases it otherwise), so
-concurrent runs cannot all pass the same cap between a check and a record.
+concurrent runs cannot all pass the same cap between a check and a record. M2 done: a
+leash layer that omits a cap inherits the cap of the next layer out, so an override can
+never drop the park's money cap; money_out and money_in are never proposed for Act
+freely, and a cap in those domains holds at Act freely too; an agent-scoped cap is
+compared with that agent's own spend, a zone or park cap with the park's.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

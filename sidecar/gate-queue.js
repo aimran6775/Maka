@@ -13,13 +13,14 @@
 //
 // A decision on an action item feeds the ledger's approval streak; when the streak earns
 // a loosening, the queue raises a kind 'proposal' item (not tied to a run). Approving a
-// proposal writes the new level into the agent's leash override through leashState.
+// proposal writes the new level into the agent's leash override through leashState. In
+// the money domains no proposal goes past Act with cap (safety M2).
 //
 // Items are persisted (gate-items.json, newest last, capped) so the Peak and the Gate card
 // can show history after a restart; pending items with no live resolver become 'expired'.
 
 import { makeEvent, GATE_ITEM_STATUSES } from '../shared/events.js';
-import { LEASH_LEVEL_LABELS, nextLooser, withAgentLeash, resolveLeash } from '../shared/leash.js';
+import { LEASH_LEVEL_LABELS, nextLooser, withAgentLeash, resolveLeash, MONEY_DOMAINS } from '../shared/leash.js';
 import { agentOf } from '../shared/world.js';
 
 export const DECISIONS = Object.freeze(['approve', 'revise', 'reject']);
@@ -81,6 +82,9 @@ export function createGateQueue({ bus, store, ledger, leashState, getLayout = ()
     const current = resolveLeash(leashState ? leashState.get() : null, { agentId: item.agentId, roomId: agent ? agent.roomId : undefined }, item.domain);
     const to = nextLooser(current.level);
     if (!to) return null;
+    // Safety M2: money never loosens to Act freely by streak; Act with cap is the ceiling
+    // a Ranger can earn there, and the hard cap stays the Superintendent's to raise.
+    if (MONEY_DOMAINS.includes(item.domain) && to === 'act_free') return null;
     if (items.some((it) => it.kind === 'proposal' && it.status === 'pending' && it.agentId === item.agentId && it.domain === item.domain)) return null;
     const proposal = {
       itemId: nextId(),
