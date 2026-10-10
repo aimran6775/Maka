@@ -55,9 +55,23 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 
 ## `frontend/`
 
+Step 7 is **in progress and on hold**. `index.html` is still the placeholder; the modules
+below are written but not yet loaded by any page, not yet styled, and not yet verified in a
+browser. Only `state.js` has been exercised (it loads under Node).
+
 | Path | What it is |
 | --- | --- |
-| `frontend/index.html` | Placeholder page stating that the canvas UI is not wired yet. **Step 7 replaces it.** |
+| `frontend/index.html` | Placeholder page stating that the canvas UI is not wired yet. |
+| `frontend/state.js` | Pure reducer: `/api/state` snapshot + validated events → layout, agent states (idle / thinking / tool-running / done / error), run transcripts, pending prompts, reconciled spend (never double-counted across snapshot and replay). WIP, untested. |
+| `frontend/events.js` | SSE client with reconnect and Last-Event-ID resume. WIP, untested. |
+| `frontend/world.js` | Canvas renderer: rooms, props, agent bodies, build-mode ghost and tile picking; theme-agnostic. WIP, untested. |
+| `frontend/theme/workshop.js` | Workshop theme data: tile colours, prop drawings per object kind, agent body with state badges. WIP. A later owner decision changes the theme to a park (see `docs/DECISIONS.md`, pending). |
+| `frontend/ui/windows.js` | Draggable window helper and tiny DOM builder. WIP. |
+| `frontend/ui/comms.js` | COMMS window: provider/model selection ("not wired" shown verbatim), prompt, run/cancel, streaming transcript. WIP, untested. |
+| `frontend/ui/spend.js` | SPEND window fed only by reconciled cost. WIP. |
+| `frontend/ui/build.js` | BUILD window: object palette, placed list. WIP. |
+| `frontend/ui/permission.js` | Permission cards for pending prompts. WIP. |
+| `frontend/app.js` | Entry that wires the above; expects `#world`, `#status`, `#ui`, `#flash` elements that `index.html` does not yet provide. WIP. |
 
 ## `test/`
 

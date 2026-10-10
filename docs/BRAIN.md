@@ -29,9 +29,11 @@ Three ideas carry everything:
 
 ## Current state
 
-Phase 1, step 6: the sidecar runs end to end (`npm start`). Loop, providers, capability
-gate, HTTP + SSE and atomic persistence are in place and tested over real HTTP. The
-frontend is a placeholder page until step 7.
+Phase 1, step 6 done; step 7 (frontend) started and then put on hold pending owner
+answers to scoping questions. The sidecar runs end to end (`npm start`): loop, providers,
+capability gate, HTTP + SSE and atomic persistence are in place and tested over real HTTP.
+The served page is still a placeholder; the frontend modules in `frontend/` are unwired
+work in progress (see `CODE_MAP.md`).
 
 ### The event contract (`shared/events.js`)
 

@@ -93,3 +93,12 @@ disk. Token events are flushed on a short debounce; everything else flushes imme
 
 Phase 1 is a local tool for one user. `HOST` can widen the bind, but nothing on the API
 is protected, so it should not be. Auth is a prerequisite for channels (not phase 1).
+
+## D16 (pending). World theme changes from workshop to park
+
+An owner decision relayed mid-session: the world is a park. A room is a park zone (lawn,
+greenhouse, shed, kiosk, pond, bandstand), a hallway is a path, a placed object is a park
+fixture granting a capability (notice board → web fetch, toolshed → filesystem, kiosk →
+outbox), the hero agent is a groundskeeper. Internal event and module names do not change;
+this is copy plus the default prop/tile data set. Not yet applied: work was halted before
+the change could be made, pending the owner's answers to scoping questions.
