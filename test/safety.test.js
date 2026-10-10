@@ -746,3 +746,95 @@ test('M6 a draft is not mail history: drafting to a new address first does not m
     await h.cleanup();
   }
 });
+
+// ---------- L1: the handoff check runs before and after each action; a payment page needs notes ----------
+
+function checkoutDriver() {
+  const state = { clicked: [], typed: [] };
+  const facts = (p) => {
+    if (p.url.startsWith('http://shop.test/checkout')) return { url: p.url, title: 'Checkout', payment: true, text: 'Card number CVC Expiry Place order' };
+    if (p.url === 'http://shop.test/login') return { url: p.url, title: 'Sign in', password: true, text: 'Email Password Sign in' };
+    return { url: p.url, title: p.title, text: 'Paper lanterns' };
+  };
+  return {
+    state,
+    find: async () => '/fake/chromium',
+    launch: async () => ({ wsUrl: 'ws://fake', pid: 1, kill() {} }),
+    connect: async () => ({ close() {}, closed: new Promise(() => {}) }),
+    openPage: async () => {
+      const p = { url: 'about:blank', title: '' };
+      return {
+        url: () => p.url,
+        async navigate(u) { p.url = u; p.title = 'page'; return { url: u, title: p.title }; },
+        async summary() { return { url: p.url, title: p.title }; },
+        async facts() { return facts(p); },
+        async text() { return `text of ${p.url}`; },
+        // the page drifts to a confirmation step on its own (a timer, a script) while the Ranger reads its tree: no action of the Ranger's was checked after it
+        async tree() { if (p.url === 'http://shop.test/checkout') p.url = 'http://shop.test/checkout/confirm'; return []; },
+        async click(t) { state.clicked.push(t.text); if (t.text === 'Place order') p.url = 'http://shop.test/thanks'; return { tag: 'button', text: t.text }; },
+        async type(t, value) { state.typed.push(value); return { tag: 'input', text: '' }; },
+        async upload() { return {}; },
+        async download() { return { path: '', bytes: 0, url: '' }; },
+        async screenshot() { return Buffer.from('\x89PNG fake'); },
+        async bringToFront() {},
+        async close() {},
+      };
+    },
+  };
+}
+
+test('L1 a payment page is checked before the next action too, and its handoff is returned only with notes; a login page keeps the one-handoff rule', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-safety-l1-'));
+  const bus = createEventBus();
+  const handoffs = [];
+  bus.listen((e) => { if (e.type === 'browser.handoff') handoffs.push(e.payload); });
+  const driver = checkoutDriver();
+  const browser = await createBrowserControl({ bus, workspaceRoot: dir, env: {}, config: { headless: true }, driver, netGuard: createNetGuard({ allowLocal: true }), log: { error() {} } }).init();
+  const ctx = { browser, agentId: 'ranger', runId: 'run-1', workspaceDir: path.join(dir, 'ranger'), netGuard: createNetGuard({ allowLocal: true }) };
+  await fsp.mkdir(ctx.workspaceDir, { recursive: true });
+  const tools = BROWSER_TOOLS;
+  try {
+    // open the checkout: the page asks for card details → a payment handoff
+    const opening = tools['browser.open'].run({ url: 'http://shop.test/checkout' }, ctx);
+    const h1 = await waitUntil(() => handoffs.find((h) => h.status === 'waiting'));
+    assert.equal(h1.kind, 'payment');
+    assert.match(h1.reason, /notes/i, 'the card says notes are needed to hand a payment page back');
+    assert.throws(() => browser.returnHandoff(h1.handoffId, { notes: '' }), (e) => e.code === 'NOTES_REQUIRED', 'a payment page is not handed back without a word');
+    assert.throws(() => browser.returnHandoff(h1.handoffId, { notes: '   ' }), (e) => e.code === 'NOTES_REQUIRED');
+    browser.returnHandoff(h1.handoffId, { notes: 'card entered; do not place the order yet' });
+    const opened = JSON.parse((await opening).output.split('\n')[0]);
+    assert.equal(opened.handoff.status, 'returned');
+    assert.equal(opened.handoff.notes, 'card entered; do not place the order yet');
+    // the page drifts to a confirmation step during a read (no handoff check after a read)
+    const read = await tools['browser.read'].run({ what: 'tree' }, ctx);
+    assert.equal(read.ok, true);
+    assert.equal((await browser.forAgent('ranger')).page.url(), 'http://shop.test/checkout/confirm');
+    // the next click is checked BEFORE it runs: a payment page the Superintendent never saw parks the click
+    const clicking = tools['browser.click'].run({ text: 'Place order' }, ctx);
+    const h2 = await waitUntil(() => handoffs.filter((h) => h.status === 'waiting').length === 2 ? handoffs.filter((h) => h.status === 'waiting')[1] : null);
+    assert.equal(h2.kind, 'payment');
+    assert.equal(h2.url, 'http://shop.test/checkout/confirm');
+    assert.deepEqual(driver.state.clicked, [], 'the click has not happened');
+    assert.throws(() => browser.returnHandoff(h2.handoffId, { notes: '' }), (e) => e.code === 'NOTES_REQUIRED');
+    browser.returnHandoff(h2.handoffId, { notes: 'checked the total; place the order' });
+    const clicked = await clicking;
+    assert.equal(clicked.ok, true, clicked.error);
+    assert.deepEqual(driver.state.clicked, ['Place order']);
+    assert.equal(JSON.parse(clicked.output.split('\n')[0]).url, 'http://shop.test/thanks');
+    assert.equal(handoffs.filter((h) => h.status === 'waiting').length, 2, 'the thank-you page raises nothing');
+    // a login page: handed back without notes, and the same page is not re-raised for the next keystrokes
+    const login = tools['browser.open'].run({ url: 'http://shop.test/login' }, ctx);
+    const h3 = await waitUntil(() => handoffs.filter((h) => h.status === 'waiting')[2] || null);
+    assert.equal(h3.kind, 'login');
+    browser.returnHandoff(h3.handoffId, { notes: '' });
+    assert.equal((await login).ok, true);
+    const typed = await tools['browser.type'].run({ text: 'Email', value: 'ranger@makapark.com' }, ctx);
+    assert.equal(typed.ok, true, typed.error);
+    assert.deepEqual(driver.state.typed, ['ranger@makapark.com']);
+    assert.equal(handoffs.filter((h) => h.status === 'waiting').length, 3, 'the handed-back login page is not raised again');
+    assert.match(typed.output, /already handed back/);
+  } finally {
+    await browser.close();
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});

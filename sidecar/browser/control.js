@@ -4,7 +4,8 @@
 // login, a one-time code, a captcha or card details, the action parks, a browser.handoff
 // event goes out, the window comes to the front, and the Ranger waits until the
 // Superintendent hands the page back (POST /api/browser/handoff/:id/return) or the run
-// ends.
+// ends. The check runs before an action as well as after it (safety L1), and a payment
+// page is handed back only with notes.
 //
 //   createBrowserControl({ workspaceRoot, bus, env, config, clock, driver, netGuard, log })
 //     .init() -> { tools, forAgent, act, returnHandoff, handoffs, trace, status,
@@ -38,6 +39,8 @@ function fail(code, message) {
   err.code = code;
   return err;
 }
+
+const hasNotes = (rec) => Boolean(rec && typeof rec.notes === 'string' && rec.notes.trim());
 
 export function createBrowserControl({
   workspaceRoot,
@@ -118,10 +121,20 @@ export function createBrowserControl({
     return session;
   }
 
-  // Runs one browser action for a Ranger: trace line + screenshot, then the handoff check.
+  // Runs one browser action for a Ranger: the handoff check on the page it is about to act
+  // on (safety L1: a payment or login page reached without a check, through a read or a
+  // page's own script, parks the action before it happens), the action itself, a trace
+  // line with a screenshot, then the handoff check on the page it landed on.
+  // `checkHandoff`: true (both), false (neither) or { before, after }.
   async function act({ agentId, runId, signal, action, input, run, checkHandoff = true }) {
     const session = await forAgent(agentId);
     if (runId) session.lastRunId = runId;
+    const checks = typeof checkHandoff === 'object' && checkHandoff ? { before: Boolean(checkHandoff.before), after: Boolean(checkHandoff.after) } : { before: Boolean(checkHandoff), after: Boolean(checkHandoff) };
+    let handoff = null;
+    if (checks.before) {
+      handoff = await maybeHandoff(session, { runId, signal });
+      if (handoff && handoff.status === 'abandoned') return { result: null, url: session.page.url(), title: '', screenshot: null, handoff };
+    }
     const started = clock.now();
     const entry = { ts: started, agentId, runId: runId || null, action, input, ok: false };
     let result;
@@ -157,8 +170,10 @@ export function createBrowserControl({
     entry.ms = clock.now() - started;
     await record(agentId, entry);
     if (entry.error) throw Object.assign(new Error(entry.error), { code: entry.code || 'BROWSER' });
-    let handoff = null;
-    if (checkHandoff) handoff = await maybeHandoff(session, { runId, signal });
+    if (checks.after) {
+      const after = await maybeHandoff(session, { runId, signal });
+      if (after) handoff = after;
+    }
     return { result, url: entry.url, title: entry.title, screenshot: entry.screenshot, handoff };
   }
 
@@ -173,9 +188,12 @@ export function createBrowserControl({
     if (!hit) return null;
     const last = session.lastHandoff;
     // After a hand-back, the same page is not re-raised: the Superintendent chose to return
-    // it as it is, and the Ranger must decide what to do with that.
-    if (last && last.kind === hit.kind && last.url === facts.url && last.status === 'returned') return { ...last, repeated: true };
-    return waitForReturn(session, { runId, signal, kind: hit.kind, reason: hit.reason, url: facts.url, title: facts.title });
+    // it as it is, and the Ranger must decide what to do with that. A payment page is the
+    // exception (safety L1): it continues only on a hand-back that carried notes, so the
+    // Ranger acts on what the Superintendent said and not on a bare "returned".
+    if (last && last.kind === hit.kind && last.url === facts.url && last.status === 'returned' && (hit.kind !== 'payment' || hasNotes(last))) return { ...last, repeated: true };
+    const reason = hit.kind === 'payment' ? `${hit.reason}; say in the notes what was done and whether the Ranger may continue, or it stays parked` : hit.reason;
+    return waitForReturn(session, { runId, signal, kind: hit.kind, reason, url: facts.url, title: facts.title });
   }
 
   function waitForReturn(session, { runId, signal, kind, reason, url, title }) {
@@ -249,7 +267,9 @@ export function createBrowserControl({
       const rec = handoffs.get(handoffId);
       if (!rec) throw fail('NOT_FOUND', `no browser handoff ${handoffId}`);
       if (rec.status !== 'waiting') throw fail('NOT_WAITING', `handoff ${handoffId} is already ${rec.status}`);
-      rec.resolve('returned', notes);
+      // Safety L1: a payment page comes back with explicit notes or not at all.
+      if (rec.kind === 'payment' && !(typeof notes === 'string' && notes.trim())) throw fail('NOTES_REQUIRED', `handoff ${handoffId} is a payment page: say in the notes what was done and whether the Ranger may continue`);
+      rec.resolve('returned', typeof notes === 'string' ? notes.trim() : '');
       return payloadOf(rec);
     },
     handoffs: ({ pendingOnly = false } = {}) => order.map((id) => handoffs.get(id)).filter((r) => r && (!pendingOnly || r.status === 'waiting')).map((r) => ({ ...payloadOf(r), since: r.since, until: r.until || null })),

@@ -1054,3 +1054,16 @@ record as an exchange: a Ranger could draft to a new address first and send to i
 afterwards without the judge's "new external recipient" review. `isNewExternal`,
 `sentLastHour`, `judgeAtDraft` and the known-thread check now ignore drafts. A draft is
 the Ranger's own note; only mail that was received or sent is history.
+
+## D119. The handoff check runs before an action too, and a payment page needs notes (safety L1)
+
+The check ran after an action only, and a handed-back page was not raised again for
+the same kind and URL, so a checkout page the Superintendent had returned let the next
+"Place order" click run unchecked, and a page the Ranger reached through a read (no
+check) or a page's own script was never checked at all. Every action but `open` (which
+leaves the page) is now checked on the page it is about to act on and on the page it
+lands on. A payment handoff is handed back only with notes, because "returned" alone
+says nothing about whether the order may be placed; the notes are what the Ranger
+continues on, and a payment page is not re-raised only when its last hand-back carried
+them. Login, one-time-code and captcha pages keep the one-handoff rule: once handed
+back, the same page is the Ranger's to act on, notes or not.

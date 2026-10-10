@@ -66,11 +66,12 @@ export const browserOpen = {
     if (!/^https?:\/\//i.test(input.url)) return { ok: false, error: 'browser.open takes an http(s) URL' };
     const refused = await guardUrl(ctx, input.url);
     if (refused) return refused;
+    // Opening leaves the current page, so only the page it lands on is checked.
     return viaControl(ctx, 'open', input, async (page) => {
       const s = await page.navigate(input.url);
       const text = await page.text(1500);
       return { ...s, text };
-    });
+    }, { checkHandoff: { before: false, after: true } });
   },
 };
 

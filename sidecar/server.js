@@ -655,6 +655,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
       } catch (err) {
         if (err.code === 'NOT_FOUND') throw new HttpError(404, err.message, err.code);
         if (err.code === 'NOT_WAITING') throw new HttpError(409, err.message, err.code);
+        if (err.code === 'NOTES_REQUIRED') throw new HttpError(400, err.message, err.code);
         throw err;
       }
     }
