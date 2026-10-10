@@ -40,6 +40,16 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 2 step 17 done: the ad networks. Meta Ads (a long-lived access token and the ad
+account id) and Google Ads (a Google sign-in approved at the Gate with the owner's OAuth
+client and developer token, the customer id) sync their campaigns, budgets and the last
+seven days of spend and results into the local store; the Marketing camp card, the Ads
+Ranger's tools and the reflection read from there. A Notice board placed in the camp
+grants the reads (research) and the money: a new campaign (always created paused), a
+daily budget change and an activation are money_out with the daily budget as the amount,
+so the Gate item and the ledger carry the figure and the daily cap applies; pausing
+moves nothing. Ad sets, ad groups and creatives are not managed in this build.
+
 Phase 2 step 16 done: the storefronts. Shopify (a custom app's Admin API token and the
 shop domain) and Etsy (an OAuth sign-in approved at the Gate, the app keystring as the
 client id) sync their products or listings, orders and stock into the local store; the

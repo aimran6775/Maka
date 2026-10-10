@@ -121,7 +121,7 @@ test('an API key given through the UI is a Gate item: approve stores it 0600, co
   const h = await harness({ fake });
   try {
     assert.deepEqual(h.connectors.kinds(), ['fakeshop']);
-    assert.deepEqual(CONNECTOR_SPECS.map((c) => c.kind), ['stripe', 'shopify', 'etsy'], 'the platforms defined at boot (steps 15–16)');
+    assert.deepEqual(CONNECTOR_SPECS.map((c) => c.kind), ['stripe', 'shopify', 'etsy', 'meta_ads', 'google_ads'], 'the platforms defined at boot (steps 15–17)');
     const before = h.connectors.status('fakeshop');
     assert.equal(before.connected, false);
     assert.equal(before.auth, 'api_key');

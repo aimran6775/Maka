@@ -681,3 +681,24 @@ A connected connector whose local store is empty syncs as soon as the sidecar bo
 then on its schedule). Without this the camps would show nothing for up to fifteen
 minutes after every restart, and a Ranger's first read would be empty. Boot waits for
 nothing: the syncs run in the background and `booted` settles when they are done.
+
+## D83. The Notice board is the ads fixture, and ad money is the daily budget
+
+The kickoff fixture table has no ads fixture; its Notice board (social / publishing) is
+the Marketing camp's fixture, so it carries the ad tools too. The brief says budget
+changes and new campaigns are money_out with the daily cap: the amount the Gate and the
+ledger see is the daily budget (the new one for a change, the campaign's own for an
+activation, 0 for a pause). A campaign is always created paused: spending starts only
+with a separate activation the Superintendent sees as its own money_out item. Ad sets,
+ad groups and creatives are not managed in this build; the connectors read results and
+steer budgets, which is what the leash model is about.
+
+## D84. Meta by token, Google by sign-in with the owner's own OAuth client
+
+Meta's Marketing API works with a long-lived system-user or user token, so Meta Ads is an
+api_key connector (`META_ACCESS_TOKEN`) with the ad account in config. Google Ads has no
+token-only path: it signs in through the framework's flow with the owner's OAuth client
+id and secret (a desktop client, so the secret is not secret in Google's own terms but
+still lives only in the keystore), asks for offline access so a refresh token comes
+back, and sends the developer token with every call. The secret travels both as HTTP
+Basic and in the token request body because Google reads the body and others the header.

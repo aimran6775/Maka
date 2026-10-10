@@ -44,7 +44,9 @@ export function normalizeTokens(body, now) {
 }
 
 async function postForm(url, params, { fetch: fetchImpl, clientId, clientSecret }) {
-  const body = new URLSearchParams(params);
+  // A confidential client's secret goes both ways platforms accept it: HTTP Basic and the
+  // form body (Google reads the body; others read the header).
+  const body = new URLSearchParams(clientSecret ? { ...params, client_secret: clientSecret } : params);
   const headers = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
   if (clientSecret) headers.authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
   let res;

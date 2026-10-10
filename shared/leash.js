@@ -73,6 +73,18 @@ export const TOOL_DOMAINS = deepFreeze({
   'etsy.create_listing': 'publishing',
   'etsy.update_listing': 'publishing',
   'etsy.set_price': 'money_in',
+  // Phase 2 step 17: ad networks. Budgets and new campaigns are money out (the daily
+  // budget is the amount; activating a paused campaign counts its budget, pausing is 0).
+  'meta_ads.campaigns': 'research',
+  'meta_ads.insights': 'research',
+  'meta_ads.create_campaign': 'money_out',
+  'meta_ads.set_budget': 'money_out',
+  'meta_ads.set_status': 'money_out',
+  'google_ads.campaigns': 'research',
+  'google_ads.metrics': 'research',
+  'google_ads.create_campaign': 'money_out',
+  'google_ads.set_budget': 'money_out',
+  'google_ads.set_status': 'money_out',
   // Phase 2 step 13: every browser action is browser_control, reads included (a real
   // browser with the Ranger's cookies is never just research).
   'browser.open': 'browser_control',

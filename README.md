@@ -180,8 +180,17 @@ token) and the shop domain (`"connectors": { "shopify": { "shop": "lanterns" } }
 sign-in started at the Peak. Products, listings, orders and stock sync into the local
 store; click the Listings or Sales camp to read them. Place a Park Store there and its
 Rangers can read the same, create or update listings (publishing; a new Etsy listing is a
-draft until a second update activates it) and change prices (money_in). The ad networks
-are step 17.
+draft until a second update activates it) and change prices (money_in).
+
+Step 17, ad networks: Meta Ads needs `META_ACCESS_TOKEN` and the ad account
+(`"connectors": { "meta_ads": { "adAccountId": "act_123" } }` or `META_AD_ACCOUNT_ID`);
+Google Ads needs `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`,
+`GOOGLE_ADS_DEVELOPER_TOKEN`, the customer id (`google_ads.customerId` or
+`GOOGLE_ADS_CUSTOMER_ID`) and a sign-in started at the Peak. Campaigns, budgets and the
+last seven days of spend and results sync into the local store; click the Marketing camp
+to read them. Place a Notice board there and its Rangers can read the same, create a
+campaign (paused), change a daily budget or activate one, each money out with the daily
+budget as the amount at the Gate or under the daily cap.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

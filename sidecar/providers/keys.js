@@ -23,6 +23,10 @@ export const ENV_VARS = Object.freeze({
   stripe: 'STRIPE_API_KEY',
   shopify: 'SHOPIFY_ACCESS_TOKEN',
   etsyClientId: 'ETSY_CLIENT_ID',
+  metaAds: 'META_ACCESS_TOKEN',
+  googleAdsClientId: 'GOOGLE_ADS_CLIENT_ID',
+  googleAdsClientSecret: 'GOOGLE_ADS_CLIENT_SECRET',
+  googleAdsDeveloperToken: 'GOOGLE_ADS_DEVELOPER_TOKEN',
 });
 
 export function defaultKeystorePath(env = process.env) {

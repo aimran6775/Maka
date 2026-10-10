@@ -29,3 +29,4 @@ test/browser.test.js
 test/connectors.test.js
 test/stripe.test.js
 test/storefront.test.js
+test/ads.test.js

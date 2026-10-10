@@ -195,6 +195,19 @@ export function createInspect({ parent, getState, api, x, y, w }) {
         ...d.receipts.slice(0, 5).map((r) => el('div', { class: `use ${r.paid ? 'ok' : ''}`, text: `${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ''} · #${r.receiptId} · ${(r.grandTotal || 0).toFixed(2)} ${r.currency} · ${r.paid ? 'paid' : 'unpaid'}${r.shipped ? ', shipped' : ''} · ${r.buyer || ''}` })),
       ];
     }
+    if (c.kind === 'meta_ads' || c.kind === 'google_ads') {
+      const rows = (c.kind === 'meta_ads' ? d.insights && d.insights.rows : d.metrics && d.metrics.rows) || [];
+      const spend = rows.reduce((n, r) => n + (r.spend ?? r.cost ?? 0), 0);
+      const cur = ((c.kind === 'meta_ads' ? d.account : d.customer) || {}).currency || '';
+      const activeWord = c.kind === 'meta_ads' ? 'ACTIVE' : 'ENABLED';
+      const active = d.campaigns.filter((x) => (x.effectiveStatus || x.status) === activeWord);
+      return [
+        row(c.label, `${((c.kind === 'meta_ads' ? d.account : d.customer) || {}).name ? `${((c.kind === 'meta_ads' ? d.account : d.customer) || {}).name} · ` : ''}${head}`),
+        row('campaigns', `${d.campaigns.length} (${active.length} ${activeWord.toLowerCase()}) · daily budgets of the ${activeWord.toLowerCase()} ones: ${active.reduce((n, x) => n + (x.dailyBudget || 0), 0).toFixed(2)} ${cur}`),
+        row('last 7 days', `spend ${spend.toFixed(2)} ${cur} · ${rows.reduce((n, r) => n + (r.clicks || 0), 0)} click(s) · ${rows.reduce((n, r) => n + (r.impressions || 0), 0)} impression(s)${c.kind === 'google_ads' ? ` · ${rows.reduce((n, r) => n + (r.conversions || 0), 0)} conversion(s)` : ''}`),
+        ...d.campaigns.slice(0, 6).map((x) => el('div', { class: `use ${(x.effectiveStatus || x.status) === activeWord ? 'ok' : ''}`, text: `${x.name} · ${x.effectiveStatus || x.status} · ${typeof x.dailyBudget === 'number' ? `${x.dailyBudget.toFixed(2)} ${cur}/day` : 'no daily budget'} · 7d: ${(rows.find((r) => r.campaignId === x.id) || { spend: 0, cost: 0 }).spend ?? (rows.find((r) => r.campaignId === x.id) || { cost: 0 }).cost} ${cur}` })),
+      ];
+    }
     return [row(c.label, `${head}${c.summary ? ` · ${c.summary}` : ''}`)];
   }
   function connectorSection(s, room) {
