@@ -1,0 +1,37 @@
+# The Maka macOS shell (phase 3). This crate is the Tauri 2 host around the Node sidecar:
+# it launches the bundled Node on sidecar/index.js, opens one window on the park, keeps a
+# menu bar item with the Entrance Gate count and the Away toggle, owns the Keychain
+# (credentials.rs) and offers a login item and the updater. Every crate is pinned exactly;
+# Cargo.lock pins the rest. The sidecar itself still has no dependencies (CLAUDE.md).
+[package]
+name = "maka"
+version = "0.1.0"
+description = "Maka: a crew of AI Rangers running an online business from a living national park"
+authors = ["Maka"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "maka_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.2", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.3", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "=2.7.0"
+tauri-plugin-updater = { version = "=2.13.3", default-features = false, features = ["native-tls", "zip"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.152"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "=3.7.0"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

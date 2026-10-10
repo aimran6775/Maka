@@ -730,3 +730,42 @@ to the Ranger with what to do (fix and resubmit, or stop). The brief recommends;
 Chief decides go / no-go within the mission budget when the work item finishes, which is
 the Chief's follow-up turn. A judge at its cap or not wired is said so in the brief, and
 the Chief reads it as unreviewed.
+
+## D88. The shell is a host, not a second frontend
+
+The Tauri window loads the park from the sidecar over loopback HTTP, exactly as a browser
+does in development; the shell's own page is a splash that says "starting" or shows the
+error. No Tauri command is exposed to the park (the capability grants `core:default`
+only), so the frontend has one API to talk to, the sidecar's, and the sidecar stays the
+only owner of state. What macOS needs natively (the menu bar item, the login item, the
+Keychain, the updater) lives in Rust and talks to the same `/api/*` routes the park uses.
+
+## D89. Node is bundled as a stock binary, not a single-executable build
+
+The sidecar runs on the official Node binary for the target architecture, copied by the
+release script into `src-tauri/binaries/node-<triple>` (Tauri's `externalBin`, verified
+against nodejs.org's SHASUMS256.txt) and never committed. A single-executable build would
+need the repo's ES modules bundled into one CommonJS blob and a re-signed Node; the stock
+binary runs `sidecar/index.js` unchanged with `frontend/` and `shared/` beside it, so what
+the app runs is what the tests ran.
+
+## D90. The tray polls `/api/state` every five seconds
+
+The menu bar item could subscribe to the SSE stream, but it shows two numbers (pending
+Gate items, the Away flag) that change rarely, and a poll over loopback costs nothing
+measurable. The poll also doubles as the liveness check: when the sidecar is not
+answering the title says "offline" rather than keeping a stale count.
+
+## D91. Closing the window hides it; Quit is in the menu bar
+
+Maka is meant to run around the clock (the Rangers work while the owner is away), so the
+red button hides the park and the process keeps going; the Dock icon and the tray's "Open
+the park" bring it back. Quitting is an explicit tray action and stops the sidecar with
+SIGTERM so it flushes its stores.
+
+## D92. The updater is registered only when the build carries its config
+
+`tauri.conf.json` has no updater block; `tauri.release.conf.json` adds the endpoint and
+the public key at release time. The shell registers the updater plugin only when the
+config it was built with names one, and a dev build's tray says "Updates: not configured
+in this build" instead of pretending to check.

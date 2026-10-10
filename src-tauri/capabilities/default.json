@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The one park window. The page it shows is served by the sidecar over loopback HTTP and talks to the sidecar only; it calls no Tauri command, so no IPC permission is granted beyond the core defaults for the splash page.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -40,6 +40,18 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is in progress. Step 1 done: the Tauri 2
+shell in `src-tauri/`. It is a thin host, not a second application: it finds the bundled
+Node and the bundled `sidecar/` + `shared/` + `frontend/`, starts `node sidecar/index.js`
+on a free loopback port with the app-data directory as `MAKA_HOME`, waits for
+`/api/state`, and points one webview window at the park the sidecar serves. The window
+closing hides it; the app lives in the menu bar (the Gate's pending count as the title,
+the Away toggle, "Start at login", the updater, Quit) until Quit, which stops the sidecar.
+A sidecar that dies is restarted, three times a minute at most, then the splash page
+shows the error and the log path. Everything the shell shows comes from `/api/state`.
+The Rust is cross-checked from Linux (`cargo check --target aarch64-apple-darwin`); the
+build, signing and notarization happen on the owner's Mac (steps 6 and 7).
+
 Phase 2 is complete. `npm run demo` proves the chain against the fakes from recorded
 events (`scripts/demo-phase2.mjs`); `docs/LIVE_TEST.md` is the runbook for the real
 services; `node scripts/park-check.mjs` shows the crew moving in headless Chromium.

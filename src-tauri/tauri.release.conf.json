@@ -1,0 +1,12 @@
+{
+  "//": "Merged over tauri.conf.json by scripts/release-build.mjs (cargo tauri build --config). The updater public key is the one made by `cargo tauri signer generate` (see docs/RELEASE_RUNBOOK.md); the script substitutes it from TAURI_UPDATER_PUBKEY or src-tauri/updater.pub. It is a public key, not a secret.",
+  "bundle": {
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://makapark.com/releases/latest.json"],
+      "pubkey": "__TAURI_UPDATER_PUBKEY__"
+    }
+  }
+}

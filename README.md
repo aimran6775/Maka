@@ -199,7 +199,8 @@ which needs a Field office in the camp), `web.read` (a page as an article), `web
 brief with sourced evidence, real costs, a revenue model, risks and a go / no-go that the
 judge reviews. Briefs land in the Scout's outbox and are listed at the Peak; the Chief
 decides within the mission budget.
-All of phase 2 (`docs/PHASE2_BRIEF.md`) is in this build; phase 3 (macOS app) is not.
+All of phase 2 (`docs/PHASE2_BRIEF.md`) is in this build; phase 3 (the macOS app) is in
+progress below.
 `npm run demo` walks the whole chain against the fakes (mission → plan → delegation →
 tools → a refund at the Gate → the report in the outbox → the ledger → the reflection) and
 checks every link from recorded events; `docs/LIVE_TEST.md` is the runbook for the same
@@ -209,6 +210,22 @@ chain against the real services.
 npm run test:fast   # the merge gate
 npm test            # everything under test/
 ```
+
+## Phase 3 so far: the macOS app
+
+Step 1, the shell: `src-tauri/` is a Tauri 2 host around the same sidecar. It starts the
+bundled Node on `sidecar/index.js` with `~/Library/Application Support/com.makapark.maka`
+as `MAKA_HOME`, opens one window on the park once `/api/state` answers, and keeps a menu
+bar item with the Entrance Gate's pending count, the Away toggle, "Start at login" and
+Quit (closing the window only hides it; the crew keeps running). On a Mac with Rust and
+the Tauri CLI (`cargo install tauri-cli --version ^2 --locked`):
+
+```bash
+cargo tauri dev --config src-tauri/tauri.conf.json   # from the repo root; uses `node` on PATH
+```
+
+The signed, notarized `.dmg` and the download page come with steps 6 and 7
+(`docs/RELEASE_RUNBOOK.md`).
 
 ## License
 

@@ -15,7 +15,9 @@
     "test": "node --test test/",
     "test:fast": "node test/run-fast.js",
     "demo": "node scripts/demo-phase2.mjs",
-    "park:check": "node scripts/park-check.mjs"
+    "park:check": "node scripts/park-check.mjs",
+    "shell:check": "node scripts/shell-check.mjs",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {},
   "devDependencies": {}

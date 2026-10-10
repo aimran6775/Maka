@@ -12,7 +12,7 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 | `NOTICE.md` | Provenance. Lists any snippet adapted from StarNet (none so far). |
 | `CLAUDE.md` | Rules for AI coding agents working in this repo. |
 | `CODE_MAP.md` | This file. |
-| `package.json` | `npm start`, `npm test`, `npm run test:fast`. Zero dependencies. ESM. |
+| `package.json` | `npm start`, `npm test`, `npm run test:fast`, `npm run demo`, `npm run park:check`, `npm run shell:check`, `npm run icons`. Zero dependencies. ESM. |
 | `.gitignore` | Ignores `.env*`, `*.key`, `secrets/`, `.maka/`, `workspace/`, `node_modules/`. |
 
 ## `docs/`
@@ -21,7 +21,7 @@ exist. Items marked **planned** are the next phase 1 steps and are not on disk y
 | --- | --- |
 | `docs/KICKOFF_BRIEF.md` | The phase 1 specification and the product laws. |
 | `docs/PHASE2_BRIEF.md` | The phase 2 specification (business crew), 18 steps. |
-| `docs/PHASE3_BRIEF.md` | The phase 3 specification (macOS app). Not started. |
+| `docs/PHASE3_BRIEF.md` | The phase 3 specification (macOS app), 7 steps. In progress: see `src-tauri/`. |
 | `docs/BRAIN.md` | Orientation: how the pieces fit, where to start reading. |
 | `docs/DECISIONS.md` | Decisions taken where the brief was ambiguous. |
 
@@ -136,10 +136,32 @@ and frustum culling only); the WebGPU renderer path (WebGL2 only, see DECISIONS 
 walking on handoffs is implemented but exercised only by the reducer test, since phase 1
 emits no `work.handoff`.
 
+## `src-tauri/` — the macOS shell (phase 3; Rust, Tauri 2; crates pinned exactly, the sidecar stays dependency-free)
+
+| Path | What it is |
+| --- | --- |
+| `src-tauri/Cargo.toml` | The `maka` crate: `tauri` 2.12.3 (`tray-icon`, `image-png`), `tauri-plugin-autostart` (the login item as a LaunchAgent), `tauri-plugin-updater`, `serde` / `serde_json`, and `security-framework` on macOS only (the Keychain, step 2). Release profile: LTO, size, stripped. `Cargo.lock` pins the rest. |
+| `src-tauri/build.rs` | `tauri_build::build()`. |
+| `src-tauri/tauri.conf.json` | Identifier `com.makapark.maka`, version read from `../package.json`, no static window (the window is created in code once the sidecar answers), the splash page in `ui/` as `frontendDist`, bundle targets app + dmg, the icons, `externalBin` `binaries/node` (the release script downloads Node there; never committed), resources `sidecar/`, `shared/`, `frontend/`, `package.json`, `NOTICE.md`, `LICENSE` copied by name into `Contents/Resources/`, macOS 12+, `Entitlements.plist`, the DMG layout. |
+| `src-tauri/tauri.release.conf.json` | The overlay `scripts/release-build.mjs` passes with `--config`: `createUpdaterArtifacts` and the updater plugin (`https://makapark.com/releases/latest.json`, the public key substituted from `TAURI_UPDATER_PUBKEY` or `src-tauri/updater.pub`). A dev build has no updater and the tray says so. |
+| `src-tauri/capabilities/default.json` | The `main` window gets `core:default` only: the park page talks to the sidecar over loopback HTTP and calls no Tauri command. |
+| `src-tauri/Entitlements.plist` | Hardened-runtime entitlements for Developer ID signing: JIT and unsigned executable memory (V8 in the bundled Node), dyld environment variables, no library validation. Not sandboxed (direct distribution). |
+| `src-tauri/ui/index.html` | The splash page the window opens on: "Starting the sidecar…", or the shell's error and the sidecar log path when it could not start or kept dying. Shows nothing it does not know. |
+| `src-tauri/icons/` | `32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.png` (1024), `icon.icns` and the menu bar template `tray.png`, all rendered by `scripts/make-icons.mjs` (deterministic; `test/shell.test.js` checks the committed bytes). |
+| `src-tauri/src/main.rs` | Calls `maka_lib::run()`. |
+| `src-tauri/src/lib.rs` | `run()`: the Tauri builder with the autostart plugin, the updater plugin only when the build's config carries one, the `main` window on the splash page, the tray, and a supervisor thread: `resolve_launch` (Node, the repository, `MAKA_HOME` or the app-data directory, `MAKA_PORT` or a free port), `sidecar::spawn`, `wait_ready`, then the window navigates to the park; a sidecar that dies is restarted, at most three times a minute, after which the splash shows the error and the log path. Closing the window hides it (`CloseRequested` → hide); the app lives in the menu bar until Quit; `Reopen` (the Dock icon) shows the window; `Exit` stops the sidecar (SIGTERM, 8 s, SIGKILL). `session_env` is the hook step 2 fills with the credential broker's socket and token. |
+| `src-tauri/src/sidecar.rs` | The launcher: `find_node` (`MAKA_NODE`, `node` next to the executable as Tauri lays out an `externalBin`, then `PATH`), `find_repo` (`MAKA_REPO`, the resource directory, then the checkout this crate was built from), `free_port`, `open_log` (`<home>/logs/sidecar.log`, restarted past 5 MB), `spawn` (`node sidecar/index.js` with `PORT`, `HOST`, `MAKA_HOME`, `MAKA_SHELL=tauri`, stdout and stderr to the log), `wait_ready` (polls `/api/state`), `Sidecar::stop`. Unit tests for the lookups (run on a Mac with `cargo test`). |
+| `src-tauri/src/local_http.rs` | A loopback-only HTTP/1.1 client (std only): URL parsing, one request per connection with timeouts, content-length and chunked bodies. Unit tests. |
+| `src-tauri/src/tray.rs` | The menu bar item: title `Maka · N` with the Entrance Gate's pending count, "Gate: N items waiting", the Away check item (POST `/api/away`), "Open the park", "Start at login" (the LaunchAgent through the autostart plugin), the updater line ("not configured in this build" in a dev build; check on launch, install and relaunch on click when a release build finds one) and Quit. Polls `/api/state` every 5 s; when the sidecar is not answering it says "offline" instead of a stale number. `view_from_state` is pure and unit-tested. |
+
+Validation here: `cargo check --target aarch64-apple-darwin` from this Linux container (with `DOCS_RS=1` so the Objective-C exception helper skips its clang step; no linking happens in a check), plus `test/shell.test.js`. `cargo test` and the real build run on the owner's Mac (`docs/RELEASE_RUNBOOK.md`, step 7).
+
 ## `scripts/`
 
 | Path | What it is |
 | --- | --- |
+| `scripts/shell-check.mjs` | `npm run shell:check`: `cargo check --target aarch64-apple-darwin` for `src-tauri/` from any host (a placeholder for the Node external binary, `DOCS_RS=1` for the Objective-C helper). |
+| `scripts/make-icons.mjs` | Renders the app icons with core modules only (a PNG encoder over `zlib`, an ICNS wrapper): the park mark at the sizes Tauri wants plus the menu bar template. Deterministic. |
 | `scripts/demo-phase2.mjs` | `npm run demo`: the phase 2 chain against the fakes with every link checked from a recorded event or file: a Finance camp with a Fee booth and a Supply cache and Stripe from the environment; mission → `plan.updated` → `crew.agent` → `work.handoff`; the Books Ranger's run with twelve tools; `stripe.balance` from a fresh sync; `stripe.refund` parked at the Gate with $5 and `agent.waiting`; approve → the refund posts (the fake saw it); `fs.write` allowed → `work.done` with `outbox/refund-report.md` on disk; `spend.json` equal to the Chief's turns × the price and the worker's turns unpriced; the leash ledger; `reflection.posted` with the Stripe figures in its prompt and a briefing file. Exit 1 at the first broken link. |
 | `docs/LIVE_TEST.md` | The live runbook: which variables and config for Claude, Ollama or Hugging Face, Resend, Cloudflare, the platforms, Brave Search and Chromium; that nothing needs disabling (fakes are test-only); fifteen steps each with what to do and what event, card or file must show it; cleanup. |
 | `scripts/park-check.mjs` | Manual headless check (not in `test:fast`): boots a test sidecar with scripted providers, opens the park in headless Chromium over the DevTools protocol (core modules only), briefs the Chief so a plan, a hire and a delegation happen, and reports renderer status, the bodies in the scene and console errors. `CHROMIUM=` points at a binary; the default is the Playwright browsers path. The verdict is decided before cleanup: Chromium is killed and waited for, the profile directory is removed with a forced, recursive, retried `rm` (`removeWithRetry`, exported and tested), and a directory that still will not go is reported while `PARK CHECK OK` exits 0. |
@@ -180,6 +202,7 @@ emits no `work.handoff`.
 | `test/browser.test.js` | Step 13: the handoff heuristics; the launcher with a fake spawn (endpoint parsing, early exit, timeout, no binary, sandbox flag only as root); `findChromium`; the CDP client against the fake endpoint (ids, errors, events, session routing, dropped sockets); `openPage`'s protocol calls for navigate / tree / click / type / upload / download / screenshot; the tools through the gate with a fake driver (Field office grants, Draft parks at the Gate, one profile per Ranger, trace lines and screenshots, the upload sandbox, downloads, the ledger) and the handoff lifecycle (waiting → returned with notes, abandoned on cancel, no re-raise, read never raises); the HTTP routes and the close-on-run-end; and, when a Chromium is installed, the real thing against pages served locally (type, click, upload, download, screenshot, a login page handed off and back). |
 | `test/leash-ledger.test.js` | The ledger (daily caps on USD and action counts, day rollover, judge spend, persistence, approval streaks → proposal), the leash state (validate, persist, override), the Gate queue (submit / resolve / proposal apply / expire / reload), and the gate's enforcement of every level through test tools with domains (a static domain, and a domain computed from the input), including `fs.write`'s unchanged per-call confirmation. |
 | `test/assets.test.js` | Zip and tar.gz readers, vendored files match the manifest, every source is CC0/CC-BY/MIT with evidence, hash mismatch refuses to extract. |
+| `test/shell.test.js` | Phase 3 step 1: `tauri.conf.json` as data (identifier, version from package.json, no static window, every referenced file exists, the sidecar bundled as resources, Node as the external binary), the release overlay's placeholder and endpoint, the capability, the entitlements, every crate pinned with `=`, the sidecar's empty dependencies, the icon generator (PNG and ICNS structure, determinism, committed bytes match), the splash page. |
 | `test/park.test.js` | Pure park math: seeded randomness, terrain properties (determinism, bounds, clearing flattening, river, ridgelines), splines, placement from the default layout and with a `mountain_peak` room, hub-and-spoke trails with trailheads and two-leg routes, state → clip and place including delivery walks and role looks, sun by hour. |
 | `test/frontend-state.test.js` | The frontend reducer: state transitions through a run, waiting at the Gate (prompts and Gate items), errors, spend double-count guard, layout events, invalid events. |
 | `test/capability.test.js` | Layout → grants, sandbox escapes (dotdot, absolute, symlinks), read/write/fetch behaviour, gate refusal and confirmation flow, gate driving the real loop. |
@@ -227,5 +250,7 @@ brief the judge reviews and the Chief decides on) are on disk. All eighteen step
 The ledger desk fixture, Google Trends (no official API), ad sets / ad groups and
 creatives (the connectors manage campaigns and budgets only), supplier / dropship
 purchasing (no platform API for it; D80), mail briefings (reflection briefings still go to station notes files rather than station mailboxes),   away mode and the evidence log, distance LOD, the WebGPU renderer
-path, Tauri shell (`src-tauri/`), Keychain, MCP, channels, the makapark.com download and
-update pages. None of these have stubs in the UI; when they arrive they get a row here first.
+path, the Keychain and credential broker (phase 3 step 2), the first-run flow (step 3),
+Ollama management (step 4), the R2 backup (step 5), the release scripts and the
+makapark.com download and update pages (step 6), the release runbook (step 7), MCP,
+channels. None of these have stubs in the UI; when they arrive they get a row here first.

@@ -31,3 +31,4 @@ test/stripe.test.js
 test/storefront.test.js
 test/ads.test.js
 test/research.test.js
+test/shell.test.js
