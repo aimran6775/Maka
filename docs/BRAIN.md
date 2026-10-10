@@ -10,6 +10,8 @@ browser (frontend/, vanilla JS, canvas)
    │  HTTP + SSE, JSON events validated against shared/events.js
    ▼
 sidecar (one Node process, no dependencies)
+   ├─ runs        N runs at once, one per Ranger, queued past the cap
+   ├─ trails      work items between zones: handoff → receiver run → done
    ├─ loop        the agentic while-loop; every transition is an event
    ├─ capability  world layout → tool allowlist; a placed object is a tool grant;
    │              the leash decides whether a granted action runs, waits at the Gate,
@@ -34,6 +36,14 @@ Three ideas carry everything:
    stay small.
 
 ## Current state
+
+Phase 2 step 4 done: concurrency and handoffs. The run manager runs several Rangers at
+once (one run per Ranger, a global cap from `config.json`), queues the rest in arrival
+order and announces a queued run with `agent.run.queued`. `sidecar/trails.js` turns a
+delegation (the `delegate` tool, or `POST /api/work` from the Superintendent) into a
+persisted work item, a `work.handoff` along the trail between the two zones, and a run
+for the receiver briefed from the item; when that run ends, `work.done` names the files
+that appeared in the receiver's outbox. `work.check` lets the delegator read the result.
 
 Phase 2 step 3 done: agents and the hierarchy. `sidecar/agents.js` owns agent records
 (the layout's agent entries, now with venture, specialty, persona, per-agent worker

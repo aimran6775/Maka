@@ -1,9 +1,15 @@
 // HTTP + SSE server. Routes:
-//   GET  /api/state            snapshot: providers (configured or not), layout, active run,
-//                              spend, pending prompts, object kinds, recent runs
+//   GET  /api/state            snapshot: providers (configured or not), layout, active and
+//                              queued runs, spend, pending prompts, object kinds, recent runs,
+//                              leash, ledger, gate, judge, agents, work items
 //   GET  /api/events           SSE stream of every event (replays after Last-Event-ID)
-//   POST /api/run              { agentId?, prompt, provider?, model?, maxTurns?, budgetUsd? }
-//   POST /api/cancel           { runId? }
+//   POST /api/run              { agentId?, prompt, provider?, model?, maxTurns?, budgetUsd? } → 202
+//                              { runId, queued } (one run per agent at a time, global cap)
+//   POST /api/cancel           { runId? } (no id: everything, queued included)
+//   GET  /api/work             work items, newest first; /api/work/:id one item
+//   POST /api/work             { toAgentId, brief, budgetUsd?, deadline?, evidence? } the
+//                              Superintendent delegates → work.handoff + a queued run
+//   POST /api/work/:id/cancel
 //   GET  /api/layout           the layout
 //   PUT  /api/layout           replace the layout (validated)
 //   POST /api/layout/place     { kind, roomId, x, y, objectId? } → emits object.place
@@ -154,7 +160,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, workspace = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
 
@@ -200,7 +206,10 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         keystore: { path: keystore.path, problem: keystore.problem },
         layout: layoutState.get(),
         objectKinds: OBJECT_KINDS,
-        activeRun: runs.active(),
+        activeRun: runs.active()[0] || null,
+        activeRuns: runs.active(),
+        queuedRuns: runs.queued(),
+        maxConcurrent: runs.maxConcurrent,
         pendingPrompts: runs.pending(),
         policy: runs.policy,
         judge: runs.judge ? runs.judge() : null,
@@ -208,6 +217,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         ledger: ledger ? ledger.summary() : null,
         gate: gateQueue ? { pending: gateQueue.pending(), recent: gateQueue.recent(20) } : null,
         agents: agents ? agents.list() : null,
+        work: trails ? { inTransit: trails.inTransit(), recent: trails.list().slice(0, 20) } : null,
         spend,
         runs: recent.slice(0, 20),
       });
@@ -215,10 +225,9 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/run' && method === 'POST') {
       const body = await readJsonBody(req);
       try {
-        const { runId, agentId, provider, model, tier } = await runs.start(body);
-        return sendJson(res, 202, { runId, agentId, provider, model, tier });
+        const { runId, agentId, provider, model, tier, queued } = await runs.start(body);
+        return sendJson(res, 202, { runId, agentId, provider, model, tier, queued });
       } catch (err) {
-        if (err.code === 'RUN_ACTIVE') throw new HttpError(409, err.message, err.code);
         if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);
         if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST'].includes(err.code)) throw new HttpError(400, err.message, err.code);
         throw err;
@@ -254,6 +263,33 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         if (err.status) throw new HttpError(err.status, err.message, err.code);
         throw err;
       }
+    }
+    if (p === '/api/work' && method === 'GET') {
+      if (!trails) throw new HttpError(404, 'no trails');
+      return sendJson(res, 200, trails.list());
+    }
+    if (p === '/api/work' && method === 'POST') {
+      if (!trails) throw new HttpError(404, 'no trails');
+      const body = await readJsonBody(req);
+      try {
+        return sendJson(res, 202, await trails.delegate(body, { by: 'superintendent' }));
+      } catch (err) {
+        if (err.status) throw new HttpError(err.status, err.message, err.code);
+        if (['NO_KEY', 'NO_MODEL', 'OLLAMA_UNREACHABLE', 'UNKNOWN_PROVIDER', 'BAD_REQUEST'].includes(err.code)) throw new HttpError(400, err.message, err.code);
+        if (err.code === 'WORKSPACE_OFFLINE') throw new HttpError(503, err.message, err.code);
+        throw err;
+      }
+    }
+    if (p.startsWith('/api/work/')) {
+      if (!trails) throw new HttpError(404, 'no trails');
+      const rest = p.slice('/api/work/'.length);
+      if (method === 'POST' && rest.endsWith('/cancel')) return sendJson(res, 200, await rethrow(() => trails.cancel(decodeURIComponent(rest.slice(0, -'/cancel'.length)))));
+      if (method === 'GET') {
+        const item = trails.get(decodeURIComponent(rest));
+        if (!item) throw new HttpError(404, 'no such work item');
+        return sendJson(res, 200, item);
+      }
+      throw new HttpError(405, 'method not allowed');
     }
     if (p === '/api/agents' && method === 'GET') {
       if (!agents) throw new HttpError(404, 'no agents registry');

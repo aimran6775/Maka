@@ -33,7 +33,7 @@ async function setup({ layout = defaultLayout() } = {}) {
 
 test('world data: parent roles, role grants, specialties, free tiles, layout fields are additive', () => {
   assert.deepEqual(PARENT_ROLES.junior_ranger, ['ranger']);
-  assert.deepEqual(roleGrants('ranger'), ['crew.spawn_junior']);
+  assert.deepEqual(roleGrants('ranger'), ['crew.spawn_junior', 'delegate', 'work.check']);
   assert.deepEqual(roleGrants('junior_ranger'), []);
   assert.deepEqual(roleGrants('nobody'), []);
   for (const s of Object.values(SPECIALTIES)) assert.ok(s.persona.length > 20 && s.zoneKind);
@@ -49,7 +49,7 @@ test('world data: parent roles, role grants, specialties, free tiles, layout fie
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, true);
   layout.agents[0].specialty = 'wizard';
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, false);
-  assert.deepEqual(allGrantsFor({ ...defaultLayout(), objects: [{ id: 'o', kind: 'trailhead_sign', roomId: 'ranger-station', x: 1, y: 1 }] }, 'ranger'), ['crew.spawn_junior', 'web.fetch']);
+  assert.deepEqual(allGrantsFor({ ...defaultLayout(), objects: [{ id: 'o', kind: 'trailhead_sign', roomId: 'ranger-station', x: 1, y: 1 }] }, 'ranger'), ['crew.spawn_junior', 'delegate', 'web.fetch', 'work.check']);
   assert.deepEqual(childrenOf(defaultLayout(), 'ranger'), []);
 });
 
@@ -58,7 +58,7 @@ test('agents: create / get / update / remove with the hierarchy rules, Chief sin
   try {
     assert.equal(h.agents.list().length, 1);
     assert.equal(h.agents.list()[0].role, 'ranger');
-    assert.deepEqual(h.agents.list()[0].grants, ['crew.spawn_junior']);
+    assert.deepEqual(h.agents.list()[0].grants, ['crew.spawn_junior', 'delegate', 'work.check']);
     await assert.rejects(h.agents.create({ name: 'X', role: 'superintendent', zoneId: 'ranger-station' }), /role must be one of/);
     await assert.rejects(h.agents.create({ name: '', role: 'ranger', zoneId: 'ranger-station' }), /name is required/);
     await assert.rejects(h.agents.create({ name: 'X', zoneId: 'nowhere' }), /unknown zone/);
@@ -149,7 +149,7 @@ test('crew.spawn_junior: a Ranger creates a Junior through the gate; a Junior do
   try {
     const registry = { ...TOOLS, ...CREW_TOOLS };
     const gate = createToolGate({ getLayout: h.layoutState.get, agentId: 'ranger', workspaceDir: h.dir, registry, grants: allGrantsFor, toolContext: { agents: h.agents }, leash: defaultLeash() });
-    assert.deepEqual(gate.definitions().map((d) => d.name), ['crew.spawn_junior']);
+    assert.deepEqual(gate.definitions().map((d) => d.name), ['crew.spawn_junior', 'delegate', 'work.check']);
     const r = await gate.execute({ id: 'c1', name: 'crew.spawn_junior', input: { name: 'Lister', persona: 'write listing drafts', venture: 'Lantern Co' } }, { runId: 'r', turn: 1 });
     assert.equal(r.ok, true);
     const out = JSON.parse(r.output);

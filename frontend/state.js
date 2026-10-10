@@ -23,7 +23,12 @@ export function initialState() {
     keystore: { path: '', problem: null },
     layout: { version: 1, rooms: [], objects: [], agents: [] },
     objectKinds: {},
-    activeRun: null, // { runId, agentId, startedAt }
+    activeRun: null, // { runId, agentId, startedAt } the first active run (compat)
+    activeRuns: [], // every active run
+    queuedRuns: [], // runs waiting for their agent or a slot
+    maxConcurrent: 0,
+    workItems: {}, // workItemId -> item (snapshot + work.handoff / work.done)
+    workOrder: [],
     runs: {}, // runId -> run view (see newRunView)
     runOrder: [], // newest last
     agentStates: {}, // agentId -> AGENT_STATES
@@ -87,6 +92,19 @@ export function applySnapshot(state, snap) {
     next.gateOrder = order;
   }
   next.activeRun = snap.activeRun || null;
+  next.activeRuns = snap.activeRuns || (snap.activeRun ? [snap.activeRun] : []);
+  next.queuedRuns = snap.queuedRuns || [];
+  next.maxConcurrent = snap.maxConcurrent || 0;
+  if (snap.work) {
+    const items = { ...state.workItems };
+    const order = [...state.workOrder];
+    for (const it of [...(snap.work.recent || [])].reverse().concat(snap.work.inTransit || [])) {
+      if (!items[it.id]) order.push(it.id);
+      items[it.id] = it;
+    }
+    next.workItems = items;
+    next.workOrder = order;
+  }
   next.spend = {
     totalUsd: snap.spend ? snap.spend.totalUsd : 0,
     reconciledTurns: snap.spend ? snap.spend.reconciledTurns : 0,
@@ -98,9 +116,12 @@ export function applySnapshot(state, snap) {
   }
   // The snapshot only knows that a run is active, not what it has done; the SSE replay
   // fills the detail. Until then the agent is "thinking" because a run.start happened.
-  if (next.activeRun && next.agentStates[next.activeRun.agentId] === 'idle') {
-    next.agentStates[next.activeRun.agentId] = 'thinking';
-    next.agentRuns = { ...state.agentRuns, [next.activeRun.agentId]: next.activeRun.runId };
+  next.agentRuns = { ...state.agentRuns };
+  for (const r of next.activeRuns) {
+    if (next.agentStates[r.agentId] === 'idle') {
+      next.agentStates[r.agentId] = 'thinking';
+      next.agentRuns[r.agentId] = r.runId;
+    }
   }
   return next;
 }
@@ -110,6 +131,18 @@ function setAgent(state, agentId, agentState, runId) {
     ...state,
     agentStates: { ...state.agentStates, [agentId]: agentState },
     agentRuns: { ...state.agentRuns, [agentId]: runId },
+  };
+}
+
+// A run is over: it leaves the active and queued lists and its prompts are dropped.
+function dropRun(state, runId) {
+  const activeRuns = state.activeRuns.filter((r) => r.runId !== runId);
+  return {
+    ...state,
+    activeRuns,
+    activeRun: state.activeRun && state.activeRun.runId === runId ? activeRuns[0] || null : state.activeRun,
+    queuedRuns: state.queuedRuns.filter((r) => r.runId !== runId),
+    pendingPrompts: state.pendingPrompts.filter((q) => q.runId !== runId),
   };
 }
 
@@ -133,7 +166,13 @@ export function applyEvent(state, event) {
       next.runs = { ...next.runs, [p.runId]: run };
       next.runOrder = [...next.runOrder.filter((id) => id !== p.runId), p.runId];
       next.activeRun = { runId: p.runId, agentId: p.agentId, startedAt: event.ts };
+      next.activeRuns = [...next.activeRuns.filter((r) => r.runId !== p.runId), { runId: p.runId, agentId: p.agentId, startedAt: event.ts }];
+      next.queuedRuns = next.queuedRuns.filter((r) => r.runId !== p.runId);
       next = setAgent(next, p.agentId, 'thinking', p.runId);
+      break;
+    }
+    case 'agent.run.queued': {
+      if (!next.queuedRuns.some((r) => r.runId === p.runId)) next.queuedRuns = [...next.queuedRuns, { runId: p.runId, agentId: p.agentId, position: p.position, workItemId: p.workItemId || null }];
       break;
     }
     case 'agent.token': {
@@ -174,16 +213,14 @@ export function applyEvent(state, event) {
       next = updateRun(next, p.runId, (run) => ({ ...run, status: 'ended', reason: p.reason, turns: p.turns, usage: p.usage }));
       const run = next.runs[p.runId];
       if (run) next = setAgent(next, run.agentId, 'done', p.runId);
-      if (next.activeRun && next.activeRun.runId === p.runId) next.activeRun = null;
-      next.pendingPrompts = next.pendingPrompts.filter((q) => q.runId !== p.runId);
+      next = dropRun(next, p.runId);
       break;
     }
     case 'agent.run.error': {
       next = updateRun(next, p.runId, (run) => ({ ...run, status: 'error', reason: 'error', error: { message: p.message, code: p.code || null } }));
       const run = next.runs[p.runId];
       if (run) next = setAgent(next, run.agentId, 'error', p.runId);
-      if (next.activeRun && next.activeRun.runId === p.runId) next.activeRun = null;
-      next.pendingPrompts = next.pendingPrompts.filter((q) => q.runId !== p.runId);
+      next = dropRun(next, p.runId);
       break;
     }
     case 'cost.estimate': {
@@ -285,12 +322,36 @@ export function applyEvent(state, event) {
     }
     case 'work.handoff': {
       next.handoffs = { ...next.handoffs, [p.toAgentId]: { fromZone: p.fromRoomId, toZone: p.toRoomId, workItemId: p.workItemId, summary: p.summary, startedAt: event.ts } };
+      const prev = next.workItems[p.workItemId];
+      next.workItems = { ...next.workItems, [p.workItemId]: { ...(prev || {}), id: p.workItemId, fromAgentId: p.fromAgentId, toAgentId: p.toAgentId, fromRoomId: p.fromRoomId, toRoomId: p.toRoomId, trailId: p.trailId || null, brief: prev ? prev.brief : p.summary, status: prev && prev.status !== 'queued' ? prev.status : 'running', createdAt: prev ? prev.createdAt : event.ts } };
+      if (!prev) next.workOrder = [...next.workOrder, p.workItemId];
+      break;
+    }
+    case 'work.done': {
+      const prev = next.workItems[p.workItemId];
+      next.workItems = { ...next.workItems, [p.workItemId]: { ...(prev || { id: p.workItemId, fromAgentId: p.fromAgentId, toAgentId: p.toAgentId, brief: '' }), status: p.status, reason: p.reason || null, runId: p.runId, deliverables: p.deliverables, summary: p.summary, spentUsd: p.spentUsd || 0, endedAt: event.ts } };
+      if (!prev) next.workOrder = [...next.workOrder, p.workItemId];
+      if (next.handoffs[p.toAgentId] && next.handoffs[p.toAgentId].workItemId === p.workItemId) {
+        const handoffs = { ...next.handoffs };
+        delete handoffs[p.toAgentId];
+        next.handoffs = handoffs;
+      }
       break;
     }
     default:
       break;
   }
   return next;
+}
+
+// Work items in flight (queued or running), oldest first; optionally only those bound for a zone.
+export function workInTransit(state, toRoomId = null) {
+  return state.workOrder.map((id) => state.workItems[id]).filter((it) => it && (it.status === 'queued' || it.status === 'running') && (!toRoomId || it.toRoomId === toRoomId));
+}
+
+// Work items an agent sent or received, newest first.
+export function workFor(state, agentId) {
+  return state.workOrder.map((id) => state.workItems[id]).filter((it) => it && (it.fromAgentId === agentId || it.toAgentId === agentId)).reverse();
 }
 
 // Gate items still waiting on the Superintendent, oldest first.

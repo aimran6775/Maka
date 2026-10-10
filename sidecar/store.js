@@ -9,6 +9,7 @@
 //   leash.json             the leash policy (shared/leash.js); also the operator file
 //   leash-ledger.json      daily per-domain action totals, approval streaks, judge spend
 //   gate-items.json        the Entrance Gate queue (recent items, pending first)
+//   work-items.json        delegated work items (trails)
 //   runs/<runId>.json      one record per run: metadata + every event + final messages
 
 import { promises as fsp } from 'node:fs';
@@ -61,6 +62,7 @@ export function createStore({ root, fs = fsp }) {
   const leashFile = path.join(root, 'leash.json');
   const ledgerFile = path.join(root, 'leash-ledger.json');
   const gateFile = path.join(root, 'gate-items.json');
+  const workFile = path.join(root, 'work-items.json');
   const runsDir = path.join(root, 'runs');
 
   const runFile = (runId) => {
@@ -83,6 +85,8 @@ export function createStore({ root, fs = fsp }) {
     saveLeashLedger: (ledger) => writeJsonAtomic(ledgerFile, ledger, { fs }),
     loadGateItems: (fallback) => readJson(gateFile, fallback, { fs }),
     saveGateItems: (items) => writeJsonAtomic(gateFile, items, { fs }),
+    loadWorkItems: (fallback) => readJson(workFile, fallback, { fs }),
+    saveWorkItems: (items) => writeJsonAtomic(workFile, items, { fs }),
     saveRun: async (record) => writeJsonAtomic(runFile(record.runId), record, { fs }),
     loadRun: async (runId) => readJson(runFile(runId), null, { fs }),
     async listRuns() {

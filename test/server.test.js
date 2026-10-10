@@ -90,7 +90,7 @@ test('state, layout placement rules, events replay, static files', async () => {
   }
 });
 
-test('run lifecycle over HTTP: events stream, persistence, spend, 409 while active, cancel', async () => {
+test('run lifecycle over HTTP: events stream, persistence, spend, a second run queues, cancel', async () => {
   let release;
   const gate = new Promise((r) => { release = r; });
   const makeProvider = async () => ({
@@ -109,17 +109,25 @@ test('run lifecycle over HTTP: events stream, persistence, spend, 409 while acti
     assert.equal(started.status, 202);
     const { runId } = started.body;
     assert.match(runId, /^run-/);
+    assert.equal(started.body.queued, false);
     const again = await srv.post('/api/run', { prompt: 'again' });
-    assert.equal(again.status, 409);
-    assert.equal(again.body.code, 'RUN_ACTIVE');
+    assert.equal(again.status, 202);
+    assert.equal(again.body.queued, true, 'one run per agent at a time: the second waits');
+    const queuedEv = await stream.waitFor((e) => e.type === 'agent.run.queued');
+    assert.deepEqual(queuedEv.payload, { runId: again.body.runId, agentId: 'ranger', position: 0 });
     const state = await srv.get('/api/state');
     assert.equal(state.body.activeRun.runId, runId);
+    assert.deepEqual(state.body.queuedRuns.map((r) => r.runId), [again.body.runId]);
+    assert.deepEqual((await srv.post('/api/cancel', { runId: again.body.runId })).body, { cancelled: true });
+    const cancelledQueued = await stream.waitFor((e) => e.type === 'agent.run.end' && e.payload.runId === again.body.runId);
+    assert.equal(cancelledQueued.payload.reason, 'cancelled');
+    assert.equal((await srv.get(`/api/runs/${again.body.runId}`)).body.reason, 'cancelled');
     await stream.waitFor((e) => e.type === 'agent.token');
     release();
-    const endEv = await stream.waitFor((e) => e.type === 'agent.run.end');
+    const endEv = await stream.waitFor((e) => e.type === 'agent.run.end' && e.payload.runId === runId);
     assert.equal(endEv.payload.reason, 'completed');
     assert.equal(endEv.payload.finalText, 'thinking done');
-    const types = stream.events.filter((e) => !e.type.startsWith('workspace.')).map((e) => e.type);
+    const types = stream.events.filter((e) => !e.type.startsWith('workspace.') && (!e.payload.runId || e.payload.runId === runId)).map((e) => e.type);
     assert.deepEqual(types, ['agent.run.start', 'agent.token', 'agent.token', 'cost.estimate', 'agent.run.end']);
     const cost = stream.events.find((e) => e.type === 'cost.estimate').payload;
     assert.equal(cost.usd, (1000 * 1 + 500 * 2) / 1e6);
@@ -130,8 +138,7 @@ test('run lifecycle over HTTP: events stream, persistence, spend, 409 while acti
     assert.equal(after.body.activeRun, null);
     assert.equal(after.body.spend.totalUsd, cost.usd);
     assert.equal(after.body.spend.reconciledTurns, 1);
-    assert.equal(after.body.runs[0].runId, runId);
-    assert.equal(after.body.runs[0].status, 'ended');
+    assert.equal(after.body.runs.find((r) => r.runId === runId).status, 'ended');
     const rec = await srv.get(`/api/runs/${runId}`);
     assert.equal(rec.status, 200);
     assert.equal(rec.body.events.length, 5);
@@ -356,6 +363,81 @@ test('agents over HTTP: CRUD with the hierarchy rules, the Chief at the Peak, pe
     assert.equal((await srv.del('/api/agents/ghost')).status, 404);
     const crew = stream.events.filter((e) => e.type === 'crew.agent').map((e) => e.payload.change);
     assert.deepEqual(crew, ['created', 'created', 'updated', 'created', 'removed', 'removed'], 'the Chief from boot is replayed first');
+    stream.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+test('concurrency and trails over HTTP: two Rangers run at once under the cap, the Chief delegates along a trail, work.done carries the outbox files', async () => {
+  const holds = {};
+  const release = (id) => holds[id] && holds[id]();
+  const makeProvider = async (name, opts) => ({
+    provider: fakeProvider([
+      [text('working'), async (ctx) => { await new Promise((r) => { holds[opts.model] = r; }); }, ...toolCall('c1', 'fs.write', { path: 'outbox/result.md', content: 'done' }), end('tool_use')],
+      [text('finished the job'), end()],
+    ], { name }),
+    model: opts.model || 'm',
+    price: null,
+  });
+  const layout = (await import('../shared/world.js')).defaultLayout();
+  layout.objects.push({ id: 'sc', kind: 'supply_cache', roomId: 'ranger-station', x: 2, y: 2 });
+  layout.rooms.push({ id: 'research', name: 'Research', kind: 'research', x: 20, y: 1, w: 6, h: 6 });
+  layout.objects.push({ id: 'sc2', kind: 'supply_cache', roomId: 'research', x: 22, y: 2 });
+  layout.agents.push({ id: 'scout', name: 'Scout', roomId: 'research', x: 20, y: 1, role: 'ranger', policy: { worker: { provider: 'ollama', model: 'scout-model' } } });
+  layout.agents[0].policy = { worker: { provider: 'ollama', model: 'ranger-model' } };
+  const srv = await startTestServer({ layout, makeProvider, chief: true, maxConcurrent: 2 });
+  try {
+    const stream = await srv.sse();
+    assert.equal((await srv.get('/api/state')).body.maxConcurrent, 2);
+    const a = await srv.post('/api/run', { agentId: 'ranger', prompt: 'a' });
+    const b = await srv.post('/api/run', { agentId: 'scout', prompt: 'b' });
+    assert.deepEqual([a.body.queued, b.body.queued], [false, false], 'two agents run at once');
+    const c = await srv.post('/api/run', { agentId: 'chief-ranger', prompt: 'c', provider: 'ollama', model: 'chief-model' });
+    assert.equal(c.body.queued, true, 'the cap holds the third');
+    assert.equal((await srv.get('/api/state')).body.activeRuns.length, 2);
+    await stream.waitFor((e) => e.type === 'agent.token' && e.payload.runId === b.body.runId);
+    release('scout-model');
+    const p1 = await stream.waitFor((e) => e.type === 'permission.prompt' && e.payload.runId === b.body.runId);
+    await srv.post('/api/permission', { promptId: p1.payload.promptId, runId: b.body.runId, allow: true });
+    await stream.waitFor((e) => e.type === 'agent.run.end' && e.payload.runId === b.body.runId);
+    const started = await stream.waitFor((e) => e.type === 'agent.run.start' && e.payload.runId === c.body.runId);
+    assert.equal(started.payload.agentId, 'chief-ranger', 'the queued run starts when a slot frees');
+    release('ranger-model');
+    release('chief-model');
+    for (const r of [a, c]) {
+      const pr = await stream.waitFor((e) => e.type === 'permission.prompt' && e.payload.runId === r.body.runId, 5000).catch(() => null);
+      if (pr) await srv.post('/api/permission', { promptId: pr.payload.promptId, runId: r.body.runId, allow: true });
+      await stream.waitFor((e) => (e.type === 'agent.run.end' || e.type === 'agent.run.error') && e.payload.runId === r.body.runId);
+    }
+    await srv.runs.waitForIdle();
+
+    // The Superintendent delegates to the Scout; the Scout's run writes outbox/result.md.
+    assert.equal((await srv.post('/api/work', { toAgentId: 'ghost', brief: 'x' })).status, 400);
+    assert.equal((await srv.post('/api/work', { toAgentId: 'scout', brief: '' })).status, 400);
+    const w = await srv.post('/api/work', { toAgentId: 'scout', brief: 'Find three niches', budgetUsd: 0.2, deadline: 'today', evidence: ['one source per niche'] });
+    assert.equal(w.status, 202);
+    assert.equal(w.body.status, 'running');
+    assert.equal(w.body.fromAgentId, 'superintendent');
+    const handoff = stream.events.find((e) => e.type === 'work.handoff' && e.payload.workItemId === w.body.id);
+    assert.deepEqual([handoff.payload.toAgentId, handoff.payload.toRoomId, handoff.payload.trailId], ['scout', 'research', 'trail:entrance-gate:research']);
+    const startEv = await stream.waitFor((e) => e.type === 'agent.run.start' && e.payload.runId === w.body.runId);
+    assert.match(startEv.payload.prompt, /BRIEF:\nFind three niches/);
+    assert.match(startEv.payload.prompt, /one source per niche/);
+    assert.equal(startEv.payload.budgetUsd, 0.2);
+    assert.equal((await srv.get('/api/state')).body.work.inTransit.length, 1);
+    release('scout-model');
+    const p2 = await stream.waitFor((e) => e.type === 'permission.prompt' && e.payload.runId === w.body.runId);
+    await srv.post('/api/permission', { promptId: p2.payload.promptId, runId: w.body.runId, allow: true });
+    const done = await stream.waitFor((e) => e.type === 'work.done' && e.payload.workItemId === w.body.id);
+    assert.equal(done.payload.status, 'done');
+    assert.deepEqual(done.payload.deliverables, ['outbox/result.md']);
+    assert.equal(done.payload.summary, 'finished the job');
+    const item = await srv.get(`/api/work/${w.body.id}`);
+    assert.equal(item.body.status, 'done');
+    assert.equal((await srv.get('/api/work')).body[0].id, w.body.id);
+    assert.equal((await srv.get('/api/work/nope')).status, 404);
+    assert.equal((await srv.post(`/api/work/${w.body.id}/cancel`)).status, 409);
     stream.close();
   } finally {
     await srv.close();

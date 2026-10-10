@@ -127,7 +127,7 @@ export function createComms({ parent, getState, api, x, y, w }) {
       el('span', { class: 'muted', text: agent ? `${agent.name} can use: ` : 'no Ranger' }),
       granted.length ? el('span', { text: granted.join(', ') }) : el('span', { class: 'muted', text: 'nothing (place fixtures in BUILD)' }),
     );
-    const active = Boolean(state.activeRun);
+    const active = Boolean(agent && (state.activeRuns.some((r) => r.agentId === agent.id) || state.queuedRuns.some((r) => r.agentId === agent.id)));
     const offline = Boolean(state.workspace && !state.workspace.online);
     runBtn.disabled = active || !state.connected || offline;
     runBtn.title = offline ? 'workspace offline: runs are paused' : '';

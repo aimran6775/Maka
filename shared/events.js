@@ -215,6 +215,29 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     reason: str,
     tools: { type: 'array', items: nonEmpty },
   }),
+  // Added v1 (phase 2 step 4): a delegated work item finished. `status` is done when the
+  // receiver's run completed, failed otherwise (error, cancelled, out of turns or budget);
+  // `deliverables` are the outbox files (workspace-relative) the run produced.
+  'work.done': payload(['workItemId', 'fromAgentId', 'toAgentId', 'runId', 'status', 'deliverables', 'summary'], {
+    workItemId: nonEmpty,
+    fromAgentId: nonEmpty,
+    toAgentId: nonEmpty,
+    runId: nonEmpty,
+    status: { type: 'string', enum: ['done', 'failed'] },
+    reason: str,
+    deliverables: { type: 'array', items: str },
+    summary: str,
+    spentUsd: num0,
+  }),
+  // Added v1 (phase 2 step 4): a run was accepted but waits for its agent (one run per
+  // agent at a time) or for a free slot (global concurrency cap). agent.run.start follows
+  // when it begins; agent.run.end { cancelled } if it is cancelled while queued.
+  'agent.run.queued': payload(['runId', 'agentId', 'position'], {
+    runId: nonEmpty,
+    agentId: nonEmpty,
+    position: int0,
+    workItemId: str,
+  }),
   // Added v1 (phase 2 step 3): an agent record was created, changed or removed. `agent` is
   // the layout record as it now stands (absent on 'removed').
   'crew.agent': payload(['agentId', 'change'], {

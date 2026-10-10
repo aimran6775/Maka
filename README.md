@@ -89,7 +89,12 @@ Step 3, the crew: the Chief Ranger stands at the Mountain Peak from the first bo
 and Junior Rangers (one hop below a Ranger) are created, briefed and moved through
 `/api/agents` with a venture, a specialty (scout, storefront, ads, marketing, support,
 books), a persona and their own leash overrides. Rangers can spawn a Junior from a run.
-Runs still go one at a time and the park still draws one body (steps 4 and 7).
+Step 4, concurrency and trails: several Rangers run at once (one run each, up to
+`maxConcurrentRuns` in `config.json`), the rest queue. The Chief and Rangers hand work to
+each other with the `delegate` tool (the Superintendent with `POST /api/work`): the item
+travels the trail between the two zones (`work.handoff`), the receiver runs with the brief,
+budget, deadline and evidence requirements, and `work.done` names the files that landed in
+its outbox. The park still draws one body; the crew walking its trails is step 7.
 The rest of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (macOS app) are not in this build.
 
 ```bash

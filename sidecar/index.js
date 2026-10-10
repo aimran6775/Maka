@@ -2,8 +2,8 @@
 //
 //   node sidecar/index.js
 //   PORT=8790  HOST=127.0.0.1  MAKA_HOME=./.maka  MAKA_WORKSPACE=~/Maka/workspace
-//   $MAKA_HOME/config.json may set { "workspaceRoot": "/Volumes/LaCie/Maka/workspace" };
-//   the env var wins over the file. The root may go away (external drive): runs pause.
+//   $MAKA_HOME/config.json may set { "workspaceRoot": "/Volumes/LaCie/Maka/workspace",
+//   "maxConcurrentRuns": 4 }; the env var wins over the file for the root. The root may go away (external drive): runs pause.
 //
 // Everything here is wiring; behaviour lives in loop.js, capability/, providers/, runs.js,
 // server.js and store.js, all of which are tested with fakes.
@@ -20,6 +20,7 @@ import { createLeashLedger, createLeashState } from './leash-ledger.js';
 import { createGateQueue } from './gate-queue.js';
 import { createJudge } from './judge.js';
 import { createAgents } from './agents.js';
+import { createTrails } from './trails.js';
 import { createRouter } from './router.js';
 import { createApp, createHttpServer, createLayoutState } from './server.js';
 import { providerStatus } from './providers/provider.js';
@@ -62,9 +63,12 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
 
   const workspace = createWorkspaceWatcher({ root: workspaceRoot, bus, onOffline: () => runs.cancel() });
   const judge = createJudge({ router: createRouter(policy), ledger, bus, env, keystorePath, log });
-  const agents = createAgents({ layoutState, leashState, bus, activeRunFor: (id) => (runs && runs.active() && runs.active().agentId === id ? runs.active() : null) });
+  const agents = createAgents({ layoutState, leashState, bus, activeRunFor: (id) => (runs ? runs.activeFor(id) : null) });
   await agents.ensureChief(); // the Chief Ranger is a singleton at the Mountain Peak (D45)
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, workspaceOnline: () => workspace.state().online });
+  const toolContext = {};
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online });
+  const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, workspaceRoot }).init();
+  toolContext.trails = trails;
   try {
     await fsp.mkdir(workspaceRoot, { recursive: true });
   } catch (err) {
@@ -81,6 +85,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     ledger,
     gateQueue,
     agents,
+    trails,
     workspace,
     providerStatus: () => providerStatus({ env, keystorePath }),
     keystoreStatus: () => keystoreStatus({ env, keystorePath }),
@@ -109,7 +114,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     else log.info(`  provider ${name}: ${s.configured ? 'key configured' : `not wired (set ${s.envVar} or add to ${keystorePath})`}`);
   }
   log.info(`  gate: ${gateQueue.pending().length} item(s) waiting; leash day ${ledger.dayKey()}`);
-  log.info(`  crew: ${agents.list().map((a) => `${a.name} (${a.role})`).join(', ')}`);
+  log.info(`  crew: ${agents.list().map((a) => `${a.name} (${a.role})`).join(', ')}; up to ${runs.maxConcurrent} runs at once`);
   log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${judge.route.provider}/${judge.route.model || 'default'} (cap $${judge.caps.judgeUsdPerDay}/day, $${ledger.judgeToday().usd.toFixed(2)} used today)`);
 
   async function close() {
@@ -120,11 +125,11 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await new Promise((resolve) => server.close(resolve));
   }
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, close };
 }
 
 function validateConfig(data) {
-  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 } } }, data);
+  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 } } }, data);
 }
 
 async function loadOrDefault(file, validateFn, defaultFn, log, label) {

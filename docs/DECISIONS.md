@@ -390,3 +390,30 @@ the role grants bound it. Step 4's `delegate` tool follows the same pattern.
 hosted model (a bigger one for the Scout, say). An explicit provider in the run request
 still wins, and the judge tier is never per-agent: the Chief's planning model is a step
 model (D44).
+
+## D48. Several runs at once, one per Ranger, the rest queued (supersedes D3)
+
+The phase 1 rule was one run at a time with `409 RUN_ACTIVE`. Phase 2 step 4 runs up to
+`maxConcurrentRuns` (default 4, `config.json`) at once, never two for the same Ranger, and
+accepts everything else as queued: `/api/run` answers 202 with `queued: true`, the run is
+persisted as queued and `agent.run.queued` is emitted, and it starts in arrival order when
+its Ranger is free and a slot is open. The provider and key are resolved before queueing
+so a misconfiguration is still a 400 and nothing is emitted. A queued run cancelled before
+it starts ends with `agent.run.end { cancelled }` and no other event.
+
+## D49. Delegation does not block the delegator
+
+`delegate` returns the work item id at once and the receiver's run is queued. A blocking
+handoff would hold a slot while waiting for a run that might be behind it in the queue
+(a deadlock at cap 1) and would spend nothing useful meanwhile. The result arrives as a
+`work.done` event and through `work.check`; step 5's Chief listens for it. Deliverables
+are whatever appeared or changed under the receiver's `outbox/` between the run's start
+and end: the harness does not ask the model to name them, it looks.
+
+## D50. Who may hand work to whom
+
+The Chief delegates to any Ranger or Junior; a Ranger delegates to its own Juniors and to
+other Rangers (a Marketing Ranger can hand listings to the Listings Ranger); a Junior
+never delegates; nobody delegates to the Chief (the Chief is briefed by the Superintendent
+and by reflections). The Superintendent may delegate to anyone through `POST /api/work`
+(the item then starts at the Entrance Gate's zone id for the trail).

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, applySnapshot, applyEvent, grantedTools, currentRun, AGENT_STATES, pendingGate, recentGate, judgeVerdicts } from '../frontend/state.js';
+import { initialState, applySnapshot, applyEvent, grantedTools, currentRun, AGENT_STATES, pendingGate, recentGate, judgeVerdicts, workInTransit, workFor } from '../frontend/state.js';
 import { makeEvent } from '../shared/events.js';
 import { defaultLayout, OBJECT_KINDS } from '../shared/world.js';
 
@@ -207,4 +207,38 @@ test('crew.agent creates, updates and removes layout agents and their idle state
   s = reduce(s, [ev('crew.agent', { agentId: 'scout-1', change: 'removed' })]);
   assert.equal(s.layout.agents.length, 1);
   assert.equal('scout-1' in s.agentStates, false);
+});
+
+test('concurrent runs: queued runs, several active runs, and work items from handoff to done', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ activeRuns: [{ runId: 'r0', agentId: 'ranger', startedAt: 1 }], queuedRuns: [], maxConcurrent: 2, work: { inTransit: [{ id: 'w0', fromAgentId: 'chief', toAgentId: 'ranger', toRoomId: 'ranger-station', status: 'running', brief: 'old' }], recent: [] } }));
+  assert.equal(s.agentStates.ranger, 'thinking');
+  assert.equal(s.maxConcurrent, 2);
+  assert.deepEqual(workInTransit(s).map((w) => w.id), ['w0']);
+  s = reduce(s, [
+    ev('crew.agent', { agentId: 'scout', change: 'created', agent: { id: 'scout', name: 'Scout', roomId: 'ranger-station', x: 5, y: 5, role: 'ranger' } }),
+    ev('agent.run.queued', { runId: 'r1', agentId: 'scout', position: 0, workItemId: 'w1' }),
+    ev('work.handoff', { fromAgentId: 'chief', toAgentId: 'scout', fromRoomId: 'mountain-peak', toRoomId: 'ranger-station', trailId: 't', workItemId: 'w1', summary: 'find niches' }),
+  ]);
+  assert.deepEqual(s.queuedRuns.map((r) => r.runId), ['r1']);
+  assert.equal(s.agentStates.scout, 'idle', 'queued is not running');
+  assert.deepEqual(workInTransit(s, 'ranger-station').map((w) => w.id), ['w0', 'w1']);
+  assert.equal(s.handoffs.scout.workItemId, 'w1');
+  s = reduce(s, [ev('agent.run.start', { runId: 'r1', agentId: 'scout', provider: 'p', model: 'm', prompt: 'x', maxTurns: 3, budgetUsd: 1, tools: [] })]);
+  assert.deepEqual(s.queuedRuns, []);
+  assert.deepEqual(s.activeRuns.map((r) => r.runId), ['r0', 'r1']);
+  assert.equal(s.agentStates.scout, 'thinking');
+  s = reduce(s, [
+    ev('agent.run.end', { runId: 'r1', reason: 'completed', turns: 1, finalText: 'done', usage: { inputTokens: 1, outputTokens: 1 } }),
+    ev('work.done', { workItemId: 'w1', fromAgentId: 'chief', toAgentId: 'scout', runId: 'r1', status: 'done', reason: 'completed', deliverables: ['outbox/niches.md'], summary: 'three niches', spentUsd: 0 }),
+  ]);
+  assert.deepEqual(s.activeRuns.map((r) => r.runId), ['r0'], 'the other run stays active');
+  assert.equal(s.activeRun.runId, 'r0');
+  assert.equal(s.workItems.w1.status, 'done');
+  assert.deepEqual(s.workItems.w1.deliverables, ['outbox/niches.md']);
+  assert.equal('scout' in s.handoffs, false, 'the walk is over');
+  assert.deepEqual(workFor(s, 'scout').map((w) => w.id), ['w1']);
+  assert.deepEqual(workInTransit(s).map((w) => w.id), ['w0']);
+  s = reduce(s, [ev('agent.run.error', { runId: 'r0', turn: 1, message: 'boom' })]);
+  assert.equal(s.activeRun, null);
 });
