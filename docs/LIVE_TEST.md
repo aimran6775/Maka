@@ -175,6 +175,17 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   against a scripted sidecar and prints `PARK CHECK OK` with the crew's bodies and no
   console errors. Run it after any frontend change.
 
+## 15b. Ad sets, ads and creatives (phase 4)
+
+- Set `META_PAGE_ID` (the Page the ads post as). Brief the Ads Ranger to "create a $1/day ad
+  set in the paused campaign for US, 25-54, upload outbox/hero.png, make a creative and a
+  paused ad": the ad set waits at the Gate under money_out with 1.00 as the amount; the
+  upload, the creative and the ad wait under publishing; nothing is active on Meta after
+  the approvals. Activating the ad is a money_out item carrying the set's budget.
+- Google: "create a paused ad group with a $0.50 bid and a responsive search ad": the group
+  and the ad wait under publishing; a headline over 30 characters is refused before any
+  request; enabling the group carries the campaign's daily budget.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

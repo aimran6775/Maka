@@ -97,6 +97,16 @@ threads and a Ranger with a Radio tower reads it like any station mail; the note
 stays the on-disk copy. Internal mail is refused for any recipient that is not a station
 address of the park.
 
+Step 7 done: the ad networks below the campaign. Meta: ad sets (targeting, a budget at set
+level), ads and ad creatives (the Ranger's copy plus an image uploaded from its own
+workspace, posted as the Superintendent's Page); Google: ad groups, responsive search ads
+(checked against Google's copy limits before they leave) and image assets. Every create
+is paused; activating an ad set, an ad or an ad group is money out with the real amount
+(the set's budget, or the campaign's daily budget, from the store; nothing provable means
+the Gate and a refusal after it, safety H2 as before); a budget change is money out with
+the new figure; copy, creatives and images are publishing. Images come from the Ranger's
+workspace only, through the same sandbox as fs.*.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

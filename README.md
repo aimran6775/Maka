@@ -310,6 +310,12 @@ are research, the rest outbound messages, editable; a money domain needs the amo
 field). In BUILD, place an Outpost in a camp and pick the server: its Rangers get those
 tools under the leash. Nothing MCP reaches the Chief.
 
+Step 7, ad sets and creatives: the Notice board now also grants Meta ad sets (budget at
+set level), ads and creatives (your Page id in `connectors.meta_ads.pageId` or
+`META_PAGE_ID`, images from the Ranger's workspace) and Google ad groups, responsive
+search ads and image assets. Everything is created paused; activations and budgets wait at
+the Gate or run under the daily cap with the real amount; copy and images are publishing.
+
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),
 so the camp card and a Ranger's mail.search show it.

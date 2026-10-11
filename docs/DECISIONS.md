@@ -1268,3 +1268,21 @@ fixes on outbound mail (M5, M6) are touched: the path refuses any recipient that
 station address of this park, including the system address and Ranger aliases, and
 internal mail is not mail history for the policy. The notes file stays as the on-disk
 copy the brief kept.
+
+## D137. Below the campaign: what spends is money out, what shows is publishing, images come from the workspace
+
+The brief maps creates to paused, activation and budget to money_out with the real
+amount, copy to publishing. The amount of an activation is read from the store the way
+D112 reads a campaign's: an ad set's own daily budget (or a lifetime budget in full), an
+ad's set budget (an active ad spends its set's budget), a Google ad group's or ad's
+campaign daily budget (the group has no budget of its own); nothing provable is the Gate
+and a `NO_BUDGET` refusal after it. A Google ad group's creation is publishing, not money:
+it is structure with a bid, it spends nothing paused, and the enabling that would spend
+carries the figure. Pausing anything is a proven $0, as before; when the day's money_out
+total already exceeds the cap even that $0 waits at the Gate, because the cap check is on
+the day's total, not on the step. Creatives and image assets upload only files from the
+Ranger's own workspace through the fs sandbox, PNG or JPEG under the platform's size, so
+the images a Ranger publishes are ones it made or was given (product law 8), and a
+responsive search ad is checked against Google's copy limits before any request leaves.
+The Page a Meta creative posts as is the Superintendent's configuration, never a Ranger's
+choice.
