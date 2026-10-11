@@ -1125,3 +1125,10 @@ manual sync that landed in that window (the test's, or a Sync now click in the p
 got a non-answer. Syncs of one kind now queue behind the running one and each caller
 gets its own counts; a failing sync does not block the next. The scheduler's job and a
 tool's after-write sync go through the same queue.
+- 2026-10-11 owner: phase 4 "beyond StarNet" approved in full with full autonomy
+  (docs/PHASE4_BRIEF.md): channels (Telegram, Discord, Slack) with owner pairing, MCP client
+  and catalog, briefings into station mail, ad sets/creatives and creative generation,
+  results engine, Scout and Ranger memory, recipes and skills, listing pipeline, voice,
+  renderer LOD/WebGPU, Ledger Desk, supplier purchasing via browser with mandatory payment
+  handoff, macOS computer control under a new computer_control leash defaulting to Observe,
+  imports. Nothing may weaken a safety-review fix.
