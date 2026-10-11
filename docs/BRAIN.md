@@ -53,8 +53,11 @@ item goes to every paired chat as a card, decided items tell the other chats who
 reflections and away digests go as text, and every send and every inbound message is an
 event (`channel.delivery`, `channel.inbound`); an unpaired chat's attempt to act is
 refused and logged. Bot tokens live in the keystore or the Keychain, reach the adapter's
-`start()` only, and go in through the Gate like a connector key. The adapters themselves
-(Telegram, Discord, Slack) are steps 2 and 3.
+`start()` only, and go in through the Gate like a connector key. Step 2 done: Telegram
+(`sidecar/channels/telegram.js`), the Bot API over long polling with core `fetch` through
+the outbound guard: Gate cards with inline Approve / Revise / Reject buttons, every press
+answered, the offset kept so a restart replays nothing, the token verified with `getMe`
+and never in an event or a message. Discord and Slack are step 3.
 
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`

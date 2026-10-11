@@ -173,6 +173,22 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   against a scripted sidecar and prints `PARK CHECK OK` with the crew's bodies and no
   console errors. Run it after any frontend change.
 
+## 16. Telegram (phase 4)
+
+- Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the
+  boot log says `channels: Telegram up (env, long polling as @<bot>)` and the Peak's "owner
+  channels" row says the same.
+- Peak → "Pairing code"; send the code to the bot from your own chat within ten minutes.
+  `channel.inbound { action: 'pair', outcome: 'paired' }`, the bot answers "Paired with the
+  Mountain Peak", the Peak lists the chat with Unpair.
+- Run step 3's Ranger action again: the Gate card reaches the chat with Approve / Revise /
+  Reject (`channel.delivery { kind: 'gate_card', status: 'sent' }`); press Revise, send the
+  notes; `gate.item { revised }` carries them and the Ranger's next turn sees them.
+- From another chat, send the bot anything: it answers "not paired" once and
+  `channel.inbound { paired: false }` is logged; a button press from it is refused.
+- Write a question: a Chief run with no tools (`agent.run.start` lists `tools: []`),
+  the answer in the chat with `Evidence: run <id>`, counted in the judge's day.
+
 ## Cleaning up
 
 Disconnect connectors at the Peak (Gate items), remove the test campaign, product and

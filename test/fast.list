@@ -38,3 +38,4 @@ test/backup.test.js
 test/release.test.js
 test/safety.test.js
 test/channels.test.js
+test/telegram.test.js

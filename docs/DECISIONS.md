@@ -1172,3 +1172,14 @@ local and a chat cannot open it.
 A Gate decision taken from the phone while away is exactly what the evidence log is for,
 so `channel.inbound` joined the away log's event types. The decision itself is logged as
 the `gate.item` it resolves, as before; the channel event says it came from a chat.
+
+## D129. Telegram by long polling, plain text, every press answered
+
+The Mac at home has no public endpoint (D64), so the Bot API is polled with a 25-second
+long poll and the offset after the last handled update; a webhook would need a tunnel
+for no gain. Messages go as plain text with no parse mode: a Ranger's summary or the
+owner's notes can contain anything, and a Markdown parse error would turn a Gate card
+into a failed delivery. Every inline button press is answered at once so the phone stops
+spinning even when the registry refuses the press (unpaired, already decided). The token
+rides in the Bot API's URL by that API's design; the adapter strips it from every error
+it raises, and the registry never puts an error with a URL in an event.

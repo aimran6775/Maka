@@ -294,8 +294,9 @@ as the next message), hears reflections and away digests, can `/gate`, `/status`
 the recorded data (a bounded run with no tools, counted as judge spend). An unpaired chat
 can do nothing but pair, and every attempt is logged. Bot tokens come from
 `TELEGRAM_BOT_TOKEN` / `DISCORD_BOT_TOKEN` / `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN`, or
-from "Connect" at the Peak through the Gate into the keystore. The Telegram, Discord and
-Slack adapters are the next two steps.
+from "Connect" at the Peak through the Gate into the keystore. Step 2, Telegram: set `TELEGRAM_BOT_TOKEN`
+(a bot from @BotFather) or Connect at the Peak; the sidecar long-polls the Bot API, so no
+public endpoint is needed. Discord and Slack are step 3.
 
 ## License
 

@@ -40,6 +40,7 @@ import { createConnectors } from './connectors/registry.js';
 import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { createResearch } from './research/index.js';
 import { createChannels } from './channels/registry.js';
+import { createTelegramAdapter } from './channels/telegram.js';
 import { createOllama } from './ollama.js';
 import { createSetup } from './setup.js';
 import { createBackup } from './backup/index.js';
@@ -125,6 +126,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   // Phase 4 step 1: the owner channels. Adapters (Telegram, Discord, Slack) register here
   // as they arrive; a channel whose token is not wired says so at the Peak.
   const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, log }).init();
+  channels.register(createTelegramAdapter({ netGuard, log })); // step 2: TELEGRAM_BOT_TOKEN or the keystore
   await channels.start();
   Object.assign(registry, research.tools);
   toolContext.judge = judge;
