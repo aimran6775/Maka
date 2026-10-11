@@ -24,6 +24,7 @@ import { createResearch } from '../../sidecar/research/index.js';
 import { createCreative } from '../../sidecar/creative/index.js';
 import { createResults } from '../../sidecar/results.js';
 import { createLedgerDesk } from '../../sidecar/ledger-desk.js';
+import { createPurchases } from '../../sidecar/purchases.js';
 import { createScoutMemory } from '../../sidecar/scout-memory.js';
 import { createMemory } from '../../sidecar/memory/index.js';
 import { createRecipes } from '../../sidecar/recipes/index.js';
@@ -122,6 +123,8 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const results = await createResults({ bus, store, agents, trails, chief, ledger, gateQueue, getConnectors: () => connectors, getMail: () => mailSystem, getLayout: layoutState.get, clock, log: { error() {} } }).init();
   const ledgerDesk = createLedgerDesk({ results, ledger, getLayout: layoutState.get, clock });
   Object.assign(registry, ledgerDesk.tools);
+  const purchases = await createPurchases({ bus, store, trails, ledger, browser: browserControl, getLayout: layoutState.get, getConnectors: () => connectors, knownVentures: () => (chief && chief.state().plan ? chief.state().plan.ventures.map((v) => v.id) : []), netGuard, workspaceRoot, clock, log: { error() {} } }).init();
+  Object.assign(registry, purchases.tools);
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, getConnectors: () => connectors, getMail: () => mailSystem, getResults: () => results, log: { error() {} } }).init();
   await workspace.check();
   // `research`: endpoints for the fakes ({ braveBaseUrl, duckBaseUrl, wikiApi, wikiRest, hnApi });
@@ -184,6 +187,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     research,
     creative,
     results,
+    purchases,
     scoutMemory,
     memory,
     recipes,
@@ -217,6 +221,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     gateQueue,
     agents,
     trails,
+    purchases,
     chief,
     scheduler,
     reflect,

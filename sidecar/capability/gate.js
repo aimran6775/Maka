@@ -114,11 +114,14 @@ export function createToolGate({
     }
   }
 
+  // Phase 4 step 17: a tool with `settlesLater: true` proves its amount for the cap check
+  // and the Gate card but moves no money when it runs (a purchase request holds the amount
+  // in the ledger itself and settles it at the receipt), so the action is counted at $0.
   async function runAndRecord(tool, call, ctx, domain, amountUsd) {
     const result = await run(tool, call, ctx);
     if (result && result.ok && ledger) {
       try {
-        await ledger.recordAction({ domain, amountUsd, agentId });
+        await ledger.recordAction({ domain, amountUsd: tool.settlesLater ? 0 : amountUsd, agentId });
       } catch (err) {
         console.error('leash ledger record failed:', err);
       }
@@ -138,7 +141,10 @@ export function createToolGate({
     }
     if (result && result.ok) {
       try {
-        await reservation.commit();
+        if (tool.settlesLater) {
+          reservation.release();
+          await ledger.recordAction({ domain: reservation.domain, amountUsd: 0, agentId });
+        } else await reservation.commit();
       } catch (err) {
         console.error('leash ledger record failed:', err);
       }
@@ -217,6 +223,7 @@ export function createToolGate({
             gateReason = `leash for ${domain} is ${LEASH_LEVEL_LABELS[entry.level]} but no ledger can prove the cap`;
           } else if (!viaGate && !(ctx.review && ctx.review.escalate)) {
             reservation = ledger.reserve({ domain, amountUsd, dailyCapUsd: entry.dailyCapUsd, dailyCapActions: entry.dailyCapActions, agentId, scope: entry.scope });
+            reservation.domain = domain;
             if (!reservation.ok) {
               viaGate = true;
               gateReason = reservation.reason;

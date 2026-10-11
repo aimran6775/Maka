@@ -52,3 +52,4 @@ test/recipes.test.js
 test/listing-pipeline.test.js
 test/voice.test.js
 test/ledger-desk.test.js
+test/purchases.test.js

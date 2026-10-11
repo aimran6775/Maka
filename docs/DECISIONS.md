@@ -666,7 +666,8 @@ supplier or dropship order to money_out. Shopify's Admin API and Etsy's Open API
 and edit listings and prices but buy nothing from suppliers, so the first two mappings
 are tools and the third is not: a tool that pretended to order from a supplier would be a
 fake action, and Maka shows nothing it cannot do. A supplier connector, if one is ever
-wired, is money_out from the start. A new Etsy listing is created as a draft and goes
+wired, is money_out from the start. Phase 4 step 17 (D148) adds the purchase through the
+Ranger's browser, money_out from the request, the payment itself always the Superintendent's. A new Etsy listing is created as a draft and goes
 live only through `etsy.update_listing` with `state: active`: two publishing decisions,
 the second with the finished listing in front of the Superintendent.
 
@@ -1503,3 +1504,30 @@ the easy one. It is a read, so it belongs to the research domain and may stand a
 unlike the connector fixtures (L5). The starter recipe for the monthly close is bumped to a
 second version that needs the desk; the starter library copies in once, so an install that
 already holds the first version keeps it, as the recipe design says (D143).
+
+## D148. A purchase is money out from the request, held until the receipt, and never paid by a Ranger
+
+The brief asks for a `purchase.request` work item that is money_out with the amount declared
+and reserved, driven by the Ranger's browser up to the payment page which always hands off,
+the receipt captured and the ledger reconciled against the connector's charge. Four choices
+follow. The request is the leashed action: the tool proves its amount, so Observe refuses it,
+Draft sends it to the Gate with the amount on the card, and Act with cap checks the cap; but
+the request moves no money, so the gate records it at $0 (`settlesLater`) and the amount
+becomes a hold in the leash ledger instead of a day's reservation, because the Superintendent
+may pay hours or days later and a restart must not forget it; a hold counts against the
+money_out cap until the receipt settles it at what was actually paid, on that day, or a
+cancel or a run that ends without a receipt releases it. The payment page is the
+Superintendent's in a stricter sense than the L1 rule: on a purchase run the browser refuses
+every click, type and upload on a page the handoff check calls a payment page, before and
+after the hand-back and whatever the notes say, so the only way money moves is the
+Superintendent's own hands in the window; the Ranger's part ends at reading the
+confirmation and filing the receipt, which the module accepts only from the Ranger driving
+that purchase and only after a payment page was handed back with notes for its run. The
+executor is never the requester (the one who asks is not the one who drives) and never the
+Chief (unjudged, D51); the Superintendent's own request from the Peak needs no Gate, since it
+is the approval, but holds the amount like any other. Reconciliation is honest about its
+sources: a connector that holds the owner's outgoing charges exposes `outgoingCharges`, the
+matcher takes one charge of the paid amount within a week and refuses to choose between
+two, and since none of the wired connectors (Stripe, Shopify, Etsy, the ad networks) carries
+the owner's card charges, a paid purchase reads "no charge source" with the receipt as the
+record, rather than a match nothing proved.

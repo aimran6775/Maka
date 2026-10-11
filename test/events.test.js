@@ -43,6 +43,7 @@ const SAMPLES = {
   'channel.connect': { channel: 'telegram', status: 'up', message: 'long polling as @maka_bot', by: 'env' },
   'channel.delivery': { channel: 'telegram', chatId: '12345', kind: 'gate_card', status: 'sent', itemId: 'gate-1', messageId: '43' },
   'voice.transcript': { via: 'huggingface', chars: 34, accepted: false, bytes: 48000, ms: 820, model: 'openai/whisper-large-v3' },
+  'purchase.update': { purchaseId: 'buy-1', status: 'paid', venture: 'lantern-co', amountUsd: 42, currency: 'USD', supplierHost: 'supplier.example', workItemId: 'work-1', agentId: 'driver', runId: 'run-2', by: 'superintendent', paidUsd: 42.5, receiptPath: 'outbox/purchases/buy-1.json', reconciliation: 'no_source' },
   'recipe.run': { recipeRunId: 'recipe-run-1', recipeId: 'launch-etsy-listing', version: 1, status: 'step', by: 'superintendent', ventureId: 'lantern-co', stepId: 'copy', workItemId: 'work-1', agentId: 'sam', steps: 6, done: 1 },
   'memory.recall': { agentId: 'a1', runId: 'r1', query: 'etsy fees', count: 1, itemIds: ['mem-1'], automatic: true, turn: 0 },
   'memory.write': { memoryId: 'mem-1', agentId: 'a1', scope: 'venture', owner: 'lantern-co', kind: 'fact', status: 'stored', redactions: 1, runId: 'r1', verdict: 'approve', text: 'Etsy charges $0.20 per listing' },
@@ -134,6 +135,9 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('scout.brief', { briefId: 'b', change: 'scored' });
   bad('memory.write', { agentId: 'a1', scope: 'global', owner: 'x', kind: 'fact', status: 'stored' });
   bad('recipe.run', { recipeRunId: 'r', recipeId: 'x', version: 1, status: 'paused', by: 'me' });
+  bad('purchase.update', { purchaseId: 'b', status: 'shipped', venture: 'v', amountUsd: 1 });
+  bad('purchase.update', { purchaseId: 'b', status: 'paid', venture: 'v', amountUsd: -1 });
+  bad('purchase.update', { purchaseId: 'b', status: 'paid', venture: 'v', amountUsd: 1, reconciliation: 'maybe' });
   bad('voice.transcript', { via: 'phone', chars: 1, accepted: false });
   bad('voice.transcript', { via: 'shell', chars: 1, accepted: false, text: 'never the words' });
   bad('memory.feedback', { memoryId: 'm', vote: 'meh', by: 'x', up: 0, down: 0 });

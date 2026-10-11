@@ -428,3 +428,28 @@ test('MCP (phase 4 step 4): the snapshot seeds the server rows; mcp.server event
   const none = reduce(applySnapshot(initialState(), snapshot()), [ev('mcp.server', { server: 'x', status: 'connected' })]);
   assert.equal(none.mcp, null);
 });
+
+test('phase 4 step 17 purchases: the snapshot carries the summary, purchase.update patches the row and marks the table stale, a reconciled event keeps the row paid, the run gets a note', async () => {
+  const { parsePurchaseItems, purchaseRowText, purchaseExecutors } = await import('../frontend/ui/purchases.js');
+  const base = applySnapshot(initialState(), { contract: 1, layout: defaultLayout(), objectKinds: OBJECT_KINDS, agentStates: {}, purchases: { open: 0, heldUsd: 0, paid: 0, paidUsd: 0, unreconciled: 0, sources: [], recent: [] } });
+  assert.equal(base.purchases.open, 0);
+  const requested = applyEvent(base, makeEvent('purchase.update', { purchaseId: 'buy-1', status: 'requested', venture: 'lantern-co', amountUsd: 42, currency: 'USD', supplierHost: 'supplier.test', workItemId: 'work-1', agentId: 'driver', by: 'superintendent' }, { ts: 5 }));
+  assert.equal(requested.purchases.stale, true);
+  assert.equal(requested.purchases.recent.length, 1);
+  assert.deepEqual(requested.purchases.latest, { ...requested.purchases.recent[0], ts: 5 });
+  assert.equal(requested.purchases.recent[0].status, 'requested');
+  const paid = applyEvent(requested, makeEvent('purchase.update', { purchaseId: 'buy-1', status: 'paid', venture: 'lantern-co', amountUsd: 42, paidUsd: 42.5, receiptPath: 'outbox/purchases/buy-1.json', reconciliation: 'pending' }, { ts: 6 }));
+  assert.equal(paid.purchases.recent.length, 1, 'the same purchase replaces its row');
+  assert.equal(paid.purchases.recent[0].paidUsd, 42.5);
+  const rec = applyEvent(paid, makeEvent('purchase.update', { purchaseId: 'buy-1', status: 'reconciled', venture: 'lantern-co', amountUsd: 42, paidUsd: 42.5, reconciliation: 'matched' }, { ts: 7 }));
+  assert.equal(rec.purchases.recent[0].status, 'paid');
+  assert.equal(rec.purchases.recent[0].reconciliation, 'matched');
+  assert.equal(purchaseRowText(rec.purchases.recent[0]), 'buy-1 · lantern-co · supplier · $42.00 declared · paid · paid $42.50 · reconciled');
+  assert.equal(purchaseRowText(requested.purchases.recent[0]), 'buy-1 · lantern-co · supplier.test · $42.00 held · requested · driver');
+  assert.deepEqual(parsePurchaseItems('Rice paper roll × 2\n3 x Bamboo frame\nTape\n\n'), [{ name: 'Rice paper roll', qty: 2 }, { name: 'Bamboo frame', qty: 3 }, { name: 'Tape', qty: 1 }]);
+  const layout = defaultLayout();
+  layout.objects.push({ id: 'office', kind: 'field_office', roomId: 'ranger-station', x: 2, y: 2 });
+  layout.agents.push({ id: 'chief-ranger', name: 'Chief', roomId: 'ranger-station', x: 3, y: 3, role: 'chief_ranger' });
+  assert.deepEqual(purchaseExecutors(layout).map((a) => a.id), ['ranger']);
+  assert.deepEqual(purchaseExecutors(defaultLayout()), []);
+});

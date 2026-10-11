@@ -311,6 +311,24 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   Etsy row says not wired. Two lookups within a second: the second waits (the sidecar log
   shows no 429); a 429 from Reddit appears in the row, not as a retry.
 
+## 15l. Supplier purchasing (phase 4)
+
+- With a Field office and a Ranger in it: at the Peak's purchases section request a
+  purchase (a venture from the plan, a public supplier URL, two items, an amount). The
+  answer names the Ranger and the work item; the leash ledger shows the amount under holds
+  (`/api/state` → `ledger.holds`), not under today's spend.
+- The Ranger's browser opens the supplier, fills the cart and reaches checkout: a
+  `browser.handoff` of kind `payment` waits and the purchase row says `handoff`. Hand the
+  page back WITHOUT paying and with a note: the Ranger's next click or type on it is
+  refused (`PAYMENT_PAGE` in the trace); nothing was typed into the card field.
+- Pay in the window, hand the page back with a note: the Ranger reads the confirmation and
+  files the receipt; `outbox/purchases/<id>.json` and `.md` exist with the screenshot path,
+  today's money_out spend shows the paid amount, the hold is gone, the row says `paid` and
+  "no charge source".
+- Cancel an open purchase from the Peak: the work item is cancelled and the hold released.
+- From a Ranger: `purchase.request` at Observe is refused, at Draft it waits at the Gate
+  with the amount on the card.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

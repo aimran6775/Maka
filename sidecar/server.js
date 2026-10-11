@@ -342,7 +342,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -422,6 +422,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         research: research ? await research.status() : null,
         creative: creative ? await creative.status() : null,
         results: results ? results.summary() : null,
+        purchases: purchases ? purchases.summary() : null,
         scoutMemory: scoutMemory ? scoutMemory.summary() : null,
         memory: memory ? memory.summary() : null,
         recipes: recipes ? recipes.summary() : null,
@@ -783,6 +784,28 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/results' && method === 'GET') {
       if (!results) throw new HttpError(404, 'no results engine');
       return sendJson(res, 200, results.summary());
+    }
+    // Phase 4 step 17: supplier purchases. The Superintendent's own request needs no Gate (it
+    // is the approval) but holds the amount like any other; cancel releases the hold.
+    if (p === '/api/purchases' && method === 'GET') {
+      if (!purchases) throw new HttpError(404, 'no purchases');
+      return sendJson(res, 200, { ...purchases.summary(), purchases: purchases.list() });
+    }
+    if (p === '/api/purchases' && method === 'POST') {
+      if (!purchases) throw new HttpError(404, 'no purchases');
+      const body = await readJsonBody(req);
+      return sendJson(res, 202, await rethrow(() => purchases.request(body, { by: 'superintendent' })));
+    }
+    if (p === '/api/purchases/reconcile' && method === 'POST') {
+      if (!purchases) throw new HttpError(404, 'no purchases');
+      await readJsonBody(req);
+      return sendJson(res, 200, await purchases.reconcile());
+    }
+    if (p.startsWith('/api/purchases/') && p.endsWith('/cancel') && method === 'POST') {
+      if (!purchases) throw new HttpError(404, 'no purchases');
+      const body = await readJsonBody(req);
+      const id = decodeURIComponent(p.slice('/api/purchases/'.length, -'/cancel'.length));
+      return sendJson(res, 200, await rethrow(() => purchases.cancel(id, { by: 'superintendent', reason: body && body.reason ? String(body.reason).slice(0, 200) : undefined })));
     }
     if (p === '/api/results/rollup' && method === 'POST') {
       if (!results) throw new HttpError(404, 'no results engine');

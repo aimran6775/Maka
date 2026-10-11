@@ -39,8 +39,9 @@ test('world: default layout validates; grants derive from objects in the agent r
   const connectorTools = Object.assign({}, ...CONNECTOR_SPECS.map((spec) => spec.tools || {}));
   const RESEARCH_TOOL_NAMES = ['web.search', 'web.read', 'web.trends', 'brief.submit']; // sidecar/research/index.js
   const { LEDGER_DESK_TOOL_NAMES } = await import('../sidecar/ledger-desk.js'); // phase 4 step 16
+  const { PURCHASE_TOOL_NAMES } = await import('../sidecar/purchases.js'); // phase 4 step 17
   const { CREATIVE_TOOL_NAMES } = await import('../sidecar/creative/index.js');
-  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t) || t in MAIL_TOOLS || t in BROWSER_TOOLS || CONNECTOR_TOOL_NAMES.includes(t) || t in connectorTools || RESEARCH_TOOL_NAMES.includes(t) || LEDGER_DESK_TOOL_NAMES.includes(t) || CREATIVE_TOOL_NAMES.includes(t), `${t} exists`);
+  for (const kind of Object.values(OBJECT_KINDS)) for (const t of kind.grants) assert.ok(TOOL_NAMES.includes(t) || t in MAIL_TOOLS || t in BROWSER_TOOLS || CONNECTOR_TOOL_NAMES.includes(t) || t in connectorTools || RESEARCH_TOOL_NAMES.includes(t) || LEDGER_DESK_TOOL_NAMES.includes(t) || PURCHASE_TOOL_NAMES.includes(t) || CREATIVE_TOOL_NAMES.includes(t), `${t} exists`);
   assert.equal(tileInRoom(layout.rooms[0], 1, 1), true);
   assert.equal(tileInRoom(layout.rooms[0], 13, 1), false);
   const bad = layoutWith(['piano']);

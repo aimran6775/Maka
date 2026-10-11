@@ -17,6 +17,10 @@
 // `netGuard` (sidecar/netguard.js, safety H1): after every action the page the browser is
 // on is checked; a page on loopback, the LAN or this machine (Maka's own UI included) is
 // left for about:blank and the action fails with NET_GUARD.
+// Phase 4 step 17: on a purchase run (`setPurchaseCheck(runId => bool)`, set by the
+// purchases module) a write (click, type, upload) on a page the handoff check calls a
+// payment page is refused with PAYMENT_PAGE, after a hand-back too: the browser never
+// submits a payment, whatever the notes say; the Superintendent pays in the window.
 
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
@@ -31,6 +35,7 @@ export const PROFILE_DIR = 'browser-profile';
 export const TRACE_DIR = 'browser-trace';
 export const TRACE_FILE = 'trace.ndjson';
 export const TRACE_LIMIT = 200;
+export const PAYMENT_WRITES = Object.freeze(['click', 'type', 'upload']);
 
 const defaultDriver = { find: findChromium, launch: launchChromium, connect: connectCdp, openPage };
 
@@ -58,6 +63,7 @@ export function createBrowserControl({
   const sessions = new Map(); // agentId -> { agentId, page, client, proc, since, lastHandoff, closing }
   const handoffs = new Map(); // handoffId -> record (+ resolve while waiting)
   const order = [];
+  let purchaseCheck = () => false; // runId -> is this run driving a purchase (phase 4 step 17)
   let chromium = null;
   let chromiumLooked = false;
 
@@ -134,6 +140,21 @@ export function createBrowserControl({
     if (checks.before) {
       handoff = await maybeHandoff(session, { runId, signal });
       if (handoff && handoff.status === 'abandoned') return { result: null, url: session.page.url(), title: '', screenshot: null, handoff };
+    }
+    // Phase 4 step 17: a purchase run never writes on a payment page (see the header).
+    if (PAYMENT_WRITES.includes(action) && runId && purchaseCheck(runId)) {
+      let facts = null;
+      try {
+        facts = await session.page.facts();
+      } catch {
+        /* page gone: the action itself will say */
+      }
+      const hit = facts ? detectHandoff(facts) : null;
+      if (hit && hit.kind === 'payment') {
+        const refused = { ts: clock.now(), agentId, runId, action, input, ok: false, code: 'PAYMENT_PAGE', error: `the payment page is the Superintendent's: a purchase run never clicks, types or uploads on it (${facts.url}); the Superintendent pays in the window and hands the page back, then read the confirmation and file the receipt`, url: facts.url, title: facts.title || '' };
+        await record(agentId, refused);
+        throw Object.assign(new Error(refused.error), { code: 'PAYMENT_PAGE' });
+      }
     }
     const started = clock.now();
     const entry = { ts: started, agentId, runId: runId || null, action, input, ok: false };
@@ -273,6 +294,10 @@ export function createBrowserControl({
       return payloadOf(rec);
     },
     handoffs: ({ pendingOnly = false } = {}) => order.map((id) => handoffs.get(id)).filter((r) => r && (!pendingOnly || r.status === 'waiting')).map((r) => ({ ...payloadOf(r), since: r.since, until: r.until || null })),
+    // Phase 4 step 17: the purchases module says which runs drive a purchase.
+    setPurchaseCheck(fn) {
+      purchaseCheck = typeof fn === 'function' ? fn : () => false;
+    },
     async trace(agentId, { limit = 50 } = {}) {
       let raw;
       try {

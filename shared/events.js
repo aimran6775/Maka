@@ -540,6 +540,24 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
   // done (the success check passed), failed (a step failed, a delegation was refused, the
   // check failed, a restart) or refused before it began (not granted, no Ranger of the
   // specialty, a missing fixture, a leash at Observe, a missing parameter).
+  // Added v1 (phase 4 step 17): a supplier purchase through the browser changed state.
+  // `amountUsd` is the amount declared and held; `paidUsd` is what the receipt proved.
+  'purchase.update': payload(['purchaseId', 'status', 'venture', 'amountUsd'], {
+    purchaseId: nonEmpty,
+    status: { type: 'string', enum: ['requested', 'driving', 'handoff', 'paid', 'cancelled', 'failed', 'reconciled'] },
+    venture: nonEmpty,
+    amountUsd: { type: 'number', minimum: 0 },
+    currency: str,
+    supplierHost: str,
+    workItemId: str,
+    agentId: str,
+    runId: str,
+    by: str,
+    paidUsd: { type: 'number', minimum: 0 },
+    receiptPath: str,
+    reconciliation: { type: 'string', enum: ['pending', 'matched', 'unmatched', 'no_source'] },
+    reason: str,
+  }),
   'recipe.run': payload(['recipeRunId', 'recipeId', 'version', 'status', 'by'], {
     recipeRunId: nonEmpty,
     recipeId: nonEmpty,

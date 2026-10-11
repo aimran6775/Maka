@@ -259,6 +259,26 @@ reported and not retried) and Etsy's active listings for the keywords sorted by 
 score through the Open API with the app keystring (not wired without it; Etsy's API has no
 separate trending list, and the row says so). Google Trends stays out (D86, D147).
 
+Part E step 17 done: supplier purchasing through the browser. `purchase.request` (a Field
+office tool, or the Superintendent's form at the Peak) names the venture, the supplier URL,
+the items and the amount; it is money_out, so the leash and the Gate decide on it with the
+amount on the card, and once allowed the amount is held in the leash ledger: a hold counts
+against the money_out cap until the receipt or a cancel, across restarts and days
+(`sidecar/leash-ledger.js`). The purchase becomes a work item for a Ranger in a Field office
+(never the requester, never the Chief) whose browser drives the supplier's site up to the
+payment page. The payment page is the Superintendent's: it hands off as before, and on a
+purchase run the browser refuses every click, type or upload on it, after the hand-back and
+whatever the notes say (`PAYMENT_PAGE` in the trace), so no payment is ever submitted by a
+Ranger. When the Superintendent has paid in the window and handed the page back with notes,
+the Ranger reads the confirmation and files `purchase.receipt` with the order id and the
+total as the page shows them; the receipt and the trace's screenshot go to the outbox, the
+hold becomes money_out spend at the paid amount on that day, and a difference from the
+declared amount is written down. Reconciliation runs after every connector sync against
+connectors that expose the owner's outgoing charges; none of the wired ones does, so a paid
+purchase reads "no charge source" rather than a pretended match (D148). The Peak lists the
+purchases and lets the Superintendent cancel an open one; `purchase.update` carries every
+state change.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

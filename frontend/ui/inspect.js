@@ -3,6 +3,7 @@
 import { el, createWindow, setChildren, fmtUsd } from './windows.js';
 import { workerLines } from './worker.js';
 import { sparkline } from './sparkline.js';
+import { parsePurchaseItems, purchaseRowText, purchaseExecutors } from './purchases.js';
 import { grantedTools, toolUses, lastModel, pendingGate, pendingHandoffs, recentGate, judgeVerdicts, workInTransit, workFor } from '../state.js';
 import { LEASH_LEVEL_LABELS, LEASH_LEVELS, DOMAINS, resolveAllLeash, resolveLeash } from '../../shared/leash.js';
 
@@ -741,6 +742,60 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     ];
   }
 
+  // Phase 4 step 17: supplier purchases. Every row is a record: a held amount is a hold in
+  // the leash ledger, a paid amount is what the receipt proved, and reconciliation names
+  // its connector source or says none is wired. The form is the Superintendent's own
+  // request (no Gate: it is the approval); the payment page is always theirs to pay.
+  const purchasesCache = { key: null, data: null, loading: false };
+  function loadPurchases(key) {
+    if (purchasesCache.key === key || purchasesCache.loading) return;
+    purchasesCache.loading = true;
+    api.get('/api/purchases').then((r) => {
+      purchasesCache.data = r.ok ? r.body : null;
+      purchasesCache.key = key;
+    }).finally(() => {
+      purchasesCache.loading = false;
+      if (selectionRefresh) selectionRefresh();
+    });
+  }
+  const purchaseForm = {
+    venture: el('input', { class: 'prompt', placeholder: 'venture id' }),
+    url: el('input', { class: 'prompt', placeholder: 'supplier URL (https://…)' }),
+    items: el('textarea', { class: 'prompt', rows: 2, placeholder: 'one item per line: name × qty' }),
+    amount: el('input', { class: 'prompt', placeholder: 'amount USD', inputmode: 'decimal' }),
+    executor: el('select', { class: 'prompt' }),
+    notice: el('div', { class: 'notice' }),
+  };
+  function purchasesSection(s) {
+    if (!s.purchases) return [];
+    loadPurchases(`${s.purchases.latest ? s.purchases.latest.ts : 0}`);
+    const d = purchasesCache.data || s.purchases;
+    const rows = d.purchases || d.recent || [];
+    const executors = purchaseExecutors(s.layout);
+    const chosen = purchaseForm.executor.value;
+    setChildren(purchaseForm.executor, ...executors.map((a) => el('option', { value: a.id, text: `${a.name} (${a.id})`, selected: a.id === chosen })));
+    return [
+      el('div', { class: 'k', text: `purchases (${d.open} open, ${fmtUsd(d.heldUsd || 0)} held · ${d.paid} paid, ${fmtUsd(d.paidUsd || 0)} · ${d.unreconciled} unreconciled · charge sources: ${d.sources && d.sources.length ? d.sources.join(', ') : 'none wired'})` }),
+      ...rows.slice(0, 10).map((p) => el('div', { class: `use ${p.status === 'paid' ? 'ok' : p.status === 'failed' || p.status === 'cancelled' ? 'failed' : 'running'}` },
+        el('span', { text: purchaseRowText(p) }),
+        ['requested', 'driving', 'handoff'].includes(p.status) ? el('button', { class: 'btn small', text: 'Cancel', title: 'Releases the held amount and cancels the work item', onclick: async () => { const r = await api.post(`/api/purchases/${encodeURIComponent(p.id)}/cancel`, {}); purchaseForm.notice.textContent = r.ok ? `${p.id} cancelled; the hold is released.` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } }) : null,
+      )),
+      rows.length ? null : el('div', { class: 'muted small', text: 'no purchases yet' }),
+      executors.length ? el('div', { class: 'small muted', text: 'Request a purchase: a Field office Ranger drives the supplier site up to the payment page, which is always yours to pay; the amount is held against the money_out cap until the receipt.' }) : el('div', { class: 'small muted', text: 'To request a purchase, place a Field office and a Ranger in it.' }),
+      executors.length ? el('div', { class: 'row' }, purchaseForm.venture, purchaseForm.url) : null,
+      executors.length ? purchaseForm.items : null,
+      executors.length ? el('div', { class: 'row' }, purchaseForm.amount, purchaseForm.executor, el('button', { class: 'btn primary', text: 'Request a purchase', onclick: async () => {
+        const items = parsePurchaseItems(purchaseForm.items.value);
+        const amountUsd = Number(purchaseForm.amount.value);
+        if (!items.length) { purchaseForm.notice.textContent = 'List at least one item.'; return; }
+        if (!(amountUsd > 0)) { purchaseForm.notice.textContent = 'Give the amount in USD.'; return; }
+        const r = await api.post('/api/purchases', { venture: purchaseForm.venture.value.trim(), supplierUrl: purchaseForm.url.value.trim(), items, amountUsd, toAgentId: purchaseForm.executor.value || undefined });
+        purchaseForm.notice.textContent = r.ok ? `${r.body.id} requested: ${fmtUsd(r.body.amountUsd)} held, ${r.body.agentId} drives it (work item ${r.body.workItemId}).` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`;
+      } })) : null,
+      purchaseForm.notice,
+    ];
+  }
+
   function renderPeak(s) {
     setTitle('INSPECT · Mountain Peak');
     const runs = s.runOrder.map((id) => s.runs[id]).reverse();
@@ -774,6 +829,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ) : null,
       row('gate queue', `${pendingGate(s).length} waiting`),
       ...resultsSection(s),
+      ...purchasesSection(s),
       ...recipesSection(s),
       ...connectorsSection(s),
       ...mcpSection(s),

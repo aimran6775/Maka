@@ -88,6 +88,7 @@ export function createStore({ root, fs = fsp }) {
   const scoutMemoryFile = path.join(root, 'scout-memory.json');
   const memoryFile = path.join(root, 'memory.json');
   const recipeRunsFile = path.join(root, 'recipe-runs.json');
+  const purchasesFile = path.join(root, 'purchases.json');
   const reflectionsDir = path.join(root, 'reflections');
   const runsDir = path.join(root, 'runs');
 
@@ -113,6 +114,8 @@ export function createStore({ root, fs = fsp }) {
     loadScoutMemory: (fallback) => readJson(scoutMemoryFile, fallback, { fs }),
     loadMemory: (fallback) => readJson(memoryFile, fallback, { fs }),
     loadRecipeRuns: (fallback) => readJson(recipeRunsFile, fallback, { fs }),
+    loadPurchases: (fallback) => readJson(purchasesFile, fallback, { fs }),
+    savePurchases: (state) => writeJsonAtomic(purchasesFile, state, { fs }),
     saveRecipeRuns: (state) => writeJsonAtomic(recipeRunsFile, state, { fs }),
     saveMemory: (state) => writeJsonAtomic(memoryFile, state, { fs }),
     saveScoutMemory: (state) => writeJsonAtomic(scoutMemoryFile, state, { fs }),

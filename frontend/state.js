@@ -37,6 +37,7 @@ export function initialState() {
     memory: null, // Ranger memory counts from the snapshot (phase 4 step 11); `stale` after a memory.* event
     scoutMemory: null, // the Scout's memory summary from the snapshot (phase 4 step 10); `stale` after scout.brief
     results: null, // the results engine's summary from the snapshot (phase 4 step 9); `latest` patched by results.rollup
+    purchases: null, // supplier purchases from the snapshot (phase 4 step 17: open, heldUsd, paid, paidUsd, unreconciled, sources, recent); purchase.update patches recent and marks stale
 
     channels: null, // { adapters: [row per channel], pairing } from the snapshot; channel.connect patches rows (phase 4 step 1)
     channelEvents: [], // channel.inbound / channel.delivery payloads this session, oldest first (bounded)
@@ -118,6 +119,7 @@ export function applySnapshot(state, snap) {
   next.research = snap.research || null;
   next.creative = snap.creative || null;
   next.results = snap.results || null;
+  next.purchases = snap.purchases || null;
   next.scoutMemory = snap.scoutMemory || null;
   next.memory = snap.memory || null;
   next.recipes = snap.recipes || null;
@@ -385,6 +387,15 @@ export function applyEvent(state, event) {
     }
     case 'scout.brief': {
       next.scoutMemory = { ...(next.scoutMemory || { totals: { briefs: 0, go: 0, noGo: 0, needsMore: 0, joined: 0, decided: 0 }, byNiche: [], byChannel: [], recent: [] }), latest: { briefId: p.briefId, change: p.change, at: event.ts, decision: p.decision || null, recommendation: p.recommendation || null }, stale: true };
+      return next;
+    }
+    case 'purchase.update': {
+      // A purchase changed state: the row is what the event proved; the table is re-read
+      // from /api/purchases. A `reconciled` event keeps the row paid with its reconciliation.
+      const prev = next.purchases || { open: 0, heldUsd: 0, paid: 0, paidUsd: 0, unreconciled: 0, sources: [], recent: [] };
+      const row = { id: p.purchaseId, venture: p.venture, supplierHost: p.supplierHost || null, amountUsd: p.amountUsd, currency: p.currency || 'USD', status: p.status === 'reconciled' ? 'paid' : p.status, agentId: p.agentId || null, workItemId: p.workItemId || null, paidUsd: typeof p.paidUsd === 'number' ? p.paidUsd : null, reconciliation: p.reconciliation || null, reason: p.reason || null, updatedAt: event.ts };
+      next.purchases = { ...prev, recent: [row, ...(prev.recent || []).filter((r) => r.id !== row.id)].slice(0, 20), latest: { ...row, ts: event.ts }, stale: true };
+      if (p.runId && next.runs[p.runId]) next = updateRun(next, p.runId, (r) => ({ ...r, items: [...r.items, { kind: 'note', text: `Purchase ${p.purchaseId} ${p.status}${p.reason ? ` — ${p.reason}` : ''}` }] }));
       return next;
     }
     case 'results.rollup': {

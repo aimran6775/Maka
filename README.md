@@ -384,6 +384,14 @@ park, a venture or a Ranger, with every missing figure named as "no data"). `web
 now also reports Reddit's top posts for the topic and, with `ETSY_CLIENT_ID` set, Etsy's
 active listings for the keywords sorted by Etsy's own score; Google Trends stays out.
 
+Step 17, supplier purchasing: at the Peak (or through `purchase.request` from a Field office
+Ranger) name the venture, the supplier URL, the items and the amount. The amount is money out:
+the leash and the Gate decide, then it is held against the daily cap. A Field office Ranger
+drives the supplier's site up to the payment page, which is always yours: the browser hands
+it to you and refuses every click or keystroke on it. Pay in the window, hand the page back
+with a note, and the Ranger files the receipt; the hold becomes spend at what you paid.
+Cancel an open purchase from the Peak to release the hold.
+
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),
 so the camp card and a Ranger's mail.search show it.

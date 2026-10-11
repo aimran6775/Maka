@@ -19,6 +19,11 @@
 //   days[YYYY-MM-DD].hosted          = { calls, tokens }  hosted worker calls per day (step 12b)
 //   streaks[agentId][domain]         = { approvals }      Gate approvals since the last
 //                                                         rejection or proposal
+//   holds[id]                        = { domain, amountUsd, agentId, since, note }  phase 4
+//                                      step 17: a reservation that outlives its action (a
+//                                      purchase waiting for the Superintendent's payment);
+//                                      counted as reserved in its domain until settled
+//                                      (spend at the paid amount, on that day) or released
 // Days are the sidecar machine's local calendar day (docs/DECISIONS.md D36).
 //
 // createLeashState({ initial, store }) -> { get(), set(next), update(fn) }
@@ -28,7 +33,7 @@
 import { validateLeash, DEFAULT_EARN_APPROVALS, DOMAINS } from '../shared/leash.js';
 
 function emptyLedger() {
-  return { version: 1, days: {}, streaks: {} };
+  return { version: 1, days: {}, streaks: {}, holds: {} };
 }
 
 function pad(n) {
@@ -89,6 +94,7 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
     async init() {
       const loaded = await store.loadLeashLedger(null);
       if (loaded && loaded.version === 1 && loaded.days && loaded.streaks) data = loaded;
+      if (!data.holds) data.holds = {};
       return this;
     },
     dayKey: () => localDayKey(clock.now()),
@@ -104,7 +110,35 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
     // one agent's with { agentId }.
     reservedToday(domain, { agentId = null } = {}) {
       const r = reservedRow(domain, agentId);
-      return { usd: r.usd, actions: r.actions };
+      const held = Object.values(data.holds).filter((h) => h.domain === domain && (!agentId || h.agentId === agentId));
+      return { usd: r.usd + held.reduce((n, h) => n + h.amountUsd, 0), actions: r.actions + held.length };
+    },
+    // Phase 4 step 17: a hold is a reservation that outlives the action that made it. It
+    // counts as reserved (money and one action) in its domain, park-wide and under its
+    // agent, across restarts and days, until it is settled or released.
+    async hold({ id, domain, amountUsd, agentId = null, note = '' }) {
+      if (!DOMAINS.includes(domain)) throw new Error(`unknown domain "${domain}"`);
+      if (typeof id !== 'string' || !id) throw new Error('a hold needs an id');
+      if (!(typeof amountUsd === 'number' && Number.isFinite(amountUsd) && amountUsd >= 0)) throw new Error('a hold needs a finite amount');
+      if (data.holds[id]) throw new Error(`hold "${id}" exists`);
+      data.holds[id] = { domain, amountUsd, agentId, since: clock.now(), note };
+      await save();
+      return { id, ...data.holds[id] };
+    },
+    holds: () => Object.entries(data.holds).map(([id, h]) => ({ id, ...h })),
+    // The hold becomes spend at the amount actually paid, on the day it is settled.
+    async settleHold(id, { amountUsd }) {
+      const h = data.holds[id];
+      if (!h) throw new Error(`no hold "${id}"`);
+      if (!(typeof amountUsd === 'number' && Number.isFinite(amountUsd) && amountUsd >= 0)) throw new Error('settling a hold needs the paid amount');
+      delete data.holds[id];
+      return this.recordAction({ domain: h.domain, amountUsd, agentId: h.agentId });
+    },
+    async releaseHold(id) {
+      if (!data.holds[id]) return false;
+      delete data.holds[id];
+      await save();
+      return true;
     },
     // Would an action of `amountUsd` in `domain` stay under the day's caps? A null cap is
     // no cap. The money cap counts the action itself (0 + amount <= cap), so a 0 USD cap
@@ -228,7 +262,7 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
     summary() {
       const key = localDayKey(clock.now());
       const d = data.days[key] || { domains: {}, judge: { usd: 0, calls: 0 } };
-      return { day: key, domains: JSON.parse(JSON.stringify(d.domains)), agents: JSON.parse(JSON.stringify(d.agents || {})), judge: { ...d.judge }, hosted: { ...(d.hosted || { calls: 0, tokens: 0 }) }, streaks: JSON.parse(JSON.stringify(data.streaks)), earnApprovals };
+      return { day: key, domains: JSON.parse(JSON.stringify(d.domains)), agents: JSON.parse(JSON.stringify(d.agents || {})), judge: { ...d.judge }, hosted: { ...(d.hosted || { calls: 0, tokens: 0 }) }, streaks: JSON.parse(JSON.stringify(data.streaks)), earnApprovals, holds: Object.entries(data.holds).map(([id, h]) => ({ id, ...h })) };
     },
     state: () => data,
     flushed: () => saving,

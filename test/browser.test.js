@@ -284,8 +284,11 @@ async function harness({ driver = fakeDriver(), leashLevel = 'act_free' } = {}) 
 }
 
 test('the Field office grants the seven browser tools, all under browser_control; at Draft every action waits at the Gate', async () => {
-  assert.deepEqual(OBJECT_KINDS.field_office.grants, Object.keys(BROWSER_TOOLS));
-  for (const name of OBJECT_KINDS.field_office.grants) assert.equal(TOOL_DOMAINS[name], 'browser_control', name);
+  // Phase 4 step 17: the Field office also grants the two purchase tools (money_out / none).
+  assert.deepEqual(OBJECT_KINDS.field_office.grants, [...Object.keys(BROWSER_TOOLS), 'purchase.request', 'purchase.receipt']);
+  for (const name of Object.keys(BROWSER_TOOLS)) assert.equal(TOOL_DOMAINS[name], 'browser_control', name);
+  assert.equal(TOOL_DOMAINS['purchase.request'], 'money_out');
+  assert.equal(TOOL_DOMAINS['purchase.receipt'], null);
   const h = await harness({ leashLevel: 'draft' });
   try {
     const { gate, ctx } = h.gateFor('ranger');

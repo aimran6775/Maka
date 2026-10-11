@@ -43,7 +43,9 @@ export const OBJECT_KINDS = deepFreeze({
   // Phase 4 step 16: the Books Ranger's desk. One read-only tool over the results engine's
   // day rows and today's leash ledger; absent data reads "no data", never an estimate.
   ledger_desk: { label: 'Ledger desk', grants: ['ledger.read'], hint: "Rangers in this zone (the Books Ranger) read the park's books: the day rows the results engine rolled up from the ledgers and the connector syncs (revenue, refunds, fees, ad spend, orders, model spend for the park, a venture or a Ranger), the unit economics, which connectors are synced, and today's leash ledger. Read only; a figure no source holds reads \"no data\"." },
-  field_office: { label: 'Field office', grants: ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.download', 'browser.screenshot'], hint: 'Rangers in this zone drive a real browser with their own profile (open, read, click, type, upload, download, screenshot) under the browser_control leash; a login, code, captcha or payment page is handed to you.' },
+  // Phase 4 step 17: supplier purchases through that browser. purchase.request is money_out
+  // with the amount declared and held until the receipt; the payment page always hands off.
+  field_office: { label: 'Field office', grants: ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.download', 'browser.screenshot', 'purchase.request', 'purchase.receipt'], hint: 'Rangers in this zone drive a real browser with their own profile (open, read, click, type, upload, download, screenshot) under the browser_control leash; a login, code, captcha or payment page is handed to you. They can request a supplier purchase (money out, the amount declared and held) that another Ranger here drives up to the payment page, which is always yours to pay; the receipt settles the ledger.' },
 });
 
 export const OBJECT_KIND_NAMES = deepFreeze(Object.keys(OBJECT_KINDS));
