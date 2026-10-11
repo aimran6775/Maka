@@ -22,8 +22,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildParkModel } from './placement.js';
-import { TERRAIN } from './terrain.js';
+import { TERRAIN, valueNoise } from './terrain.js';
+import { hash2 } from './random.js';
+import { detailGrayscale, foliageCard, layerMeans, terrainVertexColors } from './surface.js';
 import { pointAtFraction } from './spline.js';
 import { clipFor, placeFor, badgeFor, lookFor, lampsFor } from './clips.js';
 import { sunFor } from './sun.js';
@@ -33,41 +36,25 @@ import { chooseRenderer, rendererLabel } from './gpu.js';
 
 export const CAMERA_MODES = Object.freeze(['orbit', 'fly', 'follow']);
 
+// Trees are original Maka geometry (D166): photoscan trees are 0.5–1 GB each, so realism
+// comes from PBR bark, needle/leaf detail textures and irregular displaced shells instead.
+// Rocks and grass clumps are Poly Haven photoscans; the terrain splats four Poly Haven
+// PBR layers; the lake uses three.js's own water normal map.
 const ASSETS = {
-  tree: ['nature-kit/tree_pineTallA.glb', 'nature-kit/tree_pineRoundA.glb', 'nature-kit/tree_oak.glb', 'nature-kit/tree_default.glb'],
-  rock: ['nature-kit/rock_largeA.glb', 'nature-kit/rock_largeB.glb', 'nature-kit/rock_smallA.glb'],
+  rock: ['polyhaven/boulder_01/boulder_01_1k.gltf'],
+  grass: ['polyhaven/grass_medium_02/grass_medium_02_1k.gltf'],
+  terrain: { grass: 'polyhaven/leafy_grass', forest: 'polyhaven/forest_leaves_04', rock: 'polyhaven/rock_face', sand: 'polyhaven/sandy_gravel' },
+  bark: 'polyhaven/pine_bark',
+  waterNormals: '/vendor/three/textures/waternormals.jpg',
   station: { structure: 'survival-kit/structure.glb', tent: 'survival-kit/tent.glb', campfire: 'survival-kit/campfire-pit.glb', signpost: 'survival-kit/signpost.glb', tentOpen: 'nature-kit/tent_detailedOpen.glb', crate: 'survival-kit/box.glb', logs: 'nature-kit/campfire_logs.glb', fenceGate: 'nature-kit/fence_gate.glb', fenceSimple: 'nature-kit/fence_simple.glb' },
   gate: { doorway: 'survival-kit/fence-doorway.glb', fence: 'survival-kit/fence.glb', signpost: 'survival-kit/signpost.glb' },
   fixtures: { trailhead_sign: 'nature-kit/sign.glb', supply_cache: 'survival-kit/chest.glb' }, // radio_tower, field_office and outpost are built in code (makeTower, makeFieldOffice, makeOutpost)
   ranger: { body: 'characters/characterMedium.fbx', skin: 'characters/skaterMaleA.png', clips: { idle: 'characters/idle.fbx', run: 'characters/run.fbx' } },
 };
-
-const WATER_VERT = `
-  uniform float uTime;
-  varying vec2 vUv;
-  varying float vWave;
-  void main() {
-    vUv = uv;
-    vec3 p = position;
-    float w = sin(p.x * 0.35 + uTime * 1.3) * 0.12 + sin(p.y * 0.5 - uTime * 0.9) * 0.08;
-    p.z += w;
-    vWave = w;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-  }`;
-const WATER_FRAG = `
-  uniform vec3 uColor;
-  uniform vec3 uFogColor;
-  uniform float uFogNear;
-  uniform float uFogFar;
-  varying vec2 vUv;
-  varying float vWave;
-  void main() {
-    float glint = smoothstep(0.08, 0.2, vWave) * 0.5;
-    vec3 c = uColor + vec3(glint);
-    float depth = gl_FragCoord.z / gl_FragCoord.w;
-    float f = smoothstep(uFogNear, uFogFar, depth);
-    gl_FragColor = vec4(mix(c, uFogColor, f), 0.78);
-  }`;
+// The ground detail tiles about every two world units, the scale the textures were shot
+// at; the macro colour comes from the terrain's vertex colours, not from a giant bake.
+const TERRAIN_DETAIL_REPEAT = 120;
+const GRASS_PARTS = 2; // how many of the grass scan's five tufts each clump keeps: hundreds are drawn at once
 
 // How each zone kind is dressed (data; kit pieces by key from ASSETS.station). The Ranger
 // Station keeps its phase 1 look; camps are tents around a fire; the Visitor Center is a
@@ -156,7 +143,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   status.renderer = rendererLabel({ path: gpu ? 'webgpu' : 'webgl2', fellBack });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.9;
   container.append(renderer.domElement);
@@ -191,6 +178,56 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   scene.add(hemi);
   scene.fog = new THREE.Fog(0xbcd6e8, 90, 320);
 
+  // ---- environment lighting (D166): a sky gradient lights the scene through a PMREM ----
+  // The Sky mesh itself is not the source: its shader carries real sky radiance (the sun
+  // disk runs into the thousands), and prefiltering that floods every material to white.
+  // This is the same sky read as a bounded gradient — zenith, horizon, ground bounce,
+  // from the clock's own sun colours — so the ambient is the sky's colour at a brightness
+  // the park can be lit by. Rebuilt only when the sun moves a visible step.
+  const ENV_W = 128;
+  const ENV_H = 64;
+  const envCanvas = document.createElement('canvas');
+  envCanvas.width = ENV_W;
+  envCanvas.height = ENV_H;
+  const envTex = new THREE.CanvasTexture(envCanvas);
+  envTex.mapping = THREE.EquirectangularReflectionMapping;
+  envTex.colorSpace = THREE.SRGBColorSpace;
+  let pmremGen = null;
+  let envTarget = null;
+  let envBucket = null;
+  let envBroken = false;
+  function updateEnvironment(bucket, s) {
+    if (envBroken || bucket === envBucket) return;
+    envBucket = bucket;
+    try {
+      const ctx = envCanvas.getContext('2d');
+      const grad = ctx.createLinearGradient(0, 0, 0, ENV_H);
+      const sky7 = new THREE.Color(s.sky);
+      const fog7 = new THREE.Color(s.fog);
+      const ground = new THREE.Color(s.night ? 0x0a0f14 : 0x4a4332);
+      grad.addColorStop(0, `#${sky7.getHexString()}`);
+      grad.addColorStop(0.48, `#${fog7.getHexString()}`);
+      grad.addColorStop(0.52, `#${fog7.clone().lerp(ground, 0.65).getHexString()}`);
+      grad.addColorStop(1, `#${ground.getHexString()}`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, ENV_W, ENV_H);
+      envTex.needsUpdate = true;
+      if (!pmremGen) {
+        const Pmrem = gpu && gpu.PMREMGenerator ? gpu.PMREMGenerator : THREE.PMREMGenerator;
+        pmremGen = new Pmrem(renderer);
+      }
+      const next = pmremGen.fromEquirectangular(envTex);
+      if (envTarget) envTarget.dispose();
+      envTarget = next;
+      scene.environment = next.texture;
+    } catch (err) {
+      envBroken = true;
+      scene.environment = null;
+      status.problems.push(`environment lighting unavailable: ${err && err.message ? err.message : err}`);
+      report();
+    }
+  }
+
   const world = new THREE.Group();
   scene.add(world);
   const gltf = new GLTFLoader();
@@ -198,7 +235,58 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   const texLoader = new THREE.TextureLoader();
   const loadGltf = (p) => new Promise((resolve, reject) => gltf.load(`/assets/${p}`, resolve, undefined, () => reject(new Error(`could not load ${p}`))));
   const loadFbx = (p) => new Promise((resolve, reject) => fbx.load(`/assets/${p}`, resolve, undefined, () => reject(new Error(`could not load ${p}`))));
-  const loadTex = (p) => new Promise((resolve, reject) => texLoader.load(`/assets/${p}`, resolve, undefined, () => reject(new Error(`could not load ${p}`))));
+  const loadTex = (p) => new Promise((resolve, reject) => texLoader.load(p.startsWith('/') ? p : `/assets/${p}`, resolve, undefined, () => reject(new Error(`could not load ${p}`))));
+
+  const maxAniso = renderer.capabilities && renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 4;
+  // A tiling PBR map: wrap, repeat, anisotropy, sRGB for color maps only.
+  async function tilingTex(p, { srgb = false, repeat = 1 } = {}) {
+    const t = await loadTex(p);
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(repeat, repeat);
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = Math.min(8, maxAniso);
+    return t;
+  }
+  // The three maps of a Poly Haven material (diffuse, GL normal, AO/rough/metal) as one
+  // MeshStandardMaterial-shaped bundle; the arm map serves as roughnessMap (G channel).
+  async function pbrMaps(base, { repeat = 1 } = {}) {
+    const [map, normalMap, armMap] = await Promise.all([
+      tilingTex(`${base}_diff_1k.jpg`, { srgb: true, repeat }),
+      tilingTex(`${base}_nor_gl_1k.jpg`, { repeat }),
+      tilingTex(`${base}_arm_1k.jpg`, { repeat }),
+    ]);
+    return { map, normalMap, armMap };
+  }
+  // An image's raw RGBA pixels, for the terrain bake.
+  async function loadPixels(p) {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error(`could not load ${p}`));
+      i.src = `/assets/${p}`;
+    });
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(img, 0, 0);
+    return { data: cx.getImageData(0, 0, img.width, img.height).data, width: img.width, height: img.height };
+  }
+  // A texture from baked RGBA pixels (the terrain albedo, the needle/leaf maps).
+  function textureFromPixels(pixels, size, { srgb = false, repeat = 1 } = {}) {
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    c.getContext('2d').putImageData(new ImageData(pixels, size, size), 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(repeat, repeat);
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = Math.min(8, maxAniso);
+    return t;
+  }
 
   let model = null; // placement model for the current layout
   let modelKey = '';
@@ -216,8 +304,149 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   const workTimes = createFrameStats({ size: 240 }); // inside a frame: sync, update, render
   let lastFrameAt = null;
 
-  // ---- static kit models (loaded once, cloned per use) ----
-  const kit = { trees: [], rocks: [], station: {}, gate: {}, fixtures: {} };
+  // ---- static kit models (loaded once, cloned per use) and the PBR surfaces (D166) ----
+  const kit = { trees: [], rocks: [], grass: [], station: {}, gate: {}, fixtures: {} };
+  // Filled by loadKit: the terrain's baked-albedo inputs and the shared materials.
+  const surfaces = { means: null, detailMap: null, detail: null, trail: null, disc: null, bark: null, waterNormals: null };
+
+  // Thins a photoscanned mesh for the near view, keeping its UVs (lod.js nearCells, D166).
+  // Geometry whose triangles are already modest is left alone.
+  function thinForNear(geometry, cells = LOD.nearCells) {
+    const posAttr = geometry.getAttribute('position');
+    const uvAttr = geometry.getAttribute('uv');
+    const before = triangleCount(geometry);
+    if (before < 2500) return geometry;
+    const positions = positionsOf(posAttr);
+    const attributes = uvAttr ? { uv: { array: uvAttr.array, itemSize: uvAttr.itemSize } } : null;
+    const d = clusterDecimate({ positions, index: geometry.index ? geometry.index.array : null, attributes }, cellSizeFor(positions, cells));
+    if (d.trianglesAfter < 200 || d.trianglesAfter >= before) return geometry;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(d.positions, 3));
+    if (d.attributes && d.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(d.attributes.uv.array, d.attributes.uv.itemSize));
+    g.setIndex(new THREE.BufferAttribute(d.index, 1));
+    g.computeVertexNormals();
+    return g;
+  }
+
+  // Scales a loaded model so its longest side is `target` world units (photoscans come in
+  // metres at whatever size the real object had).
+  function normalizeTo(scene3, target) {
+    const box = new THREE.Box3().setFromObject(scene3);
+    const sz = new THREE.Vector3();
+    box.getSize(sz);
+    const longest = Math.max(sz.x, sz.y, sz.z) || 1;
+    scene3.scale.setScalar(target / longest);
+    scene3.position.y -= box.min.y * (target / longest); // feet on the ground
+    const root = new THREE.Group();
+    root.add(scene3);
+    return root;
+  }
+
+  // One tree variant: a bent, flared bark trunk and a crown of alpha-cutout foliage cards
+  // (surface.js foliageCard). Original geometry — Poly Haven's photoscanned trees are
+  // 0.5–1 GB each (D166) — and the cards are what make the silhouette read as needles and
+  // gaps instead of a cone. Built about 2 units tall; buildFoliage scales each instance.
+  function trunkGeometry({ height: hTrunk, radius, bend, seedN }) {
+    const geo = new THREE.CylinderGeometry(radius * 0.32, radius, hTrunk, 9, 7);
+    geo.translate(0, hTrunk / 2, 0);
+    const pos = geo.attributes.position;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      const t = Math.min(1, Math.max(0, v.y / hTrunk));
+      // A lean that grows with height, a root flare at the foot, and a little noise so no
+      // two sides of the bole are the same.
+      const flare = t < 0.14 ? 1 + (0.14 - t) * 3.4 : 1;
+      const n = (valueNoise(v.x * 6 + seedN, v.y * 5, seedN) - 0.5) * 0.09;
+      pos.setXYZ(i, v.x * flare + bend * t * t + n, v.y, v.z * flare + bend * 0.45 * t * t + n);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  // One foliage card placed in the crown: a quad whose pivot is its inner edge, swung to
+  // `azimuth` around the trunk, drooping by `droop`, its tip `length` out and `up` high.
+  function cardAt({ length, width, azimuth, droop, up, out, roll }) {
+    const geo = new THREE.PlaneGeometry(length, width);
+    geo.translate(length / 2, 0, 0); // pivot at the branch's attachment
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler(roll, azimuth, -droop, 'YZX');
+    q.setFromEuler(e);
+    m.compose(new THREE.Vector3(Math.cos(azimuth) * out, up, -Math.sin(azimuth) * out), q, new THREE.Vector3(1, 1, 1));
+    geo.applyMatrix4(m);
+    return geo;
+  }
+
+  function makeTree({ kind, seedN, needleMat, leafMat, barkMat, tint }) {
+    const g = new THREE.Group();
+    const conifer = kind !== 'broadleaf';
+    const rnd = (i) => hash2(i, seedN, seedN + 13);
+    const top = kind === 'tall' ? 2.25 : kind === 'sparse' ? 1.5 : 2.0;
+    const trunkH = conifer ? top * 0.96 : top * 0.52;
+    const trunk = new THREE.Mesh(trunkGeometry({ height: trunkH, radius: conifer ? 0.075 : 0.11, bend: (rnd(1) - 0.5) * (conifer ? 0.1 : 0.3), seedN }), barkMat);
+    trunk.castShadow = true;
+    trunk.userData.farColor = 0x5a4632;
+    g.add(trunk);
+
+    const cards = [];
+    if (conifer) {
+      // Whorls up the trunk, each a ring of sprays; the crown narrows and the branches
+      // lift as they go up, the way a fir carries its load.
+      const whorls = kind === 'sparse' ? 5 : kind === 'tall' ? 9 : 8;
+      const first = trunkH * (kind === 'sparse' ? 0.3 : 0.22);
+      for (let w = 0; w < whorls; w++) {
+        const f = w / (whorls - 1); // 0 at the bottom whorl, 1 at the leader
+        const up = first + (trunkH - first) * f;
+        const spread = (kind === 'wide' ? 0.78 : 0.62) * (1 - 0.82 * f) + 0.07;
+        const perWhorl = Math.max(3, Math.round((kind === 'sparse' ? 4 : 6) * (1 - 0.45 * f)));
+        for (let b = 0; b < perWhorl; b++) {
+          const j = rnd(w * 31 + b * 7);
+          const azimuth = (b / perWhorl) * Math.PI * 2 + w * 0.7 + j * 0.5;
+          cards.push(cardAt({
+            length: spread * (0.85 + j * 0.4),
+            width: spread * (0.62 + j * 0.25),
+            azimuth,
+            droop: 0.55 - 0.5 * f + (j - 0.5) * 0.25, // lower branches hang, the top lifts
+            up,
+            out: 0.035,
+            roll: (j - 0.5) * 0.5,
+          }));
+        }
+      }
+      // The leader: two crossed cards standing up at the very top.
+      for (let i = 0; i < 2; i++) cards.push(cardAt({ length: 0.42, width: 0.3, azimuth: i * Math.PI * 0.5, droop: -1.15, up: trunkH - 0.12, out: 0.01, roll: 0 }));
+    } else {
+      // A broadleaf canopy: sprays packed around a few branch directions.
+      const branches = 7;
+      for (let b = 0; b < branches; b++) {
+        const j = rnd(b * 17);
+        const azimuth = (b / branches) * Math.PI * 2 + j;
+        const up = trunkH + 0.12 + j * 0.42;
+        for (let k = 0; k < 4; k++) {
+          const jk = rnd(b * 17 + k * 5 + 1);
+          cards.push(cardAt({
+            length: 0.52 + jk * 0.3,
+            width: 0.42 + jk * 0.22,
+            azimuth: azimuth + (jk - 0.5) * 0.8,
+            droop: -0.35 + jk * 0.75,
+            up: up + (jk - 0.5) * 0.35,
+            out: 0.05 + jk * 0.12,
+            roll: (jk - 0.5) * 1.2,
+          }));
+        }
+      }
+    }
+    const foliage = new THREE.Mesh(mergeGeometries(cards), conifer ? needleMat : leafMat);
+    foliage.castShadow = true;
+    foliage.receiveShadow = true;
+    foliage.userData.tint = tint; // per-instance HSL jitter around this base (buildFoliage)
+    foliage.userData.farColor = tint.far;
+    foliage.userData.cards = true; // never vertex-cluster a pile of loose quads
+    g.add(foliage);
+    return g;
+  }
+
   async function loadKit() {
     const tryLoad = async (p) => {
       try {
@@ -234,8 +463,91 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
         return null;
       }
     };
-    kit.trees = (await Promise.all(ASSETS.tree.map(tryLoad))).filter(Boolean);
-    kit.rocks = (await Promise.all(ASSETS.rock.map(tryLoad))).filter(Boolean);
+    const tryStep = async (what, fn) => {
+      try {
+        return await fn();
+      } catch (err) {
+        status.problems.push(`${what}: ${err.message}`);
+        return null;
+      }
+    };
+    // The PBR surfaces: the four terrain layers' mean colours, the tiled greyscale detail
+    // and its normal/roughness, the trails, the clearing discs, the bark.
+    await tryStep('terrain layers', async () => {
+      const entries = await Promise.all(Object.entries(ASSETS.terrain).map(async ([k, base]) => [k, await loadPixels(`${base}_diff_1k.jpg`)]));
+      const layers = Object.fromEntries(entries);
+      surfaces.means = layerMeans(layers);
+      const gray = detailGrayscale(layers.grass);
+      surfaces.detailMap = textureFromPixels(new Uint8ClampedArray(gray.data), gray.width, { srgb: true, repeat: TERRAIN_DETAIL_REPEAT });
+    });
+    surfaces.detail = await tryStep('terrain detail', () => pbrMaps(ASSETS.terrain.grass, { repeat: TERRAIN_DETAIL_REPEAT }));
+    surfaces.trail = await tryStep('trail surface', () => pbrMaps(ASSETS.terrain.sand, { repeat: 1 }));
+    // A clearing is a wide piece of ground: its gravel has to tile often enough to read
+    // as ground rather than as a painted plate.
+    surfaces.disc = await tryStep('clearing surface', () => pbrMaps(ASSETS.terrain.sand, { repeat: 12 }));
+    surfaces.bark = await tryStep('bark', () => pbrMaps(ASSETS.bark, { repeat: 1 }));
+    surfaces.waterNormals = await tryStep('water normals', () => tilingTex(ASSETS.waterNormals, { repeat: 8 }));
+    // The trees: four original variants built from alpha-cutout foliage cards.
+    await tryStep('trees', async () => {
+      const needle = foliageCard({ size: 256, seed: 11, kind: 'needle' });
+      const leaf = foliageCard({ size: 256, seed: 23, kind: 'leaf', base: [44, 72, 28], tip: [126, 158, 66] });
+      // alphaTest, not transparency: the cutout needs no sorting, and three carries the
+      // same test into the shadow pass, so the shadows are needle-shaped too.
+      const cardMaterial = (card, roughness) =>
+        new THREE.MeshStandardMaterial({
+          map: textureFromPixels(card.albedo, card.size, { srgb: true }),
+          normalMap: textureFromPixels(card.normal, card.size),
+          alphaTest: 0.42,
+          side: THREE.DoubleSide,
+          roughness,
+          metalness: 0,
+        });
+      const needleMat = cardMaterial(needle, 0.92);
+      const leafMat = cardMaterial(leaf, 0.85);
+      const barkMat = surfaces.bark
+        ? new THREE.MeshStandardMaterial({ map: surfaces.bark.map, normalMap: surfaces.bark.normalMap, roughnessMap: surfaces.bark.armMap, roughness: 1, metalness: 0 })
+        : new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 1 });
+      // level: how bright this variant's crown is; warm: how far toward yellow-green.
+      const dark = { level: 0.78, warm: 0.92, far: 0x33502c };
+      const mid = { level: 1.0, warm: 1.0, far: 0x3f5c31 };
+      const bright = { level: 1.18, warm: 1.1, far: 0x567a38 };
+      kit.trees = [
+        makeTree({ kind: 'tall', seedN: 5, needleMat, leafMat, barkMat, tint: dark }),
+        makeTree({ kind: 'wide', seedN: 29, needleMat, leafMat, barkMat, tint: mid }),
+        makeTree({ kind: 'broadleaf', seedN: 47, needleMat, leafMat, barkMat, tint: bright }),
+        makeTree({ kind: 'sparse', seedN: 71, needleMat, leafMat, barkMat, tint: mid }),
+      ];
+    });
+    // Photoscanned rocks and grass clumps (Poly Haven, 1k), thinned for the near view.
+    const boulder = await tryLoad(ASSETS.rock[0]);
+    kit.rocks = boulder ? [normalizeTo(boulder, 1.3)] : [];
+    if (kit.rocks[0]) kit.rocks[0].traverse((o) => {
+      if (o.isMesh) {
+        o.geometry = thinForNear(o.geometry);
+        o.userData.farColor = 0x79705f;
+      }
+    });
+    const grassClump = await tryLoad(ASSETS.grass[0]);
+    kit.grass = grassClump ? [normalizeTo(grassClump, 1.05)] : [];
+    if (kit.grass[0]) {
+      // The scan is five separate tufts of eight thousand triangles together, and the
+      // park draws hundreds of clumps at once: keep the two lightest, drop the rest.
+      const meshes = [];
+      kit.grass[0].traverse((o) => {
+        if (o.isMesh) meshes.push(o);
+      });
+      meshes
+        .sort((a, b) => triangleCount(a.geometry) - triangleCount(b.geometry))
+        .slice(GRASS_PARTS)
+        .forEach((o) => o.parent && o.parent.remove(o));
+      for (const o of meshes.slice(0, GRASS_PARTS)) {
+        // Grass is thin dressing: no shadows, and its blades keep both faces.
+        o.castShadow = false;
+        o.receiveShadow = false;
+        if (o.material) o.material.side = THREE.DoubleSide;
+        o.userData.farColor = 0x4e7034;
+      }
+    }
     for (const [k, p] of Object.entries(ASSETS.station)) kit.station[k] = await tryLoad(p);
     for (const [k, p] of Object.entries(ASSETS.gate)) kit.gate[k] = await tryLoad(p);
     for (const [k, p] of Object.entries(ASSETS.fixtures)) kit.fixtures[k] = await tryLoad(p);
@@ -444,72 +756,56 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     const geo = new THREE.PlaneGeometry(TERRAIN.size, TERRAIN.size, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const grass = new THREE.Color(0x5e9a46);
-    const dark = new THREE.Color(0x3f7433);
-    const rock = new THREE.Color(0x8c8577);
-    const sand = new THREE.Color(0xc9b58e);
-    const c = new THREE.Color();
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const z = pos.getZ(i);
-      const y = m.heightAt(x, z);
-      pos.setY(i, y);
-      const slope = Math.abs(m.heightAt(x + 1, z) - y) + Math.abs(m.heightAt(x, z + 1) - y);
-      if (y < TERRAIN.waterLevel + 0.9) c.copy(sand);
-      else if (slope > 1.6 || y > 14) c.copy(rock);
-      else c.copy(grass).lerp(dark, Math.min(1, Math.max(0, (y + 2) / 14)));
-      colors[i * 3] = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
-    }
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    for (let i = 0; i < pos.count; i++) pos.setY(i, m.heightAt(pos.getX(i), pos.getZ(i)));
     geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 }));
+    // The splatted albedo is baked per seed + clearings (never per agent change) from the
+    // four Poly Haven layers; micro detail rides in the tiled normal/roughness maps, which
+    // have their own repeat (per-map UV transforms). Without the layers (a failed load)
+    // the terrain stays a plain green so nothing pretends (truthful telemetry).
+    let mat;
+    if (surfaces.detailMap && surfaces.means) {
+      // Macro colour per vertex (grass → forest floor → rock → shore), sharp ground
+      // detail from the small greyscale map tiled many times over. One stock material,
+      // so WebGL2 and WebGPU draw the same thing (D166).
+      const colors = terrainVertexColors({ positions: geo.attributes.position.array, sampleHeight: m.heightAt, seed: m.seed, means: surfaces.means });
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      mat = new THREE.MeshStandardMaterial({ map: surfaces.detailMap, vertexColors: true, roughness: 1, metalness: 0 });
+      if (surfaces.detail) {
+        mat.normalMap = surfaces.detail.normalMap;
+        mat.normalScale = new THREE.Vector2(1.6, 1.6);
+        mat.roughnessMap = surfaces.detail.armMap;
+      }
+    } else {
+      mat = new THREE.MeshStandardMaterial({ color: 0x5e9a46, roughness: 0.95, metalness: 0 });
+    }
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     mesh.userData.pick = { type: 'terrain' };
     return mesh;
   }
 
   function buildWater() {
-    const geo = new THREE.PlaneGeometry(TERRAIN.size, TERRAIN.size, 60, 60);
-    let mat;
-    let setTime;
-    if (tsl) {
-      // The same waves and glint as the GLSL, in TSL for the WebGPU path (D146); the
-      // renderer applies the scene fog to node materials itself.
-      const uTime = tsl.uniform(0);
-      const p = tsl.positionLocal;
-      const wave = tsl.sin(p.x.mul(0.35).add(uTime.mul(1.3))).mul(0.12).add(tsl.sin(p.y.mul(0.5).sub(uTime.mul(0.9))).mul(0.08));
-      const vWave = tsl.varying(wave);
-      mat = new gpu.MeshBasicNodeMaterial();
-      mat.positionNode = p.add(tsl.vec3(0, 0, wave));
-      mat.colorNode = tsl.vec4(tsl.color(0x3d8fc2).add(tsl.smoothstep(tsl.float(0.08), tsl.float(0.2), vWave).mul(0.5)), 0.78);
-      mat.transparent = true;
-      mat.depthWrite = false;
-      setTime = (t) => {
-        uTime.value = t;
-      };
-    } else {
-      mat = new THREE.ShaderMaterial({
-        uniforms: {
-          uTime: { value: 0 },
-          uColor: { value: new THREE.Color(0x3d8fc2) },
-          uFogColor: { value: scene.fog.color },
-          uFogNear: { value: scene.fog.near },
-          uFogFar: { value: scene.fog.far },
-        },
-        vertexShader: WATER_VERT,
-        fragmentShader: WATER_FRAG,
-        transparent: true,
-        depthWrite: false,
-      });
-      setTime = (t) => {
-        mat.uniforms.uTime.value = t;
-      };
+    // One physically-based surface on both renderer paths (D166): the environment map
+    // supplies the sun glints, the scrolling three.js water normal map the ripples. The
+    // old GLSL/TSL twin shaders are gone — the same material runs under WebGL2 and WebGPU.
+    const geo = new THREE.PlaneGeometry(TERRAIN.size, TERRAIN.size, 1, 1);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x2c5d74,
+      roughness: 0.08,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.86,
+      depthWrite: false,
+    });
+    if (surfaces.waterNormals) {
+      mat.normalMap = surfaces.waterNormals;
+      mat.normalScale = new THREE.Vector2(0.55, 0.55);
     }
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.userData.setTime = setTime;
+    mesh.userData.setTime = (t) => {
+      if (!mat.normalMap) return;
+      mat.normalMap.offset.set((t * 0.015) % 1, (t * 0.011) % 1);
+    };
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = TERRAIN.waterLevel;
     return mesh;
@@ -519,6 +815,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     const width = 2.2;
     const s = trail.table.samples;
     const verts = [];
+    const uvs = [];
     const idx = [];
     for (let i = 0; i < s.length; i++) {
       const a = s[Math.max(0, i - 1)];
@@ -533,6 +830,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
         const x = p.x + nx * side * width * 0.5;
         const z = p.z + nz * side * width * 0.5;
         verts.push(x, m.heightAt(x, z) + 0.1, z);
+        uvs.push(side === -1 ? 0 : 1, p.dist / (width * 2)); // tiles the gravel along the walk
       }
       if (i > 0) {
         const o = (i - 1) * 2;
@@ -541,12 +839,50 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geo.setIndex(idx);
     geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xb9a37c, roughness: 1, side: THREE.DoubleSide }));
+    // Trodden earth, not poured concrete: the gravel maps under a warm tint. The tint
+    // stays light — it multiplies a mid-tone map, and anything darker turns to mud.
+    const mat = surfaces.trail
+      ? new THREE.MeshStandardMaterial({ map: surfaces.trail.map, normalMap: surfaces.trail.normalMap, roughnessMap: surfaces.trail.armMap, color: 0xd9bb92, roughness: 1, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({ color: 0xb9a37c, roughness: 1, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     mesh.userData.pick = { type: 'trail', id: trail.id };
     return mesh;
+  }
+
+  // The clearing's edge: opaque in the middle, gone by the rim, with the boundary
+  // wobbled by a little noise so no clearing is a drawn circle. Built once, shared.
+  let discAlphaTex = null;
+  function discAlpha() {
+    if (discAlphaTex) return discAlphaTex;
+    const size = 256;
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(size, size);
+    for (let j = 0; j < size; j++) {
+      for (let i = 0; i < size; i++) {
+        const dx = (i + 0.5) / size - 0.5;
+        const dy = (j + 0.5) / size - 0.5;
+        const r = Math.hypot(dx, dy) * 2; // 0 at the centre, 1 at the inscribed circle
+        const wobble = (valueNoise(Math.atan2(dy, dx) * 2.2, r * 3, 17) - 0.5) * 0.22;
+        const t = Math.min(1, Math.max(0, (r - (0.55 + wobble)) / 0.4));
+        const a = (1 - t * t * (3 - 2 * t)) * 255;
+        const o = (j * size + i) * 4;
+        img.data[o] = 255;
+        img.data[o + 1] = 255;
+        img.data[o + 2] = 255;
+        img.data[o + 3] = a;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    discAlphaTex = new THREE.CanvasTexture(c);
+    discAlphaTex.anisotropy = Math.min(8, maxAniso);
+    return discAlphaTex;
   }
 
   function place(obj, x, y, z, { rotation = 0, scale = 1 } = {}) {
@@ -559,7 +895,25 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   function buildClearing(m, c) {
     const g = new THREE.Group();
     const discColor = c.kind === 'gate' ? DISC_COLORS.gate : c.kind === 'peak' ? DISC_COLORS.peak : DISC_COLORS[c.zoneKind] || DISC_COLORS.zone;
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(c.radius, 40), new THREE.MeshStandardMaterial({ color: discColor, roughness: 1 }));
+    // Worn earth where the crew walks, carrying only a hint of the zone's colour, and
+    // faded out at the rim so the clearing meets the grass instead of being a coloured
+    // plate laid on top of it.
+    const discMat = surfaces.disc
+      ? new THREE.MeshStandardMaterial({
+          map: surfaces.disc.map,
+          normalMap: surfaces.disc.normalMap,
+          roughnessMap: surfaces.disc.armMap,
+          alphaMap: discAlpha(),
+          transparent: true,
+          // A stain on the ground, not a replacement for it: the terrain's own grass
+          // reads through the worn earth everywhere, strongest at the rim.
+          opacity: 0.82,
+          depthWrite: false,
+          roughness: 1,
+          color: new THREE.Color(discColor).lerp(new THREE.Color(0xd9cdb4), 0.76),
+        })
+      : new THREE.MeshStandardMaterial({ color: discColor, roughness: 1 });
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(c.radius, 40), discMat);
     disc.rotation.x = -Math.PI / 2;
     disc.position.set(c.x, c.height + 0.06, c.z);
     disc.receiveShadow = true;
@@ -615,7 +969,10 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   const triangleCount = (geometry) => Math.floor((geometry.index ? geometry.index.count : geometry.getAttribute('position').count) / 3);
 
   // The far geometry of a kit mesh, or the kit mesh itself when clustering would not pay.
-  function farGeometry(geometry) {
+  // A pile of loose foliage quads is never clustered: the corners of neighbouring cards
+  // would collapse into each other and the crown would turn to mush (D166).
+  function farGeometry(geometry, { cards = false } = {}) {
+    if (cards) return { geometry, triangles: triangleCount(geometry), shared: true };
     const positions = positionsOf(geometry.getAttribute('position'));
     const d = clusterDecimate({ positions, index: geometry.index ? geometry.index.array : null }, cellSizeFor(positions, LOD.decimateCells));
     if (d.trianglesAfter < 4 || d.trianglesAfter >= d.trianglesBefore) return { geometry, triangles: d.trianglesBefore, shared: true };
@@ -626,11 +983,12 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     return { geometry: g, triangles: d.trianglesAfter, shared: false };
   }
 
+  const FOLIAGE_SCALE = { tree: 2.6, rock: 2.2, grass: 2.2 };
   function buildFoliage(m) {
     const sets = [];
-    const byKind = { tree: kit.trees, rock: kit.rocks };
+    const byKind = { tree: kit.trees, rock: kit.rocks, grass: kit.grass };
     const up = new THREE.Vector3(0, 1, 0);
-    for (const kind of ['tree', 'rock']) {
+    for (const kind of ['tree', 'rock', 'grass']) {
       const variants = byKind[kind];
       if (!variants.length) continue;
       for (let v = 0; v < variants.length; v++) {
@@ -652,7 +1010,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
           const scl = new THREE.Vector3();
           idx.forEach((fi, i) => {
             const it = m.foliage[fi];
-            const sc = it.scale * (kind === 'tree' ? 2.6 : 2.2);
+            const sc = it.scale * (FOLIAGE_SCALE[kind] || 2.2);
             q.setFromAxisAngle(up, it.rotation);
             pos.set(it.x, it.y, it.z);
             scl.set(sc, sc, sc);
@@ -660,20 +1018,51 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
             mat.toArray(all, 16 * i);
           });
           const near = new THREE.InstancedMesh(mesh.geometry, mesh.material, n);
-          near.castShadow = true;
+          near.castShadow = mesh.castShadow !== false;
           near.receiveShadow = true;
           near.count = 0;
           near.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
           near.userData.sharedMaterial = true;
           near.userData.sharedGeometry = true;
-          const farG = farGeometry(mesh.geometry);
-          const far = new THREE.InstancedMesh(farG.geometry, new THREE.MeshLambertMaterial({ color: mesh.material.color ? mesh.material.color.clone() : 0xffffff, flatShading: true }), n);
+          // Per-instance tint (the trees): a deterministic HSL jitter around the variant's
+          // base, kept beside the matrices so rebucketing permutes both together.
+          let colors = null;
+          if (mesh.userData.tint) {
+            // A multiplier around 1, never a second coat of green: the card's own texture
+            // carries the colour, and this only varies brightness and warmth from tree to
+            // tree so a stand does not read as one stamped shape.
+            const t = mesh.userData.tint;
+            colors = new Float32Array(3 * n);
+            idx.forEach((fi, i) => {
+              const it = m.foliage[fi];
+              const j = hash2(Math.round(it.x * 7), Math.round(it.z * 7), 97);
+              const level = t.level * (0.82 + j * 0.4);
+              colors[3 * i] = level * (t.warm - 0.07 + j * 0.16);
+              colors[3 * i + 1] = level;
+              colors[3 * i + 2] = level * (0.82 + j * 0.22);
+            });
+            near.setColorAt(0, new THREE.Color(1, 1, 1)); // allocates instanceColor at capacity n
+            near.instanceColor.setUsage(THREE.DynamicDrawUsage);
+          }
+          const tintFar = Boolean(colors && mesh.userData.cards); // so a crown keeps its colour across the LOD line
+          const isCards = Boolean(mesh.userData.cards);
+          const farColor = mesh.userData.farColor ?? (mesh.material.color ? mesh.material.color.getHex() : 0xffffff);
+          const farG = farGeometry(mesh.geometry, { cards: isCards });
+          // Cards keep their cutout material far away (a flat quad would be a green slab);
+          // solid kit meshes fall back to the cheap flat-shaded colour as before.
+          const farMat = isCards ? mesh.material : new THREE.MeshLambertMaterial({ color: farColor, flatShading: true });
+          const far = new THREE.InstancedMesh(farG.geometry, farMat, n);
           far.castShadow = false;
           far.receiveShadow = false;
           far.count = 0;
           far.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
           far.userData.sharedGeometry = farG.shared;
-          sets.push({ idx, all, near, far, triangles: { near: triangleCount(mesh.geometry), far: farG.triangles } });
+          far.userData.sharedMaterial = isCards;
+          if (tintFar) {
+            far.setColorAt(0, new THREE.Color(1, 1, 1));
+            far.instanceColor.setUsage(THREE.DynamicDrawUsage);
+          }
+          sets.push({ idx, all, near, far, colors, tintFar, triangles: { near: triangleCount(mesh.geometry), far: farG.triangles } });
         });
       }
     }
@@ -695,17 +1084,27 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       let fi = 0;
       const na = set.near.instanceMatrix.array;
       const fa = set.far.instanceMatrix.array;
+      const nc = set.colors && set.near.instanceColor ? set.near.instanceColor.array : null;
+      const fc = set.tintFar && set.far.instanceColor ? set.far.instanceColor.array : null;
       for (let i = 0; i < set.idx.length; i++) {
         const lv = levels[set.idx[i]];
-        if (lv === 0) na.set(set.all.subarray(16 * i, 16 * i + 16), 16 * ni++);
-        else if (lv === 1) fa.set(set.all.subarray(16 * i, 16 * i + 16), 16 * fi++);
+        if (lv === 0) {
+          // The instance's colour travels with its matrix into the same near slot.
+          if (nc) nc.set(set.colors.subarray(3 * i, 3 * i + 3), 3 * ni);
+          na.set(set.all.subarray(16 * i, 16 * i + 16), 16 * ni++);
+        } else if (lv === 1) {
+          if (fc) fc.set(set.colors.subarray(3 * i, 3 * i + 3), 3 * fi);
+          fa.set(set.all.subarray(16 * i, 16 * i + 16), 16 * fi++);
+        }
       }
       set.near.count = ni;
       set.far.count = fi;
       set.near.visible = ni > 0;
       set.far.visible = fi > 0;
       set.near.instanceMatrix.needsUpdate = true;
+      if (nc) set.near.instanceColor.needsUpdate = true;
       set.far.instanceMatrix.needsUpdate = true;
+      if (fc) set.far.instanceColor.needsUpdate = true;
       if (ni) set.near.computeBoundingSphere();
       if (fi) set.far.computeBoundingSphere();
       triNear += ni * set.triangles.near;
@@ -964,7 +1363,6 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     sun.target.position.set(0, 0, 0);
     sun.intensity = s.intensity;
     sun.color.setHex(s.color);
-    hemi.intensity = s.ambient;
     scene.fog.color.setHex(s.fog);
     const u = skyU;
     u.sunPosition.value.copy(dir);
@@ -973,6 +1371,13 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     u.mieCoefficient.value = 0.004;
     u.mieDirectionalG.value = 0.8;
     renderer.toneMappingExposure = s.night ? 0.35 : 0.85;
+    // The sky's own light, rebuilt only when the sun has moved a visible step (24 buckets
+    // over the day's arc) — a PMREM render per frame would cost more than it shows.
+    updateEnvironment(`${s.night ? 'n' : 'd'}${Math.round(s.direction.y * 24)}`, s);
+    // The environment carries most of the ambient; without one the hemisphere light is
+    // the only ambient there is, as before.
+    scene.environmentIntensity = s.night ? 0.45 : 1;
+    hemi.intensity = scene.environment ? 0.12 * s.ambient : s.ambient;
   }
 
   // The sender's clearing id for a walk: the Superintendent hands work from the Gate.
@@ -1233,6 +1638,8 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       window.removeEventListener('resize', resize);
       window.removeEventListener('keydown', onKey);
       overlay.remove();
+      if (envTarget) envTarget.dispose();
+      if (pmremGen) pmremGen.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     },

@@ -11,16 +11,23 @@
 export const LOD = Object.freeze({
   foliageNear: 70, // closer than this: the kit mesh with shadows
   foliageFar: 290, // up to this: the decimated mesh without shadow; beyond: not drawn
+  grassFar: 45, // grass clumps are near-camera dressing: beyond this they are not drawn at all
   crewNear: 40, // closer than this: every frame, label, badge, shadow
   crewFar: 120, // up to this: the mixer every second frame, no label; beyond: every fourth frame, no badge, no shadow
   rebucketMove: 2, // world units the camera moves before the foliage buckets are redone
   rebucketMs: 250, // or this long
   decimateCells: 6, // the far mesh collapses vertices into a grid of this many cells along the model's longest side
+  nearCells: 32, // a photoscan is thinned to this grid for the NEAR view too (D166): Poly Haven ships one
+  // dense geometry for every texture size (the boulder is 66k triangles), which no park can
+  // instance a hundred times; at 32 cells it keeps its silhouette and its UVs, and the
+  // normal map carries the detail the triangles no longer do.
 });
 
-// 0 near, 1 far, 2 not drawn. With `enabled: false` everything is near (the bench's control).
-export function foliageLevel(dist, { enabled = true } = {}) {
+// 0 near, 1 far, 2 not drawn. With `enabled: false` everything is near (the bench's
+// control). Grass has no far level: near up to LOD.grassFar, then gone.
+export function foliageLevel(dist, { enabled = true, kind = 'tree' } = {}) {
   if (!enabled) return 0;
+  if (kind === 'grass') return dist < LOD.grassFar ? 0 : 2;
   return dist < LOD.foliageNear ? 0 : dist < LOD.foliageFar ? 1 : 2;
 }
 
@@ -32,7 +39,7 @@ export function bucketFoliage(items, cam, { enabled = true } = {}) {
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
     const dist = Math.hypot(it.x - cam.x, (it.y || 0) - (cam.y || 0), it.z - cam.z);
-    const lv = foliageLevel(dist, { enabled });
+    const lv = foliageLevel(dist, { enabled, kind: it.kind });
     levels[i] = lv;
     counts[lv]++;
   }
@@ -72,8 +79,11 @@ export function cellSizeFor(positions, cells = LOD.decimateCells) {
 
 // Vertex clustering: every vertex snaps to the centre of mass of its grid cell, triangles
 // whose corners collapse together go, duplicates go. Positions in, positions and an index
-// out; normals are the renderer's to recompute. Deterministic for the same input.
-export function clusterDecimate({ positions, index = null }, cellSize) {
+// out; normals are the renderer's to recompute. `attributes` (uv, say) are averaged per
+// cell the same way and returned under the same keys, which is what lets a photoscanned
+// model keep its texture when it is thinned for the near view. Deterministic for the
+// same input.
+export function clusterDecimate({ positions, index = null, attributes = null }, cellSize) {
   const vertexCount = Math.floor(positions.length / 3);
   const cell = cellSize > 0 ? cellSize : 1;
   const min = [Infinity, Infinity, Infinity];
@@ -104,6 +114,27 @@ export function clusterDecimate({ positions, index = null }, cellSize) {
     out[c.id * 3 + 1] = c.sum[1] / c.n;
     out[c.id * 3 + 2] = c.sum[2] / c.n;
   }
+  // Extra attributes: the same per-cell average, under the same keys.
+  let outAttrs = null;
+  if (attributes) {
+    outAttrs = {};
+    for (const [name, a] of Object.entries(attributes)) {
+      const size = a.itemSize;
+      const sums = new Float64Array(cells.size * size);
+      const counts = new Uint32Array(cells.size);
+      for (let i = 0; i < vertexCount; i++) {
+        const id = remap[i];
+        counts[id]++;
+        for (let k = 0; k < size; k++) sums[id * size + k] += a.array[i * size + k];
+      }
+      const vals = new Float32Array(cells.size * size);
+      for (let id = 0; id < cells.size; id++) {
+        const n = counts[id] || 1;
+        for (let k = 0; k < size; k++) vals[id * size + k] = sums[id * size + k] / n;
+      }
+      outAttrs[name] = { array: vals, itemSize: size };
+    }
+  }
   const src = index || Array.from({ length: vertexCount }, (_, i) => i);
   const trianglesBefore = Math.floor(src.length / 3);
   const seen = new Set();
@@ -119,5 +150,5 @@ export function clusterDecimate({ positions, index = null }, cellSize) {
     seen.add(key);
     tris.push(a, b, c);
   }
-  return { positions: out, index: Uint32Array.from(tris), vertices: cells.size, trianglesBefore, trianglesAfter: tris.length / 3 };
+  return { positions: out, index: Uint32Array.from(tris), attributes: outAttrs, vertices: cells.size, trianglesBefore, trianglesAfter: tris.length / 3 };
 }

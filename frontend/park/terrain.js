@@ -6,10 +6,10 @@ import { hash2 } from './random.js';
 
 export const TERRAIN = Object.freeze({
   size: 240, // world units, centred on the origin
-  segments: 120,
+  segments: 240, // one vertex per world unit: the macro colour the ground is splatted with lives on them (D166)
   amplitude: 9,
   baseFrequency: 1 / 48,
-  octaves: 4,
+  octaves: 6, // down to a 1.5-unit wavelength: ground that is lumpy at walking scale, not a smooth sheet (D166)
   waterLevel: -1.2,
 });
 

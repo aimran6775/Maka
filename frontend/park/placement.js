@@ -140,35 +140,38 @@ function nearTrail(trails, x, z, margin) {
   return false;
 }
 
-// Scatters trees and rocks from the seed. Returns instances { kind, variant, x, z, y, rotation, scale }.
-export const FOLIAGE = Object.freeze({ trees: 420, rocks: 90 });
-export function scatterFoliage(layout, clearings, trails, { trees = FOLIAGE.trees, rocks = FOLIAGE.rocks } = {}) {
+// Scatters trees, rocks and grass clumps from the seed. Returns instances
+// { kind, variant, x, z, y, rotation, scale }. Grass hugs the ground near trails and
+// clearings (margin 0, still never inside) and is drawn only near the camera (lod.js).
+// Grass is dense because only what stands within LOD.grassFar of the camera is drawn:
+// a park with one clump per hundred square metres has no ground cover at all (D166).
+export const FOLIAGE = Object.freeze({ trees: 420, rocks: 90, grass: 10000 });
+export function scatterFoliage(layout, clearings, trails, { trees = FOLIAGE.trees, rocks = FOLIAGE.rocks, grass = FOLIAGE.grass } = {}) {
   const seed = layout.seed || 1;
   const rand = mulberry32(seed ^ 0x9e3779b9);
   const half = TERRAIN.size / 2 - 6;
   const out = [];
-  const blocked = (x, z, margin) => clearings.some((c) => Math.hypot(c.x - x, c.z - z) < c.radius + margin) || nearTrail(trails, x, z, 3 + margin) || isWater(x, z, seed);
-  let attempts = 0;
-  let placed = 0;
-  while (placed < trees && attempts++ < trees * 6) {
-    const x = (rand() * 2 - 1) * half;
-    const z = (rand() * 2 - 1) * half;
-    if (blocked(x, z, 2)) continue;
-    const y = heightAt(x, z, seed, clearings);
-    if (y < TERRAIN.waterLevel + 0.8) continue;
-    out.push({ kind: 'tree', variant: Math.floor(rand() * 4), x, z, y, rotation: rand() * Math.PI * 2, scale: 0.85 + rand() * 0.5 });
-    placed++;
-  }
-  attempts = 0;
-  placed = 0;
-  while (placed < rocks && attempts++ < rocks * 6) {
-    const x = (rand() * 2 - 1) * half;
-    const z = (rand() * 2 - 1) * half;
-    if (blocked(x, z, 1)) continue;
-    const y = heightAt(x, z, seed, clearings);
-    out.push({ kind: 'rock', variant: Math.floor(rand() * 3), x, z, y, rotation: rand() * Math.PI * 2, scale: 0.7 + rand() * 0.9 });
-    placed++;
-  }
+  // `reach` scales how far a clearing keeps things out: trees and rocks stay clear of the
+  // whole circle, grass grows back in over its outer band, where the worn ground fades.
+  const blocked = (x, z, margin, reach = 1) =>
+    clearings.some((c) => Math.hypot(c.x - x, c.z - z) < c.radius * reach + margin) || nearTrail(trails, x, z, 3 + margin) || isWater(x, z, seed);
+  const scatter = (count, margin, make, reach = 1) => {
+    let attempts = 0;
+    let placed = 0;
+    while (placed < count && attempts++ < count * 6) {
+      const x = (rand() * 2 - 1) * half;
+      const z = (rand() * 2 - 1) * half;
+      if (blocked(x, z, margin, reach)) continue;
+      const y = heightAt(x, z, seed, clearings);
+      const item = make(x, z, y);
+      if (!item) continue;
+      out.push(item);
+      placed++;
+    }
+  };
+  scatter(trees, 2, (x, z, y) => (y < TERRAIN.waterLevel + 0.8 ? null : { kind: 'tree', variant: Math.floor(rand() * 4), x, z, y, rotation: rand() * Math.PI * 2, scale: 0.85 + rand() * 0.5 }));
+  scatter(rocks, 1, (x, z, y) => ({ kind: 'rock', variant: Math.floor(rand() * 3), x, z, y, rotation: rand() * Math.PI * 2, scale: 0.7 + rand() * 0.9 }));
+  scatter(grass, 0, (x, z, y) => (y < TERRAIN.waterLevel + 0.5 ? null : { kind: 'grass', variant: Math.floor(rand() * 2), x, z, y, rotation: rand() * Math.PI * 2, scale: 0.7 + rand() * 0.8 }), 0.66);
   return out;
 }
 
@@ -177,7 +180,7 @@ export function buildParkModel(layout, { density = 1 } = {}) {
   const clearings = clearingsFor(layout);
   const trails = trailsFor(clearings, layout);
   // `density` multiplies the foliage (the bench's dense park, phase 4 step 15); 1 is the park.
-  const foliage = scatterFoliage(layout, clearings, trails, { trees: Math.round(FOLIAGE.trees * density), rocks: Math.round(FOLIAGE.rocks * density) });
+  const foliage = scatterFoliage(layout, clearings, trails, { trees: Math.round(FOLIAGE.trees * density), rocks: Math.round(FOLIAGE.rocks * density), grass: Math.round(FOLIAGE.grass * density) });
   const seed = layout.seed || 1;
   const fixtures = layout.objects.map((o) => {
     const p = tileToWorld(o.x, o.y);

@@ -82,8 +82,14 @@ test('placement: default layout gives one zone clearing, a gate clearing, one tr
   assert.ok(model.trails[0].table.length > 20);
   assert.ok(model.foliage.filter((f) => f.kind === 'tree').length > 300);
   assert.ok(model.foliage.filter((f) => f.kind === 'rock').length > 50);
+  assert.ok(model.foliage.filter((f) => f.kind === 'grass').length > 1000, 'ground cover is dense: only what is near the camera is drawn');
   for (const f of model.foliage) {
-    for (const c of model.clearings) assert.ok(Math.hypot(c.x - f.x, c.z - f.z) >= c.radius, 'foliage stays out of clearings');
+    for (const c of model.clearings) {
+      // Trees and rocks keep out of a clearing; grass grows back over its outer third,
+      // where the worn ground fades into the grass (D166).
+      const keepOut = f.kind === 'grass' ? c.radius * 0.66 : c.radius;
+      assert.ok(Math.hypot(c.x - f.x, c.z - f.z) >= keepOut, `${f.kind} stays out of clearings`);
+    }
     assert.ok(Number.isFinite(f.y));
   }
   assert.equal(model.agents[0].id, 'ranger');
@@ -100,7 +106,7 @@ test('placement: default layout gives one zone clearing, a gate clearing, one tr
   const two = { ...layout, rooms: [...layout.rooms, { id: 'camp', name: 'Campground', x: 20, y: 1, w: 6, h: 6 }] };
   assert.equal(trailsFor(clearingsFor(two)).length, 3);
   assert.deepEqual(trailsFor(clearingsFor(two)).map((t) => [t.from, t.to]), [['ranger-station', 'gate:ranger-station'], ['ranger-station', 'mountain-peak'], ['ranger-station', 'camp']]);
-  assert.ok(scatterFoliage(layout, model.clearings, model.trails, { trees: 10, rocks: 2 }).length <= 12);
+  assert.ok(scatterFoliage(layout, model.clearings, model.trails, { trees: 10, rocks: 2, grass: 3 }).length <= 15);
 });
 
 test('clips: every agent state has a clip; walking overrides; placement follows state and handoffs', () => {
@@ -397,14 +403,14 @@ test('phase 4 step 15 density: buildParkModel multiplies the foliage for the ben
   const one = buildParkModel(layout);
   const clearings = clearingsFor(layout);
   assert.deepEqual(one.foliage, scatterFoliage(layout, clearings, trailsFor(clearings, layout)), 'density 1 is the park');
-  assert.deepEqual(FOLIAGE, { trees: 420, rocks: 90 });
+  assert.deepEqual(FOLIAGE, { trees: 420, rocks: 90, grass: 10000 });
   const trees = (m) => m.foliage.filter((f) => f.kind === 'tree').length;
   const rocks = (m) => m.foliage.filter((f) => f.kind === 'rock').length;
   const three = buildParkModel(layout, { density: 3 });
   assert.ok(trees(three) > trees(one) * 2 && trees(three) <= 1260, `${trees(three)} trees at ×3`);
   assert.ok(rocks(three) > rocks(one) * 2 && rocks(three) <= 270, `${rocks(three)} rocks at ×3`);
   assert.deepEqual(buildParkModel(layout, { density: 3 }).foliage, three.foliage, 'deterministic');
-  for (const f of three.foliage) assert.ok(!clearings.some((c) => Math.hypot(c.x - f.x, c.z - f.z) < c.radius), 'a dense park still keeps the clearings clear');
+  for (const f of three.foliage.filter((x) => x.kind !== 'grass')) assert.ok(!clearings.some((c) => Math.hypot(c.x - f.x, c.z - f.z) < c.radius), 'a dense park still keeps the clearings clear');
 });
 
 test('phase 4 step 15 bench: the argument parser, the configurations, the table and the LOD gain are pure and refuse typos', async () => {

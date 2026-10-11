@@ -57,7 +57,16 @@ test('vendored assets match the manifest and every source is CC0, CC-BY or MIT w
   assert.deepEqual(await checkVendored(), []);
   for (const s of SOURCES) {
     assert.match(s.license, /^CC0-1\.0$|^CC-BY-4\.0$|^MIT$/, s.id);
-    assert.match(s.sha256, /^[0-9a-f]{64}$/, s.id);
+    if (s.kind === 'files') {
+      // Loose files (Poly Haven, the three example textures): every file carries its own pin.
+      assert.ok(s.files.length > 0, s.id);
+      for (const f of s.files) {
+        assert.match(f.sha256, /^[0-9a-f]{64}$/, `${s.id}: ${f.to}`);
+        assert.ok(f.url.startsWith('https://'), `${s.id}: ${f.to}`);
+      }
+    } else {
+      assert.match(s.sha256, /^[0-9a-f]{64}$/, s.id);
+    }
     assert.ok(s.licenseEvidence.length > 10, s.id);
     assert.ok(s.page.startsWith('https://'), s.id);
   }

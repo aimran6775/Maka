@@ -27,6 +27,18 @@ const WANT_WEBGPU = process.argv.includes('--webgpu');
 
 const PLAN = { summary: 'One venture: lanterns.', ventures: [{ id: 'lantern-co', name: 'Lantern Co', summary: 'Paper lanterns on Etsy.', budgetUsd: 2, roles: [{ specialty: 'scout' }], tasks: [{ id: 't1', title: 'Research', specialty: 'scout', brief: 'Find five shops.', budgetUsd: 1 }] }] };
 
+// Polls `fn` until it answers something truthy or the deadline passes; answers what it
+// last saw either way, so the caller reports a real state and never a sleep's guess.
+async function until(fn, ms, step = 250) {
+  const end = Date.now() + ms;
+  let last = await fn();
+  while (!last && Date.now() < end) {
+    await wait(step);
+    last = await fn();
+  }
+  return last;
+}
+
 async function main() {
   const chiefProvider = fakeProvider([
     [...toolCall('p1', 'plan.submit', PLAN), end('tool_use', { inputTokens: 100, outputTokens: 20 })],
@@ -65,14 +77,22 @@ async function main() {
     console.log('screenshot:', process.env.PARK_CHECK_SHOT);
   }
   await srv.post('/api/setup/complete', { skipped: true });
-  await wait(800);
-  const firstRunHidden = await evaluate("document.querySelector('.firstrun-host').hidden");
+  // Poll, never a fixed sleep: software GL draws the park at about a frame a second, and
+  // the page needs a frame or two to hear the event and put the card away.
+  const firstRunHidden = await until(() => evaluate("document.querySelector('.firstrun-host').hidden"), 15000);
   console.log('first-run card after skip:', firstRunHidden ? 'hidden' : 'STILL SHOWN');
   // Brief the Chief through the API; the page should show the crew grow and move.
   const r = await srv.post('/api/mission', { text: 'Sell paper lanterns online.', budgetUsd: 3, horizon: '30 days' });
   console.log('mission:', r.status, r.body.mission && r.body.mission.status);
   await srv.runs.waitForIdle();
-  await wait(1500);
+  // Wait for the park to have a body for every agent rather than for a fixed moment: on
+  // the WebGPU path the device can be lost and the whole park rebuilt here, and its
+  // rigged bodies stream in again (the park renders while they do).
+  const wantBodies = (await evaluate(`(async () => { const s = await (await fetch('/api/state')).json(); return s.layout.agents.length; })()`)) || 0;
+  await until(async () => {
+    const n = JSON.parse((await evaluate('window.maka && window.maka.park() ? JSON.stringify(window.maka.park().bodies()) : "[]"')) || '[]').length;
+    return n >= wantBodies;
+  }, 30000);
   const bodiesBefore = await evaluate('window.maka && window.maka.park() ? JSON.stringify(window.maka.park().bodies()) : null');
   console.log('bodies after mission:', bodiesBefore);
   const summary = await evaluate(`(async () => { const r = await fetch('/api/state'); const s = await r.json(); return { agents: s.layout.agents.map((a) => a.id + ':' + (a.role || 'ranger')), rooms: s.layout.rooms.map((r) => r.id), work: s.work.recent.map((w) => w.status), plan: s.mission.plan && s.mission.plan.version }; })()`);

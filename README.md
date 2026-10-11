@@ -385,6 +385,14 @@ calls, triangles and the level-of-detail buckets. `npm run park:bench` measures 
 headless with LOD on and off; `node scripts/park-check.mjs --webgpu` exercises the WebGPU
 path and its fallback.
 
+The park is drawn from photographic material, not a toy kit: the ground is CC0 PBR
+terrain (grass, forest floor, rock face and shore gravel from Poly Haven) tiled every two
+metres and tinted by the slope, height and patch the terrain itself decides, the rocks and
+the grass clumps are photoscans, the conifers are built from alpha-cutout needle sprays so
+their outline is needles and gaps, the lake carries a real normal map, and the sky lights
+everything as an environment map that follows your clock. What you see is the park at
+whatever your machine can draw: the overlay reports the measured numbers and nothing else.
+
 Step 16, the Ledger desk and more trends: place a Ledger desk in the Finance camp and the
 Books Ranger can read the park's books (`ledger.read`: the results engine's rows for the
 park, a venture or a Ranger, with every missing figure named as "no data"). `web.trends`

@@ -1814,3 +1814,46 @@ The owner kept the LaCie ExFAT (`mac-bootstrap.sh --keep-exfat`), so `MAKA_HOME`
 `~/Maka` itself, which puts the keystore inside a checkout. `.gitignore` now ignores
 `/home/` at the repo root so a stray `git add .` there can never stage the keystore or the
 ledgers. The sidecar's own 0600 check still guards the file itself.
+
+## D166. The park looks real: a pinned Poly Haven pack, tiled detail, foliage cards
+
+The owner judged the Kenney-kit park a toy ("the 3d model is fake. it needs to be really
+realistic"). Four things had to change, and each one cost a wrong turn worth recording.
+
+**The assets.** Poly Haven's photoscanned trees are 0.5–1 GB of geometry each — a browser
+park cannot load one, let alone four hundred — so only the small scans came in: Boulder 01
+for rocks and Grass Medium 02 for ground cover, with Leafy Grass, Forest Leaves 04, Rock
+Face, Sandy Gravel and Pine Bark as PBR textures, plus three.js's own water normal map.
+All CC0/MIT, every file pinned by its own SHA-256 (`kind: 'files'` in
+scripts/fetch-assets.mjs — Poly Haven serves loose files, with no archive to pin). The
+vendored-asset bound rises 25 → 32 MB for this pack (25.06 MB used): still a guard against
+bloat, deliberately spent on look. The Kenney kits stay for the built pieces and the crew.
+
+**The ground: tiled detail times a macro colour, not a bake.** The first attempt baked a
+2048² splat of the four layers over the whole 240-unit park. It is blurry at every camera
+a person actually uses (one texture tile per nine world units) and no bake resolution
+fixes that. What works is the standard pair: a small greyscale detail map — one layer's
+diffuse divided by its own mean, so it carries light and shade and no colour — tiled every
+two units, multiplied by a macro colour held on the terrain's vertices (`splatWeights`
+blended into the layers' mean colours, in linear space, divided back out by the detail
+map's own mean so the product lands on the real albedo). One stock material, so WebGL2 and
+WebGPU draw the same ground. The terrain carries one vertex per world unit to hold it.
+
+**The trees are cards, and they are ours.** A tree built as cones is a cone whatever its
+texture. Each variant is now a bent, flared bark trunk under whorls of alpha-cutout
+foliage cards (`surface.js foliageCard` draws the needle and leaf sprays as pixels), which
+is how real-time forests have always been built: the silhouette is needles and gaps.
+`alphaTest`, never transparency — no sorting, and three carries the same test into the
+shadow pass, so the shadows are needle-shaped too. The geometry is original Maka work, so
+there is nothing to attribute.
+
+**The sky lights the scene, but not the sky mesh.** Prefiltering the Sky shader into a
+PMREM floods every material to white: its radiance is real sky radiance, and the sun disk
+runs into the thousands. The environment is a bounded gradient built from the same clock
+sun's zenith, horizon and ground-bounce colours, rebuilt only when the sun moves a visible
+step.
+
+Cost, measured on the owner's Mac: 60 fps at 16.7 ms with 4.8 M triangles and 70 draw
+calls, and the LOD gain the bench reports rose from ×1.4 to ×12.8, because there is now
+something for it to cull. Two timing assumptions in `scripts/park-check.mjs` broke under
+the heavier park and became condition polls, which is what they should always have been.
