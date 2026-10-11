@@ -1661,3 +1661,25 @@ that are not purchases keep their clicks (their own leash and judge apply) but s
 off at every checkout URL, so no checkout proceeds unseen anywhere. The page-side card
 check learned express-checkout markup, and the purchase brief tells the Ranger plainly
 what the browser will refuse.
+
+## D155. An MCP server's tools are accepted once, as a snapshot; its later word waits at the Gate
+
+The second safety review (M1) noted that `readOnlyHint` is the server's own claim and put
+a tool straight into research (act_free, unjudged), and that a `@latest` server re-lists
+its tools on every connect with nothing asked. The brief's "descriptions shown to the
+Superintendent at placement" is read as an acceptance: the list the server shows on the
+connect right after the owner approved it (the first successful list: an HTTP server's sign-in may come between)
+is what the owner approved, kept as fingerprints
+of each tool's name, annotations, description and schema (as sanitised, so a cosmetic
+re-encoding is no change). Every later connect is compared with it. The review proposed
+that new or changed tools "default to outbound_messages / Draft until accepted"; Draft is
+made unconditional rather than left to the leash, because an owner who raised
+outbound_messages to Act freely for a Ranger did not thereby accept tools that did not
+exist then: an unaccepted tool holds itself at the Gate at every level through a new
+tool hook (`holdAtGate`), and its domain is outbound_messages whatever its hint or an old
+override said. The acceptance is one Gate item per connect naming each tool with its
+annotations; approving it records the fingerprints, rejecting it records them as refused,
+and a refused tool is not registered or granted at all (stricter than Draft, and it
+avoids a card on every reconnect) until it changes again, when it is asked about afresh.
+A server stored before this decision has no snapshot, so all its tools are pending until
+accepted once. Read-only counts only when the tool does not also call itself destructive.

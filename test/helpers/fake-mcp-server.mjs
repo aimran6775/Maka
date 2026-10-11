@@ -4,8 +4,12 @@
 // the sanitiser) and `verbose` (a 5000-character description that tries to instruct the
 // model). `env_check` reports which of FAKE_SECRET / HOME / LEAKED is set in its
 // environment. Resources: one text resource. Run: node fake-mcp-server.mjs [--slow-exit]
-// Test-only. It logs nothing on stdout but protocol frames.
+// With FAKE_MCP_TOOLS_FILE set, the JSON array in that file (read at every tools/list) is
+// merged in: a tool with a known name replaces it, others are appended; that is "the
+// server updated" for the acceptance tests (safety 2026-10-11 M1). Test-only. It logs
+// nothing on stdout but protocol frames.
 import readline from 'node:readline';
+import { readFileSync } from 'node:fs';
 
 const rl = readline.createInterface({ input: process.stdin });
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n');
@@ -18,6 +22,19 @@ const TOOLS = [
   { name: 'argv', description: 'Says which arguments the server was started with.', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } },
   { name: 'env_check', description: 'Says which environment variables the server sees.', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } },
 ];
+function currentTools() {
+  const file = process.env.FAKE_MCP_TOOLS_FILE;
+  if (!file) return TOOLS;
+  let extra = [];
+  try {
+    extra = JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    return TOOLS;
+  }
+  const out = TOOLS.map((t) => extra.find((e) => e && e.name === t.name) || t);
+  for (const e of extra) if (e && !TOOLS.some((t) => t.name === e.name)) out.push(e);
+  return out;
+}
 process.stderr.write('fake mcp server starting\n');
 rl.on('line', (line) => {
   if (!line.trim()) return;
@@ -36,9 +53,11 @@ rl.on('line', (line) => {
       return reply({ protocolVersion: msg.params.protocolVersion, capabilities: { tools: { listChanged: false }, resources: {} }, serverInfo: { name: 'fake-mcp', version: '0.1' } });
     case 'ping':
       return reply({});
-    case 'tools/list':
-      if (!msg.params || !msg.params.cursor) return reply({ tools: TOOLS.slice(0, 3), nextCursor: 'page2' });
-      return reply({ tools: TOOLS.slice(3) });
+    case 'tools/list': {
+      const tools = currentTools();
+      if (!msg.params || !msg.params.cursor) return reply({ tools: tools.slice(0, 3), nextCursor: 'page2' });
+      return reply({ tools: tools.slice(3) });
+    }
     case 'tools/call': {
       const { name, arguments: args = {} } = msg.params || {};
       if (name === 'echo') return reply({ content: [{ type: 'text', text: `echo: ${args.text}` }] });
@@ -48,6 +67,7 @@ rl.on('line', (line) => {
       if (name === 'argv') return reply({ content: [{ type: 'text', text: JSON.stringify(process.argv.slice(2)) }] });
       if (name === 'env_check') return reply({ content: [{ type: 'text', text: JSON.stringify({ FAKE_SECRET: process.env.FAKE_SECRET || null, LEAKED: process.env.LEAKED || null, HOME: Boolean(process.env.HOME), PATH: Boolean(process.env.PATH), keys: Object.keys(process.env).sort() }) }] });
       if (name === 'fail') return reply({ isError: true, content: [{ type: 'text', text: 'the server refused' }] });
+      if (currentTools().some((t) => t.name === name && !TOOLS.includes(t))) return reply({ content: [{ type: 'text', text: `${name} ran with ${JSON.stringify(args)}` }] });
       if (name === 'slow') return; // never answers: the client times out
       return error(-32602, `unknown tool ${name}`);
     }

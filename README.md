@@ -311,7 +311,9 @@ goes to the keystore) or "Add an HTTP server" (a URL; a server that asks for a s
 one through the Gate, OAuth 2.1 + PKCE). Each is approved at the Gate before it starts;
 its tools show with their clipped descriptions and a leash domain each (read-only tools
 are research, the rest outbound messages, editable; a money domain needs the amount
-field). In BUILD, place an Outpost in a camp and pick the server: its Rangers get those
+field). The tools it lists on that first connect are the ones you accepted: a tool that
+appears or changes later waits at the Gate at every leash level until you accept it there,
+and one you reject is not granted until it changes again. In BUILD, place an Outpost in a camp and pick the server: its Rangers get those
 tools under the leash. Nothing MCP reaches the Chief.
 
 Step 7, ad sets and creatives: the Notice board now also grants Meta ad sets (budget at

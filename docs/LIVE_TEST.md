@@ -409,6 +409,12 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 - BUILD → Outpost in the Research camp → pick `files` (the prompt lists every tool and
   domain). Brief the Scout to list that directory: `agent.run.start` lists
   `mcp.files.list_directory`, the call runs as research; a write waits at the Gate.
+- Edit `mcp-servers.json` under the data directory to drop one tool's entry from
+  `accepted` (or point the server at a newer package version), then Disconnect / Connect at
+  the Peak: `mcp.server { tools_changed, tools: 1 }`, the row marks the tool "new or changed
+  since you accepted", a Ranger's call on it waits at the Gate with that reason even at Act
+  freely, and an `mcp.accept_tools` card lists it with its annotations; approve it and it is
+  back to its domain, reject it and it is no longer granted (safety 2026-10-11 M1).
 - Peak → "Add an HTTP server" with a remote server that requires OAuth: the row says
   `needs_auth`; "Sign in (via the Gate)" → approve → open the link → the row turns
   `connected` and the token is in the keystore under `mcp.<id>`.

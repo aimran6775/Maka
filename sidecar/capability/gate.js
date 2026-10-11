@@ -212,6 +212,21 @@ export function createToolGate({
         let viaGate = entry.level === 'draft';
         let gateReason = viaGate ? `leash for ${domain} is ${LEASH_LEVEL_LABELS.draft}` : null;
         let reservation = null; // safety M1: the cap is reserved before the action runs
+        // A tool may hold itself at the Gate whatever the leash says (safety 2026-10-11 M1:
+        // an MCP tool that is new or changed since the Superintendent accepted the server's
+        // tools waits at the Gate until accepted). The hook answers a reason or nothing.
+        if (!viaGate && typeof tool.holdAtGate === 'function') {
+          let hold = null;
+          try {
+            hold = tool.holdAtGate(call.input, { ...ctx, agentId });
+          } catch (err) {
+            hold = `the tool could not say whether it may run (${err && err.message ? err.message : err})`;
+          }
+          if (hold) {
+            viaGate = true;
+            gateReason = String(hold);
+          }
+        }
         if (amountUnknown) {
           viaGate = true;
           gateReason = `the amount this ${domain} action moves cannot be proven (${call.name} names no campaign-level or record-level figure), so no cap can be checked; it needs a decision at the Entrance Gate`;

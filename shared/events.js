@@ -476,7 +476,10 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
   // 'error' with the message, 'refused' when the Gate declined, 'removed'.
   'mcp.server': payload(['server', 'status'], {
     server: nonEmpty,
-    status: { type: 'string', enum: ['configured', 'connected', 'needs_auth', 'authorizing', 'disconnected', 'error', 'refused', 'removed'] },
+    // 'tools_changed' / 'tools_accepted' added by safety 2026-10-11 M1: a connect listed
+    // tools that are new or changed since the Superintendent accepted the server's tools
+    // (`tools` counts them; they wait at the Gate until accepted), and the acceptance.
+    status: { type: 'string', enum: ['configured', 'connected', 'needs_auth', 'authorizing', 'disconnected', 'error', 'refused', 'removed', 'tools_changed', 'tools_accepted'] },
     transport: { type: 'string', enum: ['stdio', 'http'] },
     tools: int0,
     message: str,

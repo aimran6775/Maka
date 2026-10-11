@@ -77,10 +77,16 @@ are clipped and cleaned, schemas rebuilt from the keywords Maka validates. The m
 keeps the servers the Superintendent configures at the Peak (each added, removed or
 signed in through a Gate item; secret environment values in the keystore, never in the
 config file), registers their tools as `mcp.<server>.<tool>` and maps each to a leash
-domain: research when the server marks it read-only, outbound messages otherwise, both
-overridable per tool, and a money domain only with an explicit amount reading, so a money
-call whose amount cannot be read is unknown-amount and waits at the Gate at every level
-(safety H2 holds for foreign tools too). Tools reach Rangers only through an Outpost
+domain: research when the server marks it read-only (and not destructive), outbound
+messages otherwise, both overridable per tool, and a money domain only with an explicit
+amount reading, so a money call whose amount cannot be read is unknown-amount and waits at
+the Gate at every level (safety H2 holds for foreign tools too). The server's annotations
+are the server's word, so the tool list a server shows on the connect right after its
+approval is the accepted snapshot (fingerprints of name, annotations, description and
+schema in `mcp-servers.json`); a tool that is new or changed on a later connect waits at
+the Gate at every leash level under outbound_messages until a `mcp.accept_tools` item is
+approved, and a rejected one is not granted until it changes again (safety 2026-10-11
+M1). Tools reach Rangers only through an Outpost
 placed in their zone for one server; an Outpost at the Peak is refused and grants nothing
 (safety L5). HTTP servers that answer 401 sign in with OAuth 2.1 + PKCE after a Gate
 approval (metadata discovery, dynamic client registration, the resource indicator).
@@ -395,7 +401,11 @@ own lock (D153). H3 done: a one-click or saved-payment checkout is a payment pag
 words alone, a checkout / cart / order / payment URL is one by itself, the page-side card
 check knows express-checkout markup, and on a purchase run a click that reads like buy /
 confirm / submit / pay / checkout is refused before it happens, by its target text or by
-what the selector resolves to (D154).
+what the selector resolves to (D154). M1 done: MCP tools are accepted as a snapshot when
+the server is approved; a later connect's new or changed tool holds itself at the Gate at
+every leash level under outbound_messages until accepted, a rejected one is not a tool of
+the park until it changes again, and read-only counts only without destructiveHint; a
+tool may now hold itself at the Gate through `holdAtGate` (D155).
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

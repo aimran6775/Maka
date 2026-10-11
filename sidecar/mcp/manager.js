@@ -16,8 +16,9 @@
 //     .checkPlacement(object)   refuses an Outpost without a known server
 //     .tools(id), .close()
 //
-// Leash mapping (the brief): a tool annotated read-only is `research`, every other tool is
-// `outbound_messages`, both overridable per tool at the Peak; mapping a tool to money_out
+// Leash mapping (the brief): a tool annotated read-only (and not destructive: safety
+// 2026-10-11 M1) is `research`, every other tool is `outbound_messages`, both overridable
+// per tool at the Peak; mapping a tool to money_out
 // or money_in needs an explicit amount reading ({ field, unit }) or the mapping is refused,
 // and a money_out call whose amount cannot be read from its input is unknown-amount, so
 // the Gate decides it at every level (safety H2, as the gate already enforces). Tools are
@@ -27,7 +28,16 @@
 // guard; stdio servers get only the environment variables the config names (plain values
 // in the config, secret values from the keystore), never the sidecar's own.
 
-import { randomUUID } from 'node:crypto';
+// Accepted tools (safety 2026-10-11 M1): the server's annotations are the server's word,
+// so the Superintendent accepts a snapshot of the sanitised tool list (name, annotations,
+// description and schema fingerprints) when the server is added, and every later connect
+// is compared with it. A tool that is new or changed since then is registered under
+// `outbound_messages` and holds itself at the Gate at every leash level (`holdAtGate`)
+// until a `mcp.accept_tools` Gate item is approved (`mcp.server { status: 'tools_changed' }`
+// names it); a rejected one is unregistered and stays so until it changes again. So a
+// server update that ships `send_money` annotated read-only never runs free.
+
+import { randomUUID, createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { makeEvent } from '../../shared/events.js';
@@ -134,8 +144,18 @@ export const SERVER_SCHEMA = Object.freeze({
     amounts: { type: 'object', additionalProperties: { type: 'object', required: ['field'], additionalProperties: false, properties: { field: { type: 'string', minLength: 1, maxLength: 80 }, unit: { type: 'string', enum: AMOUNT_UNITS } } } },
     source: { type: 'string', maxLength: 80 },
     addedAt: { type: 'integer', minimum: 0 },
+    accepted: { type: 'object', additionalProperties: { type: 'string', maxLength: 64 } },
+    refused: { type: 'object', additionalProperties: { type: 'string', maxLength: 64 } },
+    acceptFirstList: { type: 'boolean' }, // set when the add was approved; the first successful tools/list becomes `accepted`
   },
 });
+
+// What the Superintendent accepted about a tool: its name, annotations, description and
+// schema, as sanitised. A change in any of them is a different tool.
+export function toolFingerprint(tool) {
+  const sorted = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])])) : Array.isArray(v) ? v.map(sorted) : v);
+  return createHash('sha256').update(JSON.stringify({ name: tool.name, description: tool.description || '', annotations: sorted(tool.annotations || {}), inputSchema: sorted(tool.inputSchema || {}) })).digest('hex').slice(0, 24);
+}
 
 function fail(code, message, status = 400) {
   const err = new Error(message);
@@ -171,10 +191,30 @@ export function validateServerSpec(spec) {
 export const toolName = (serverId, name) => `${TOOL_PREFIX}.${serverId}.${name}`;
 const keyName = (serverId, suffix) => `mcp.${serverId}${suffix ? `.${suffix}` : ''}`;
 
-// The leash domain of one tool under a server's config.
-export function domainFor(server, tool) {
+// The leash domain of one tool under a server's config. Read-only counts only when the
+// tool does not also call itself destructive (M1); a pending (unaccepted) tool is never
+// research whatever it says or the owner once mapped.
+export function domainFor(server, tool, { pending = false } = {}) {
+  if (pending) return DEFAULT_DOMAIN;
   if (server.leash && server.leash[tool.name]) return server.leash[tool.name];
-  return tool.annotations && tool.annotations.readOnlyHint === true ? READ_ONLY_DOMAIN : DEFAULT_DOMAIN;
+  const a = tool.annotations || {};
+  return a.readOnlyHint === true && a.destructiveHint !== true ? READ_ONLY_DOMAIN : DEFAULT_DOMAIN;
+}
+
+// Which of a connect's tools the Superintendent has not accepted (new or changed), and
+// which were refused as they are now (not registered at all).
+export function classifyTools(server, tools) {
+  const accepted = server.accepted || {};
+  const refused = server.refused || {};
+  const pending = [];
+  const refusedNow = [];
+  for (const t of tools) {
+    const fp = toolFingerprint(t);
+    if (accepted[t.name] === fp) continue;
+    if (refused[t.name] === fp) refusedNow.push(t.name);
+    else pending.push(t.name);
+  }
+  return { pending, refused: refusedNow };
 }
 
 // The amount a money tool's input moves, read as configured; null when it cannot be read.
@@ -200,7 +240,7 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
   };
   const rt = (id) => {
     if (!servers[id]) throw fail('UNKNOWN_SERVER', `no MCP server "${id}"`, 404);
-    if (!runtime.has(id)) runtime.set(id, { client: null, transport: null, status: 'down', tools: [], lastError: null, pendingItem: null, flow: null, authorizeUrl: null, serverInfo: null, connectedAt: null, dropped: 0 });
+    if (!runtime.has(id)) runtime.set(id, { client: null, transport: null, status: 'down', tools: [], pending: [], refused: [], lastError: null, pendingItem: null, flow: null, authorizeUrl: null, serverInfo: null, connectedAt: null, dropped: 0 });
     return runtime.get(id);
   };
 
@@ -268,16 +308,24 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
     const server = servers[id];
     const r = rt(id);
     unregister(id);
+    const { pending, refused } = classifyTools(server, r.tools);
+    r.pending = pending;
+    r.refused = refused;
     for (const tool of r.tools) {
+      if (refused.includes(tool.name)) continue; // refused as it is now: not a tool of this park
       const name = toolName(id, tool.name);
+      const isPending = () => (rt(id).pending || []).includes(tool.name);
       registry[name] = {
         name,
         description: `[${server.label} via MCP] ${tool.description}`,
         inputSchema: tool.inputSchema,
         confirm: false,
-        mcp: { server: id, tool: tool.name, readOnly: tool.annotations.readOnlyHint === true },
-        domain: () => domainFor(servers[id] || server, tool),
+        mcp: { server: id, tool: tool.name, readOnly: tool.annotations.readOnlyHint === true && tool.annotations.destructiveHint !== true },
+        domain: () => domainFor(servers[id] || server, tool, { pending: isPending() }),
         amountUsd: (input) => amountFor(servers[id] || server, tool, input),
+        // Safety 2026-10-11 M1: a tool the Superintendent has not accepted waits at the Gate
+        // whatever the leash says, until the mcp.accept_tools item is approved.
+        holdAtGate: () => (isPending() ? `${server.label}'s tool ${tool.name} is new or changed since you accepted this server's tools; it waits at the Entrance Gate at every leash level until you accept it (the mcp.accept_tools item at the Peak)` : null),
         summarize: (input) => {
           let text = '';
           try {
@@ -305,6 +353,55 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
     }
   }
 
+  // The Gate item that accepts new or changed tools; approve records their fingerprints,
+  // reject records them as refused (unregistered until they change again).
+  async function askAcceptance(id) {
+    const server = servers[id];
+    const r = rt(id);
+    const pendingTools = r.tools.filter((t) => r.pending.includes(t.name));
+    if (!pendingTools.length) return null;
+    const accepted = server.accepted || {};
+    const label = (t) => `${accepted[t.name] ? 'changed' : 'new'}: ${t.name}${Object.keys(t.annotations || {}).length ? ` [${Object.entries(t.annotations).map(([k, v]) => `${k}=${v}`).join(', ')}]` : ''} — ${t.description || '(no description)'}`;
+    const names = pendingTools.map((t) => t.name);
+    emit('mcp.server', { server: id, status: 'tools_changed', transport: server.transport, tools: pendingTools.length, message: `waiting for your acceptance at the Gate: ${names.join(', ')}`.slice(0, 500) });
+    try {
+      return await gated(id, {
+        tool: 'mcp.accept_tools',
+        summary: `accept ${pendingTools.length} new or changed tool(s) of MCP server ${server.label} (${id})`,
+        reason: 'the server listed tools that are new or changed since you accepted its tools; until you accept them each waits at the Gate at every leash level under outbound_messages, and a rejected one is not granted at all until it changes again',
+        evidence: [...pendingTools.slice(0, 12).map((t) => ({ kind: 'input', text: label(t).slice(0, 400) })), ...(pendingTools.length > 12 ? [{ kind: 'input', text: `(+${pendingTools.length - 12} more; see the Peak)` }] : [])],
+        onApprove: async () => {
+          const live = servers[id];
+          if (!live) return;
+          const next = { ...live, accepted: { ...(live.accepted || {}) }, refused: { ...(live.refused || {}) } };
+          for (const t of rt(id).tools) if (names.includes(t.name)) {
+            next.accepted[t.name] = toolFingerprint(t);
+            delete next.refused[t.name];
+          }
+          servers = { ...servers, [id]: next };
+          await save();
+          if (rt(id).status === 'connected') register(id);
+          emit('mcp.server', { server: id, status: 'tools_accepted', transport: next.transport, tools: names.length, message: names.join(', ').slice(0, 500) });
+        },
+        onRefuse: async () => {
+          const live = servers[id];
+          if (!live) return;
+          const next = { ...live, refused: { ...(live.refused || {}) } };
+          for (const t of rt(id).tools) if (names.includes(t.name)) next.refused[t.name] = toolFingerprint(t);
+          servers = { ...servers, [id]: next };
+          await save();
+          if (rt(id).status === 'connected') register(id);
+        },
+      });
+    } catch (err) {
+      if (err.code === 'PENDING') {
+        log.warn && log.warn(`mcp ${id}: tools changed while ${r.pendingItem ? r.pendingItem.tool : 'a decision'} waits at the Gate; the unaccepted tools stay at the Gate and are asked about on the next connect`);
+        return null;
+      }
+      throw err;
+    }
+  }
+
   async function connect(id) {
     const server = servers[id];
     const r = rt(id);
@@ -327,8 +424,18 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
       r.lastError = null;
       r.connectedAt = clock.now();
       r.authorizeUrl = null;
+      if (servers[id].acceptFirstList) {
+        // The first successful list after the Superintendent approved the server (a sign-in
+        // may come between): this list is what was approved, and later connects are
+        // compared with it (M1). A record from before the snapshot existed has no flag, so
+        // its tools are pending until accepted once.
+        const { acceptFirstList, ...rest } = servers[id];
+        servers = { ...servers, [id]: { ...rest, accepted: Object.fromEntries(tools.map((t) => [t.name, toolFingerprint(t)])), refused: {} } };
+        await save();
+      }
       register(id);
       emitStatus(id, 'connected');
+      if (r.pending.length) askAcceptance(id).catch((err) => log.error && log.error(`mcp ${id} acceptance failed:`, err));
       if (transport.kind === 'stdio') transport.exited.then(({ code, signal }) => {
         if (r.transport !== transport) return;
         r.client = null;
@@ -364,20 +471,22 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
     r.client = null;
     r.transport = null;
     r.tools = [];
+    r.pending = [];
+    r.refused = [];
     if (client) await client.close().catch(() => {});
     if (!quiet) emitStatus(id, 'disconnected', { message: `stopped by ${by}` });
     else r.status = 'down';
     return r;
   }
 
-  async function gated(id, { tool, summary, reason, evidence, onApprove }) {
+  async function gated(id, { tool, summary, reason, evidence, onApprove, onRefuse = null }) {
     if (!gateQueue) throw fail('GATE_UNAVAILABLE', 'no Entrance Gate queue to decide MCP servers', 503);
     const r = runtime.get(id);
     if (r && r.pendingItem) throw fail('PENDING', `${id} already has a decision waiting at the Gate (${r.pendingItem.itemId})`, 409);
     const decision = gateQueue.submit({ agentId: 'superintendent', domain: 'account_settings', tool, summary, level: 'draft', evidence, reason });
     const item = gateQueue.pending().find((it) => it.tool === tool && it.summary === summary) || null;
     if (r) r.pendingItem = item;
-    else runtime.set(id, { client: null, transport: null, status: 'down', tools: [], lastError: null, pendingItem: item, flow: null, authorizeUrl: null, serverInfo: null, connectedAt: null, dropped: 0 });
+    else runtime.set(id, { client: null, transport: null, status: 'down', tools: [], pending: [], refused: [], lastError: null, pendingItem: item, flow: null, authorizeUrl: null, serverInfo: null, connectedAt: null, dropped: 0 });
     decision
       .then(async (d) => {
         const live = runtime.get(id);
@@ -385,6 +494,13 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
         if (d.decision !== 'approve') {
           emit('mcp.server', { server: id, status: 'refused', message: `${tool} ${d.decision === 'revise' ? 'sent back' : d.status === 'expired' ? 'expired' : 'rejected'} at the Gate${d.notes ? `: ${d.notes}` : ''}` });
           if (!servers[id]) runtime.delete(id);
+          else if (onRefuse && d.decision === 'reject') {
+            try {
+              await onRefuse(d);
+            } catch (err) {
+              log.error && log.error(`mcp ${id} refuse hook failed:`, err);
+            }
+          }
           return;
         }
         try {
@@ -453,7 +569,12 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
           pendingItemId: r.pendingItem ? r.pendingItem.itemId : null,
           authorizeUrl: r.authorizeUrl,
           dropped: r.dropped,
-          tools: r.tools.map((t) => ({ name: t.name, toolName: toolName(s.id, t.name), description: t.description, truncated: t.truncated, readOnly: t.annotations.readOnlyHint === true, destructive: t.annotations.destructiveHint === true, domain: domainFor(s, t), amount: s.amounts[t.name] || null, override: Boolean(s.leash[t.name]) })),
+          pendingTools: (r.pending || []).length,
+          tools: r.tools.map((t) => {
+            const pending = (r.pending || []).includes(t.name);
+            const refused = (r.refused || []).includes(t.name);
+            return { name: t.name, toolName: toolName(s.id, t.name), description: t.description, truncated: t.truncated, readOnly: t.annotations.readOnlyHint === true, destructive: t.annotations.destructiveHint === true, domain: refused ? null : domainFor(s, t, { pending }), amount: s.amounts[t.name] || null, override: Boolean(s.leash[t.name]), accepted: !pending && !refused, pending, refused };
+          }),
         };
       });
     },
@@ -470,7 +591,7 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
         if (o.roomId !== agent.roomId || o.kind !== 'outpost' || !o.server || !servers[o.server]) continue;
         const r = rt(o.server);
         if (r.status !== 'connected') continue;
-        for (const t of r.tools) out.add(toolName(o.server, t.name));
+        for (const t of r.tools) if (!(r.refused || []).includes(t.name)) out.add(toolName(o.server, t.name));
       }
       return [...out].sort();
     },
@@ -491,6 +612,7 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
         { kind: 'input', text: spec.transport === 'stdio' ? `stdio: ${spec.command} ${spec.args.join(' ')}`.trim() : `http: ${spec.url}` },
         { kind: 'input', text: `env: ${Object.keys(spec.env).join(', ') || 'none'}; secrets: ${spec.secretEnv.join(', ') || 'none'}${spec.source ? `; ${spec.source.startsWith('catalog:') ? `from the catalog (${spec.source.slice(8)})` : spec.source}` : ''}` },
         { kind: 'input', text: `leash: read-only tools → ${READ_ONLY_DOMAIN}, others → ${DEFAULT_DOMAIN}${Object.keys(spec.leash).length ? `; overrides ${Object.entries(spec.leash).map(([t, d]) => `${t}=${d}`).join(', ')}` : ''}` },
+        { kind: 'input', text: 'the tools it lists on this first connect become the accepted set (shown at the Peak); a tool that is new or changed on a later connect waits at the Gate until you accept it' },
       ];
       return gated(spec.id, {
         tool: 'mcp.add',
@@ -499,7 +621,7 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
         evidence,
         onApprove: async () => {
           for (const [k, v] of Object.entries(secrets)) await setKey(keyName(spec.id, k), v, { env: {}, keystorePath });
-          servers = { ...servers, [spec.id]: spec };
+          servers = { ...servers, [spec.id]: { ...spec, acceptFirstList: true } };
           await save();
           emit('mcp.server', { server: spec.id, status: 'configured', transport: spec.transport });
           await connect(spec.id);

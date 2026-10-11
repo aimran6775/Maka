@@ -237,7 +237,7 @@ test('the manager: a server is added through the Gate (reject stores nothing; ap
     await assert.rejects(h.mcp.setLeash('fake', { tool: 'pay', domain: 'money_out' }), (e) => e.code === 'AMOUNT_REQUIRED');
     await assert.rejects(h.mcp.setLeash('fake', { tool: 'pay', domain: 'teleport' }), (e) => e.code === 'BAD_REQUEST');
     await h.mcp.setLeash('fake', { tool: 'pay', domain: 'money_out', amount: { field: 'amount', unit: 'usd' } });
-    assert.deepEqual(h.mcp.status('fake').tools.find((t) => t.name === 'pay'), { name: 'pay', toolName: 'mcp.fake.pay', description: 'Pays a supplier invoice.', truncated: false, readOnly: false, destructive: true, domain: 'money_out', amount: { field: 'amount', unit: 'usd' }, override: true });
+    assert.deepEqual(h.mcp.status('fake').tools.find((t) => t.name === 'pay'), { name: 'pay', toolName: 'mcp.fake.pay', description: 'Pays a supplier invoice.', truncated: false, readOnly: false, destructive: true, domain: 'money_out', amount: { field: 'amount', unit: 'usd' }, override: true, accepted: true, pending: false, refused: false });
     assert.equal(h.registry['mcp.fake.pay'].domain({}), 'money_out');
     assert.equal(h.registry['mcp.fake.pay'].amountUsd({ amount: 7 }), 7);
     assert.equal(h.registry['mcp.fake.pay'].amountUsd({}), null);
