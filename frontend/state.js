@@ -31,6 +31,7 @@ export function initialState() {
     connectors: [], // one row per connector from the snapshot; connector.* events patch them
     connectorEvents: [], // connector.sync / connector.error payloads this session, oldest first (bounded)
     research: null, // { search, searchKey, trends, judge } from the snapshot
+    creative: null, // { images, imageKey, model, judge, hostedToday, hostedCap } from the snapshot (phase 4 step 8)
     channels: null, // { adapters: [row per channel], pairing } from the snapshot; channel.connect patches rows (phase 4 step 1)
     channelEvents: [], // channel.inbound / channel.delivery payloads this session, oldest first (bounded)
     mcp: null, // MCP server rows from the snapshot (/api/mcp shape); mcp.server events patch status (phase 4 step 4)
@@ -109,6 +110,7 @@ export function applySnapshot(state, snap) {
   next.browser = snap.browser || null;
   next.connectors = Array.isArray(snap.connectors) ? snap.connectors : [];
   next.research = snap.research || null;
+  next.creative = snap.creative || null;
   next.channels = snap.channels || null;
   next.mcp = Array.isArray(snap.mcp) ? snap.mcp : null;
   next.setup = snap.setup || null;

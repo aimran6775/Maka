@@ -112,8 +112,10 @@ export function createJudge({ router, makeProvider = defaultMakeProvider, ledger
 
   // One-off review of a document a tool produced (a venture brief, step 18): the same
   // model, caps, cost and judge.verdict event as a turn review; scope 'action' with the
-  // tool named. Returns { verdict, notes, usd } or { verdict: 'skipped', reason }.
-  async function reviewDocument({ runId = 'none', agentId = 'none', turn = 0, tool = 'document', title = 'document', text, brief = '' }) {
+  // tool named. `scope` (phase 4 step 8) replaces the brief's review question with the
+  // caller's own (ad copy against the product facts, an image prompt against the policy).
+  // Returns { verdict, notes, usd } or { verdict: 'skipped', reason }.
+  async function reviewDocument({ runId = 'none', agentId = 'none', turn = 0, tool = 'document', title = 'document', text, brief = '', scope = null }) {
     const cap = capReason(0);
     const skip = (reason) => {
       emit('judge.verdict', { agentId, runId, turn, verdict: 'skipped', scope: 'action', reason, provider: route.provider, model: route.model || '', usd: null, reconciled: false, tools: [tool] });
@@ -126,7 +128,8 @@ export function createJudge({ router, makeProvider = defaultMakeProvider, ledger
     } catch (err) {
       return skip(`judge not wired: ${err && err.message ? err.message : err}`);
     }
-    const lines = [`Brief from the Superintendent to Ranger "${agentId}":`, clip(brief, 2000), '', `SCOPE: the worker submitted a ${title} through ${tool}. Review it: is every claim backed by the evidence given (sources with URLs), are the costs real figures with a basis, is the go / no-go consistent with the evidence? Approve, or revise with what is missing, or reject.`, '', clip(text, 12000), '', 'Answer with the JSON object only.'];
+    const question = scope || `SCOPE: the worker submitted a ${title} through ${tool}. Review it: is every claim backed by the evidence given (sources with URLs), are the costs real figures with a basis, is the go / no-go consistent with the evidence? Approve, or revise with what is missing, or reject.`;
+    const lines = [`Brief from the Superintendent to Ranger "${agentId}":`, clip(brief, 2000), '', question, '', clip(text, 12000), '', 'Answer with the JSON object only.'];
     let out = '';
     let usage = null;
     try {

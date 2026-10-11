@@ -21,6 +21,7 @@ import { createBrowserControl } from '../../sidecar/browser/control.js';
 import { createNetGuard } from '../../sidecar/netguard.js';
 import { createConnectors } from '../../sidecar/connectors/registry.js';
 import { createResearch } from '../../sidecar/research/index.js';
+import { createCreative } from '../../sidecar/creative/index.js';
 import { createChannels } from '../../sidecar/channels/registry.js';
 import { createMcpManager } from '../../sidecar/mcp/manager.js';
 import { createOllama } from '../../sidecar/ollama.js';
@@ -45,7 +46,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 // `netGuard`: the outbound URL guard the tools and the browser use (sidecar/netguard.js).
 // The fakes every suite talks to listen on 127.0.0.1, so the default here turns the guard
 // off; a test of the guard itself passes a strict one. The sidecar never turns it off.
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -108,6 +109,13 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     Object.assign(registry, research.tools);
     toolContext.judge = judge;
   }
+  // `creative`: { hfImagesBaseUrl, imageModel } points the image generator at a fake Hugging
+  // Face; absent → no creative kit is wired.
+  const creative = creativeOpts ? createCreative({ env, keystorePath, netGuard, judge, ledger, caps: createRouter(policy || defaultPolicy()).caps(), bus, workspaceRoot, config: creativeOpts, clock }) : null;
+  if (creative) {
+    Object.assign(registry, creative.tools);
+    toolContext.judge = judge;
+  }
   // `ollama`: a fake Ollama's URL wires the manager; `setup`: { verifyUrls, restart, platform, fs }
   // wires the first-run flow (absent → neither exists, as before phase 3).
   const ollama = ollamaUrl ? createOllama({ env: { ...env, OLLAMA_HOST: ollamaUrl }, bus, clock, log: { error() {} } }) : null;
@@ -147,6 +155,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     channels,
     mcp,
     research,
+    creative,
     setup,
     ollama,
     backup,

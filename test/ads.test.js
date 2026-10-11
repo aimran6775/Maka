@@ -124,7 +124,7 @@ async function harness({ meta, google, leash: leashPatch = {} } = {}) {
 test('the Notice board grants the ad tools; Meta Ads syncs the account, campaigns and 7-day insights; reads from the store; a new campaign is money_out with its daily budget, created PAUSED; budget and status changes carry their amounts', async () => {
   assert.equal(ENV_VARS.metaAds, 'META_ACCESS_TOKEN');
   assert.equal(ENV_VARS.googleAdsDeveloperToken, 'GOOGLE_ADS_DEVELOPER_TOKEN');
-  assert.deepEqual(OBJECT_KINDS.notice_board.grants, ['connector.status', 'connector.sync', ...Object.keys(META_ADS_TOOLS), ...Object.keys(GOOGLE_ADS_TOOLS)]);
+  assert.deepEqual(OBJECT_KINDS.notice_board.grants, ['connector.status', 'connector.sync', ...Object.keys(META_ADS_TOOLS), ...Object.keys(GOOGLE_ADS_TOOLS), 'creative.copy', 'creative.image']);
   for (const name of [...Object.keys(META_ADS_TOOLS), ...Object.keys(GOOGLE_ADS_TOOLS)]) assert.equal(TOOL_DOMAINS[name], /upload|create_creative|create_ad$|create_ad_group|create_rsa/.test(name) ? 'publishing' : /create|set_/.test(name) ? 'money_out' : 'research', name);
   assert.equal(summarizeMetaAds(null), null);
   const fake = await startFakeMetaAds();

@@ -39,6 +39,7 @@ import { createNetGuard } from './netguard.js';
 import { createConnectors } from './connectors/registry.js';
 import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { createResearch } from './research/index.js';
+import { createCreative } from './creative/index.js';
 import { createChannels } from './channels/registry.js';
 import { createTelegramAdapter } from './channels/telegram.js';
 import { createDiscordAdapter } from './channels/discord.js';
@@ -126,6 +127,9 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   Object.assign(registry, connectors.tools);
   toolContext.connectors = connectors;
   const research = createResearch({ env, keystorePath, judge, workspaceRoot });
+  // Phase 4 step 8: ad copy and images as outbox deliverables; images through Hugging Face
+  // under the hosted worker cap, the judge checks every prompt for faces and logos first.
+  const creative = createCreative({ env, keystorePath, netGuard, judge, ledger, caps: router.caps(), bus, workspaceRoot, config: config.creative || {}, log });
   // Phase 4 step 4: MCP servers configured at the Peak; their tools reach Rangers through
   // Outposts. HTTP servers go through the outbound guard like every other network path.
   const mcp = await createMcpManager({ bus, store, gateQueue, env, keystorePath, netGuard, registry, getLayout: layoutState.get, oauthPort: (config.connectors && config.connectors.oauthPort) || undefined, log }).init();
@@ -140,6 +144,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   await channels.start();
   Object.assign(registry, research.tools);
   toolContext.judge = judge;
+  Object.assign(registry, creative.tools);
   const backup = await createBackup({ store, scheduler, bus, home, workspaceRoot, env, keystorePath, config: config.backup || {}, log }).init();
   const ollama = createOllama({ env, bus, log });
   ollama.status().catch(() => {});
@@ -171,6 +176,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     channels,
     mcp,
     research,
+    creative,
     setup,
     ollama,
     backup,
@@ -215,6 +221,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   log.info(`  channels: ${channelRows.length ? channelRows.map((c) => `${c.label} ${c.status === 'up' ? `up (${c.by}${c.detail ? `, ${c.detail}` : ''})` : c.status === 'not_wired' ? `not wired (${c.missing.join(', ')})` : c.status}, ${c.paired.length} paired chat(s)`).join(' · ') : 'none registered yet'}`);
   const researchStatus = await research.status();
   log.info(`  research: search via ${researchStatus.search} · trends ${researchStatus.trends.join(', ')}`);
+  const creativeStatus = await creative.status();
+  log.info(`  creative: images via ${creativeStatus.images}${creativeStatus.imageKey ? ` (${creativeStatus.model})` : ''} · judge ${creativeStatus.judge ? 'checks prompts and copy' : 'not wired: no images'}`);
   const browserStatus = await browser.status();
   log.info(`  browser: ${browserStatus.chromium ? `${browserStatus.chromium} (${browserStatus.headless ? 'headless' : 'windowed'})` : 'not wired (no Chromium found; set browser.chromiumPath or CHROMIUM)'}`);
   log.info(`  mail: ${mailStatus.domain} · resend ${mailStatus.keys.resend ? 'key configured' : 'not wired (RESEND_API_KEY)'} · cloudflare ${mailStatus.keys.cloudflare ? 'token configured' : 'not wired (CLOUDFLARE_API_TOKEN)'} · webhook ${mailSys.keys.webhook ? 'secret configured' : 'not wired (RESEND_WEBHOOK_SECRET)'} · ${mailSys.addresses} address(es), ${mailSys.counts.messages} message(s), poll every ${mailSys.sync.pollMs / 1000}s`);
@@ -244,7 +252,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
 }
 
 function validateConfig(data) {
-  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } }, backup: { type: 'object', additionalProperties: false, properties: { enabled: { type: 'boolean' }, at: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, bucket: { type: 'string', minLength: 3 }, prefix: { type: 'string', minLength: 1 } } }, connectors: { type: 'object', additionalProperties: true, properties: { syncEveryMs: { type: 'integer', minimum: 60000 }, oauthPort: { type: 'integer', minimum: 0, maximum: 65535 }, shopify: { type: 'object', additionalProperties: false, properties: { shop: { type: 'string', minLength: 1 } } }, meta_ads: { type: 'object', additionalProperties: false, properties: { adAccountId: { type: 'string', minLength: 1 }, pageId: { type: 'string', minLength: 1 } } }, google_ads: { type: 'object', additionalProperties: false, properties: { customerId: { type: 'string', minLength: 1 }, loginCustomerId: { type: 'string', minLength: 1 } } } } } } }, data);
+  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } }, backup: { type: 'object', additionalProperties: false, properties: { enabled: { type: 'boolean' }, at: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, bucket: { type: 'string', minLength: 3 }, prefix: { type: 'string', minLength: 1 } } }, creative: { type: 'object', additionalProperties: false, properties: { imageModel: { type: 'string', minLength: 1 } } }, connectors: { type: 'object', additionalProperties: true, properties: { syncEveryMs: { type: 'integer', minimum: 60000 }, oauthPort: { type: 'integer', minimum: 0, maximum: 65535 }, shopify: { type: 'object', additionalProperties: false, properties: { shop: { type: 'string', minLength: 1 } } }, meta_ads: { type: 'object', additionalProperties: false, properties: { adAccountId: { type: 'string', minLength: 1 }, pageId: { type: 'string', minLength: 1 } } }, google_ads: { type: 'object', additionalProperties: false, properties: { customerId: { type: 'string', minLength: 1 }, loginCustomerId: { type: 'string', minLength: 1 } } } } } } }, data);
 }
 
 async function loadOrDefault(file, validateFn, defaultFn, log, label) {

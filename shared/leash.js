@@ -48,6 +48,8 @@ export const TOOL_DOMAINS = deepFreeze({
   'web.read': 'research',
   'web.trends': 'research',
   'brief.submit': null,
+  'creative.copy': null, // phase 4 step 8: deliverables in the workspace outbox, judge reviewed
+  'creative.image': null, // metered under the hosted worker cap; uploads are the ads tools' publishing
   // Phase 2 step 12 mail tools. `mail.send` decides between outbound_messages and
   // publishing from its input (the tool declares a domain function); listed here as its
   // default so coverage checks see it.

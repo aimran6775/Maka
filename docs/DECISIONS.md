@@ -1286,3 +1286,26 @@ the images a Ranger publishes are ones it made or was given (product law 8), and
 responsive search ad is checked against Google's copy limits before any request leaves.
 The Page a Meta creative posts as is the Superintendent's configuration, never a Ranger's
 choice.
+
+## D138. Creative: the worker writes, the judge reads the prompt, no judge means no image
+
+The brief asks for copy variants by the worker with judge review and images with an
+explicit no-faces / no-brand-logos check by the judge. Copy is therefore not a second
+model call: the Ranger's own worker writes the variants and `creative.copy` is the
+submission, like `brief.submit`, with the platform limits checked before the judge is
+spent and the judge asked its own question (every claim against the product facts the
+Ranger supplied) rather than the brief's. Copy without a judge still lands, marked
+unreviewed, because the Gate reads it before any upload. Images are stricter: the judge
+reviews the prompt exactly as the model receives it, with Maka's own policy suffix and
+negative prompt appended, and only "approve" generates; no judge, a judge at its cap, a
+failed call, or revise all refuse, because the brief calls the check explicit and a check
+that did not happen cannot be explicit. The bytes themselves are not inspected (the judge
+has no eyes here); `meta.json` records `policy.scope: 'prompt'` so nobody reads the verdict
+as more than it is, and the upload still passes the Gate under publishing where the owner
+sees the file. Metering follows the hosted worker: the call is refused at
+`hostedWorkerCallsPerDay` and a success emits the same unpriced `cost.estimate` a hosted
+turn does, counted by the run manager's one listener, so the cap is one number. Neither
+tool has a leash domain: both write to the Ranger's outbox only, and the money and
+publishing happen in the ads tools that already carry them. Only the Notice board grants
+them: ad creative is the ads camp's work, and the listing pipeline (step 13) will grant
+what it needs when it exists.

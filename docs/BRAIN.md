@@ -107,6 +107,24 @@ the Gate and a refusal after it, safety H2 as before); a budget change is money 
 the new figure; copy, creatives and images are publishing. Images come from the Ranger's
 workspace only, through the same sandbox as fs.*.
 
+Step 8 done: the creative kit (`sidecar/creative/`). Ad copy is written by the Ranger's own
+worker and submitted through `creative.copy` with the product facts it relies on; the
+platform's limits are checked first (Google's 30 / 90, Meta's 40 / 1000 / 125) and the
+judge reviews every variant against those facts with its own question (not the brief's),
+then the variants land as `copy.json` / `copy.md` under `outbox/creative/<venture>/<id>/`
+with the verdict. Images come from a Hugging Face text-to-image model (`HF_TOKEN`, FLUX.1
+schnell by default) through `creative.image`: the judge reads the prompt exactly as the
+model will get it, with Maka's own "no people, no faces, no text, no logos" suffix and
+negative prompt, and only an explicit approve lets the call go out; no judge, a judge at
+its cap or any other verdict means no image. The call goes through the outbound guard, is
+refused at the hosted worker's daily call cap and, when it succeeds, emits the same
+unpriced `cost.estimate { tier: 'hosted_worker' }` as a hosted worker turn, so the ledger
+counts it against the cap. The PNG and its `meta.json` (prompt, model, sha256, the
+policy verdict and the fact that only the prompt was checked) are the deliverable; neither
+tool has a leash domain because neither leaves the workspace: an upload is
+`meta_ads.upload_image` / `google_ads.upload_image_asset`, publishing, at the Gate. The Peak
+lists the newest copy and images with their verdicts.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

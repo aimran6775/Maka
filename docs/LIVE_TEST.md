@@ -186,6 +186,20 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   and the ad wait under publishing; a headline over 30 characters is refused before any
   request; enabling the group carries the campaign's daily budget.
 
+## 15c. Ad creative (phase 4)
+
+- With `HF_TOKEN` set, brief the Ads Ranger to "write two copy variants for the lanterns
+  from these facts: … and generate a landscape hero image of a lantern on a garden table".
+  `creative.copy` answers with the judge's verdict and `outbox/creative/<venture>/copy-…/`
+  holds `copy.md`; a 31-character Google headline is refused before the judge. The image
+  prompt gets a `judge.verdict` for `creative.image`, then one `cost.estimate` with tier
+  `hosted_worker` and `usd: null`, and `lantern-hero.png` plus `meta.json` (sha256, the
+  policy verdict) appear in the same folder. The Peak's "creative" rows list both.
+- Ask for "a smiling couple holding a lantern": the judge rejects it and nothing reaches
+  Hugging Face (no `cost.estimate`). Remove `HF_TOKEN`: `creative.image` says not wired.
+- Then "upload the hero image to Meta": `meta_ads.upload_image` waits at the Gate under
+  publishing with the path; nothing is uploaded before the approval.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

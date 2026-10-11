@@ -33,7 +33,7 @@ reproduce them.
 npm run assets                        # fetch + verify Three.js and the kits (network)
 ollama serve                          # local worker models (any tool-capable model pulled)
 export ANTHROPIC_API_KEY=sk-ant-...   # the judge; or OPENROUTER_API_KEY; or the keystore below
-# optional: HF_TOKEN (hosted worker), RESEND_API_KEY + CLOUDFLARE_API_TOKEN (mail), RESEND_WEBHOOK_SECRET
+# optional: HF_TOKEN (hosted worker, ad images), RESEND_API_KEY + CLOUDFLARE_API_TOKEN (mail), RESEND_WEBHOOK_SECRET
 npm start                             # node sidecar/index.js
 ```
 
@@ -315,6 +315,15 @@ set level), ads and creatives (your Page id in `connectors.meta_ads.pageId` or
 `META_PAGE_ID`, images from the Ranger's workspace) and Google ad groups, responsive
 search ads and image assets. Everything is created paused; activations and budgets wait at
 the Gate or run under the daily cap with the real amount; copy and images are publishing.
+
+Step 8, ad creative: an Ads Ranger writes copy variants itself and submits them with
+`creative.copy` (platform limits checked, the judge reviews every claim against the
+product facts you gave) and generates images with `creative.image` through Hugging Face
+(`HF_TOKEN`; `creative.imageModel` in `config.json` or `HF_IMAGE_MODEL`, FLUX.1 schnell by
+default). The judge reads every image prompt first and refuses people, faces, brand logos
+and text; without a judge no image is made. Images count against the hosted worker's
+daily call cap. Both land in `outbox/creative/<venture>/` and are uploaded only through
+the ads tools, which wait at the Gate under publishing. The Peak lists them.
 
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),

@@ -486,6 +486,31 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       selectionRefresh && selectionRefresh();
     }
   }
+  // Creative deliverables (phase 4 step 8): ad copy and images from every Ranger's outbox.
+  const creativeCache = { key: null, rows: [], loading: false };
+  async function loadCreatives(s) {
+    const key = `${s.workOrder.length}:${Object.values(s.workItems).filter((w) => w.status === 'done').length}`;
+    if (creativeCache.key === key || creativeCache.loading) return;
+    creativeCache.loading = true;
+    try {
+      const r = await api.get('/api/creatives?limit=10');
+      creativeCache.rows = r.ok ? r.body : [];
+      creativeCache.key = key;
+    } finally {
+      creativeCache.loading = false;
+      selectionRefresh && selectionRefresh();
+    }
+  }
+  function creativeSection(s) {
+    if (!s.creative) return [];
+    loadCreatives(s);
+    const c = s.creative;
+    return [
+      row('creative', `images via ${c.images}${c.imageKey ? ` (${c.model})` : ''} · judge ${c.judge ? 'checks prompts (no faces, no logos) and copy' : 'not wired: no images'} · ${c.hostedToday} of ${c.hostedCap ?? '?'} hosted call(s) today`),
+      row('ad copy and images', creativeCache.rows.length ? `${creativeCache.rows.length} (newest first)` : 'none yet: an Ads Ranger with a Notice board writes them'),
+      ...creativeCache.rows.slice(0, 6).map((d) => el('div', { class: `use ${d.judge && d.judge.verdict === 'approve' ? 'ok' : d.judge && d.judge.verdict === 'reject' ? 'failed' : ''}`, text: `${new Date(d.createdAt).toLocaleDateString()} · ${d.kind} · ${d.name}${d.venture ? ` · ${d.venture}` : ''} · ${d.kind === 'copy' ? `${d.variants} variant(s) for ${d.platform}` : `${d.model}, ${d.bytes} bytes`} · judge ${d.judge ? d.judge.verdict : '?'} · ${d.agentId} · ${d.path}` })),
+    ];
+  }
   function briefsSection(s) {
     if (!s.research) return [];
     loadBriefs(s);
@@ -586,6 +611,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ...mcpSection(s),
       ...channelsSection(s),
       ...briefsSection(s),
+      ...creativeSection(s),
       s.browser ? row('browser', `${s.browser.wired ? `${s.browser.chromium}${s.browser.headless ? ' (headless)' : ''}` : 'not wired: no Chromium found (browser.chromiumPath or CHROMIUM)'} · ${(s.browser.sessions || []).length} open · ${pendingHandoffs(s).length} handoff(s) waiting`) : null,
       ...backupSection(s),
       row('judge today', s.judge ? `${fmtUsd(s.judge.today.usd)} of $${s.judge.caps.judgeUsdPerDay} cap · ${s.judge.today.calls} call(s) · ${s.judge.provider}/${s.judge.model || 'default'}` : 'no judge wired'),

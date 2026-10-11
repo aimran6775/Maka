@@ -75,7 +75,7 @@ async function harness({ meta, google, leash: leashPatch = {}, pageId = '777' } 
 }
 
 test('the Notice board grants the new tools with the right domains; ad set budgets and RSA copy limits are pure', () => {
-  assert.deepEqual(OBJECT_KINDS.notice_board.grants, ['connector.status', 'connector.sync', ...Object.keys(META_ADS_TOOLS), ...Object.keys(GOOGLE_ADS_TOOLS)]);
+  assert.deepEqual(OBJECT_KINDS.notice_board.grants, ['connector.status', 'connector.sync', ...Object.keys(META_ADS_TOOLS), ...Object.keys(GOOGLE_ADS_TOOLS), 'creative.copy', 'creative.image']);
   assert.deepEqual(Object.keys(META_ADSET_TOOLS), ['meta_ads.adsets', 'meta_ads.ads', 'meta_ads.creatives', 'meta_ads.create_adset', 'meta_ads.set_adset_budget', 'meta_ads.set_adset_status', 'meta_ads.upload_image', 'meta_ads.create_creative', 'meta_ads.create_ad', 'meta_ads.set_ad_status']);
   assert.deepEqual(Object.keys(GOOGLE_AD_GROUP_TOOLS), ['google_ads.ad_groups', 'google_ads.ads', 'google_ads.assets', 'google_ads.create_ad_group', 'google_ads.set_ad_group_status', 'google_ads.create_rsa', 'google_ads.set_ad_status', 'google_ads.upload_image_asset']);
   for (const name of ['meta_ads.create_adset', 'meta_ads.set_adset_budget', 'meta_ads.set_adset_status', 'meta_ads.set_ad_status', 'google_ads.set_ad_group_status', 'google_ads.set_ad_status']) assert.equal(TOOL_DOMAINS[name], 'money_out', name);

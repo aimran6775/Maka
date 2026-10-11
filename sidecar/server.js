@@ -60,6 +60,8 @@
 //   POST /api/backup/restore   { key?, into? } restores into a fresh directory (workspace/_restore/<stamp>)
 //   GET  /api/research         the Scout kit: search provider, trend sources, judge wired
 //   GET  /api/briefs           venture briefs from every Ranger's outbox, newest first
+//   GET  /api/creative         the creative kit: image model wired, judge, hosted calls today (phase 4 step 8)
+//   GET  /api/creatives        ad copy and images from every Ranger's outbox, newest first (?kind=copy|image)
 //   GET  /api/connectors       one status row per connector (connected, last sync, summary)
 //   GET  /api/connectors/:kind the row plus the local data the syncs brought in
 //   POST /api/connectors/:kind/connect    { apiKey } or {} (OAuth) → a Gate item; 202
@@ -299,7 +301,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -377,6 +379,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         channels: channels ? { adapters: channels.list(), pairing: channels.pairing() } : null,
         mcp: mcp ? mcp.list() : null,
         research: research ? await research.status() : null,
+        creative: creative ? await creative.status() : null,
         setup: setup ? await setup.state() : null,
         ollama: ollama ? ollama.summary() : null,
         backup: backup ? await backup.status() : null,
@@ -645,6 +648,14 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/briefs' && method === 'GET') {
       if (!research) throw new HttpError(404, 'no research kit');
       return sendJson(res, 200, await research.listBriefs({ limit: Number(url.searchParams.get('limit')) || 50 }));
+    }
+    if (p === '/api/creative' && method === 'GET') {
+      if (!creative) throw new HttpError(404, 'no creative kit');
+      return sendJson(res, 200, await creative.status());
+    }
+    if (p === '/api/creatives' && method === 'GET') {
+      if (!creative) throw new HttpError(404, 'no creative kit');
+      return sendJson(res, 200, await creative.list({ limit: Number(url.searchParams.get('limit')) || 50, kind: url.searchParams.get('kind') || null }));
     }
     if (p === '/api/connectors' && method === 'GET') {
       if (!connectors) throw new HttpError(404, 'no connectors');
