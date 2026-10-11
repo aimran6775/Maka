@@ -315,6 +315,23 @@ through the judge like any other (D142); without a judge they go to the Ranger's
 folder as a file, and the import's README says what was read, skipped, redacted and stored
 (D150).
 
+Part E step 20 done: the phase 4 demo and the closing of the books. `npm run demo:phase4`
+(`scripts/demo-phase4.mjs`) boots one test sidecar with the fakes for research, Etsy,
+Hugging Face images, Meta Ads and the Telegram Bot API and walks the chain, checking every
+link from a recorded event, a fake's log or a file: the mission and the plan; the Scout's
+brief judged with the memory's history in the judge's scope, recorded and decided by the
+Chief (the memory then shows the brief joined to the plan's venture and "too early",
+nothing projected); the listing pipeline recipe through its six steps to a live listing on
+the fake Etsy with three Gate approvals; an Ads Ranger's ad set as money out at the Gate,
+the card on the paired phone and the approval pressed through the fake Bot API, the set
+created paused; the creative the same way; the results rollup with its known zeros named
+for what they are and a hold verdict; the reflection's briefing mailed from the Peak to the
+Marketing camp's station address. It is the second release gate beside the phase 2 demo
+(D151). `docs/LIVE_TEST.md` carries the channel, MCP and voice steps for the real services,
+and `CODE_MAP.md`'s "Not built yet" list is exactly what is left: Google Trends, a connector
+that reports outgoing charges, an import beyond text, and the Mac-only verification of the
+build, voice, a WebGPU frame and computer control.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing
@@ -431,6 +448,9 @@ build, signing and notarization happen on the owner's Mac (steps 6 and 7).
 Phase 2 is complete. `npm run demo` proves the chain against the fakes from recorded
 events (`scripts/demo-phase2.mjs`); `docs/LIVE_TEST.md` is the runbook for the real
 services; `node scripts/park-check.mjs` shows the crew moving in headless Chromium.
+Phase 4 is complete too: `npm run demo:phase4` proves its chain the same way
+(`scripts/demo-phase4.mjs`, step 20 below), and what only the Mac can verify is listed under
+"Not built yet" in `CODE_MAP.md` and in `docs/RELEASE_RUNBOOK.md`.
 
 Phase 2 step 18 done: the Scout's kit, and with it every step of the phase 2 brief. A
 Trailhead sign now grants a Scout `web.search` (the Brave Search API when the

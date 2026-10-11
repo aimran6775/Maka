@@ -1580,3 +1580,19 @@ prefix. Memory items enter through `memory.write` and so through the judge; a pa
 a judge gets them as a file in the Ranger's import folder, never in memory. The import is
 the Superintendent's action at the Peak, so it needs no Gate, and `import.home` records it
 as counts, never text.
+
+## D151. The phase 4 demo is a release gate, and it proves the chain with the fakes the tests use
+
+Step 20 asks for `scripts/demo-phase4.mjs` and for test:fast, park:check and release:dry
+to stay green; it does not say whether the release should run the new demo. The stricter
+reading is taken: `npm run demo:phase4` is gate 2b in `scripts/release.mjs`, beside the
+phase 2 demo, so a release cannot ship with the brief, the listing pipeline, the ad set at
+the Gate, the Telegram approval, the results rollup or the briefing mail broken. The demo
+reuses the fakes under `test/helpers/` and nothing else: the same fake Etsy, Hugging Face,
+Meta Ads, research endpoints and Bot API the suites use, so what it proves is what the
+tests prove, chained. Two choices inside the demo follow the brief's rules rather than
+convenience: the listing pipeline's own Gate items (publishing and a $0 price change) are
+approved from the Peak so the chain moves, but the ad set's money out is left for the
+phone, because that is the approval the brief names; and the results checks assert the
+known zeros as known zeros (Etsy and Meta synced, no order, the set paused) and the hold
+verdict's reason, never a figure the engine did not compute.

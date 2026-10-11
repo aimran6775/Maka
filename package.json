@@ -15,6 +15,7 @@
     "test": "node --test test/",
     "test:fast": "node test/run-fast.js",
     "demo": "node scripts/demo-phase2.mjs",
+    "demo:phase4": "node scripts/demo-phase4.mjs",
     "park:check": "node scripts/park-check.mjs",
     "park:bench": "node scripts/park-bench.mjs",
     "shell:check": "node scripts/shell-check.mjs",

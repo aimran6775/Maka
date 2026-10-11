@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // `node scripts/release.mjs [--dry-run] [--skip-gates] [--skip-smoke] [--notes "…"]`:
 // the whole release, in order, from a clean tagged checkout on the owner's Mac:
-//   1. gates: test:fast, the phase 2 demo, the shell check (cargo check + host tests)
+//   1. gates: test:fast, the phase 2 and phase 4 demos, the shell check (cargo check + host tests)
 //   2. build (release-build.mjs): Node bundled, signed, notarized .app, .dmg, updater artifact
 //   3. notarize and staple the .dmg (release-notarize.mjs), verify both with Gatekeeper
 //   4. smoke launch of the built app under a fresh MAKA_HOME (release-smoke.mjs, step 7)
@@ -33,6 +33,7 @@ export async function release({ root = REPO_ROOT, out = path.join(root, 'dist'),
   if (!skipGates) {
     runner.run('npm', ['run', 'test:fast'], { cwd: root, note: 'gate 1: the merge gate' });
     runner.run('npm', ['run', 'demo'], { cwd: root, note: 'gate 2: the phase 2 chain against the fakes' });
+    runner.run('npm', ['run', 'demo:phase4'], { cwd: root, note: 'gate 2b: the phase 4 chain against the fakes' });
     runner.run('npm', ['run', 'shell:check'], { cwd: root, note: 'gate 3: the shell type-checks and its host tests pass' });
     steps.push('gates');
   }

@@ -213,8 +213,11 @@ All of phase 2 (`docs/PHASE2_BRIEF.md`) and phase 3 (`docs/PHASE3_BRIEF.md`, the
 app, below) are in this build.
 `npm run demo` walks the whole chain against the fakes (mission → plan → delegation →
 tools → a refund at the Gate → the report in the outbox → the ledger → the reflection) and
-checks every link from recorded events; `docs/LIVE_TEST.md` is the runbook for the same
-chain against the real services.
+checks every link from recorded events; `npm run demo:phase4` does the same for the phase 4
+chain (mission → the Scout's brief judged against its memory → the listing pipeline to a
+live listing → an ad set and a creative at the Gate → Approve from a Telegram card through
+the fake Bot API → the results rollup → the reflection's briefing in station mail);
+`docs/LIVE_TEST.md` is the runbook for the same chains against the real services.
 
 ```bash
 npm run test:fast   # the merge gate

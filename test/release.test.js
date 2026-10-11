@@ -174,6 +174,7 @@ test('release --dry-run: the exact sequence (gates, Node, build, notarize, stapl
     assert.deepEqual(heads, [
       'npm run test:fast',
       'npm run demo',
+      'npm run demo:phase4',
       'npm run shell:check',
       'node scripts/release-node.mjs --triple',
       'cargo tauri build',
@@ -244,7 +245,7 @@ test('the runbook names every release script, every signing variable, the gates 
   assert.ok(scripts.length >= 6, scripts.join(', '));
   for (const s of scripts) assert.ok(runbook.includes(s), `runbook mentions ${s}`);
   for (const k of Object.keys(SIGNING_ENV)) assert.ok(runbook.includes(k), `runbook mentions ${k}`);
-  for (const cmd of ['npm run test:fast', 'npm run demo', 'npm run shell:check', 'npm run release:dry', 'npm run release', 'cargo tauri signer generate', 'xcrun notarytool store-credentials', 'node scripts/park-check.mjs', 'sysadminctl -addUser']) assert.ok(runbook.includes(cmd), `runbook has ${cmd}`);
+  for (const cmd of ['npm run test:fast', 'npm run demo', 'npm run demo:phase4', 'npm run shell:check', 'npm run release:dry', 'npm run release', 'cargo tauri signer generate', 'xcrun notarytool store-credentials', 'node scripts/park-check.mjs', 'sysadminctl -addUser']) assert.ok(runbook.includes(cmd), `runbook has ${cmd}`);
   assert.ok(runbook.includes(NODE_VERSION), 'the bundled Node version');
   assert.ok(runbook.includes('releases/latest.json') && runbook.includes('releases/download.json'));
   const pkg = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, 'package.json'), 'utf8'));

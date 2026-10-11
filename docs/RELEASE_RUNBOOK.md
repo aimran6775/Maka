@@ -7,7 +7,7 @@ prints the sequence before anything runs. What was validated where:
 
 | Where | What |
 | --- | --- |
-| Linux (this repository's CI, no Xcode) | `npm run test:fast` (212 tests incl. the release scripts in dry run, the Node bundling against a fake nodejs.org, the shell's config and icons), `npm run shell:check` (`cargo check --target aarch64-apple-darwin` of `src-tauri/` and the host tests of the credential store, the broker and the HTTP client), `npm run demo`, `node scripts/park-check.mjs` |
+| Linux (this repository's CI, no Xcode) | `npm run test:fast` (212 tests incl. the release scripts in dry run, the Node bundling against a fake nodejs.org, the shell's config and icons), `npm run shell:check` (`cargo check --target aarch64-apple-darwin` of `src-tauri/` and the host tests of the credential store, the broker and the HTTP client), `npm run demo`, `npm run demo:phase4`, `node scripts/park-check.mjs` |
 | The Mac (this runbook) | `cargo test` in `src-tauri/` (incl. the Keychain), the build, signing, notarization, the smoke launch, the clean-account launch, publishing, the updater |
 
 ## 0. One-time setup on the Mac
@@ -61,6 +61,7 @@ needs nothing; publishing (step 5) needs a Cloudflare login.
 git checkout main && git pull --ff-only
 npm run test:fast                                        # the merge gate; must be green
 npm run demo                                             # the phase 2 chain against the fakes; must print DEMO OK
+npm run demo:phase4                                      # the phase 4 chain against the fakes (brief, listing, ad set, Telegram, results, briefing); must print DEMO OK
 npm run shell:check                                      # cargo check for Apple Silicon + the host tests
 (cd src-tauri && cargo test)                             # the shell's unit tests, the Keychain included (a Keychain prompt may appear once)
 node scripts/park-check.mjs                              # headless Chromium: the park and the first-run card; must print PARK CHECK OK
@@ -85,7 +86,7 @@ npm run release -- --notes "What changed, one line."     # the real thing; 10–
 What `npm run release` does, in order (`scripts/release.mjs`):
 
 1. Checks `HEAD` is the tag `v<version>` and the tree is clean.
-2. Gates: `npm run test:fast`, `npm run demo`, `npm run shell:check`.
+2. Gates: `npm run test:fast`, `npm run demo`, `npm run demo:phase4`, `npm run shell:check`.
 3. `node scripts/release-node.mjs`: downloads `node-v22.22.0-darwin-arm64.tar.gz`, verifies it against nodejs.org's `SHASUMS256.txt`, writes `src-tauri/binaries/node-aarch64-apple-darwin`.
 4. `scripts/release-build.mjs`: `cargo tauri build --target aarch64-apple-darwin --config dist/release/tauri.release.conf.json`; Tauri's bundler signs the shell and the Node binary (hardened runtime, `src-tauri/Entitlements.plist`) with `APPLE_SIGNING_IDENTITY`, notarizes the `.app` with `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` and staples it, builds the `.dmg`, and writes `Maka.app.tar.gz` + `.sig` signed with `TAURI_SIGNING_PRIVATE_KEY`. The overlay carries the updater endpoint and the public key from `src-tauri/updater.pub`.
 5. `scripts/release-notarize.mjs`: `xcrun notarytool submit <dmg> --keychain-profile maka-notary --wait`, `xcrun stapler staple`, `stapler validate`, `spctl --assess --type open --context context:primary-signature -v <dmg>`, `codesign --verify --deep --strict --verbose=2 <app>`, `spctl --assess --type execute -vv <app>`.

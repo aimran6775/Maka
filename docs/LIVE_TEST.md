@@ -3,8 +3,8 @@
 How to prove the phase 2 chain against the real services: Claude (judge and Chief), a
 local worker (Ollama) or the Hugging Face hosted worker, Resend and Cloudflare (mail),
 and, when the owner has them, Stripe, Shopify, Etsy, Meta Ads, Google Ads, Brave Search
-and a real Chromium. The automated suite (`npm run test:fast`) and the demo
-(`npm run demo`) use fakes under `test/helpers/`; the sidecar itself never does. There is
+and a real Chromium. The automated suite (`npm run test:fast`) and the demos
+(`npm run demo`, `npm run demo:phase4`) use fakes under `test/helpers/`; the sidecar itself never does. There is
 nothing to "disable": start the sidecar and it talks to the real endpoints named in
 `sidecar/**` (`RESEND_BASE_URL`, `CLOUDFLARE_BASE_URL`, `STRIPE_BASE_URL`, …).
 
