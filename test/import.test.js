@@ -44,6 +44,7 @@ function spyFs(opened) {
   return {
     readFile: async (f, enc) => { opened.push(f); return fsp.readFile(f, enc); },
     stat: (f) => fsp.stat(f),
+    lstat: (f) => fsp.lstat(f), // safety 2026-10-11 M4: links are looked at, never followed
     readdir: (d) => fsp.readdir(d),
   };
 }
@@ -86,8 +87,9 @@ test('readHome: an OpenClaw home (config for the model only, the workspace files
     assert.equal(oc.workspace, path.join(h.base, '.openclaw', 'workspace'));
     assert.equal(oc.name, 'Pip');
     assert.match(oc.persona, /^# Soul\n\nYou are Pip, a careful and cheerful helper/);
-    assert.match(oc.persona, /Operating instructions \(imported\):\n# Operating instructions/);
-    assert.match(oc.persona, /Tool notes:\nUse the ssh alias "lacie"/);
+    assert.match(oc.instructions, /^# Operating instructions/, 'the instructions are apart from the persona (safety 2026-10-11 M4)');
+    assert.match(oc.instructions, /Tool notes:\nUse the ssh alias "lacie"/);
+    assert.ok(!/Operating instructions/.test(oc.persona), 'and never in it');
     assert.ok(!/Ada Lovelace|ada@example\.com/.test(oc.persona), 'the owner\'s profile is not in the persona');
     assert.deepEqual(oc.model, { provider: 'anthropic', model: 'claude-sonnet-5-5' });
     assert.deepEqual(oc.policy, { worker: { provider: 'anthropic', model: 'claude-sonnet-5-5' } });
@@ -173,7 +175,7 @@ test('over HTTP: preview, then import creates the Ranger with the persona and th
     assert.match(report, /Keys were never transferred/);
     assert.match(report, /Redacted before anything was kept: 1 api key/);
     const ev = events.filter((e) => e.type === 'import.home').map((e) => e.payload);
-    assert.deepEqual(ev, [{ kind: 'openclaw', agentId: r.body.agent.id, persona: true, instructions: true, memoriesStored: 4, memoriesSkipped: 0, model: 'anthropic/claude-sonnet-5-5', redactions: 1, skipped: ev[0].skipped }]);
+    assert.deepEqual(ev, [{ kind: 'openclaw', agentId: r.body.agent.id, persona: true, instructions: true, memoriesStored: 4, memoriesSkipped: 0, model: 'anthropic/claude-sonnet-5-5', redactions: 1, skipped: ev[0].skipped, skillId: `imported-${r.body.agent.id.toLowerCase()}` }]);
     assert.ok(ev[0].skipped >= 4);
     assert.ok(events.some((e) => e.type === 'crew.agent' && e.payload.change === 'created' && e.payload.agentId === r.body.agent.id));
     const r2 = await srv.post('/api/import', { path: h.he, name: 'Herm' });

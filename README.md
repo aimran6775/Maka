@@ -411,9 +411,11 @@ handed to you; every action is traced with a screenshot before and after. Outsid
 the app the tools say not wired.
 
 Step 19, import from another home: at the Peak, point at an OpenClaw (`~/.openclaw`) or
-Hermes (`~/.hermes`) home, preview, and import it as a Ranger: the persona, the operating
-instructions, the memory (through the judge) and the model. Keys are never transferred: the
-files that hold them are never opened, and every text is redacted first.
+Hermes (`~/.hermes`) home, preview (the whole persona and the whole instructions), and
+import it as a Ranger: the persona, the memory (through the judge) and the model; the
+operating instructions are saved as a skill you enable on the Ranger's card after reading
+it, never put in its persona. Keys are never transferred: the files that hold them are never
+opened, symbolic links are never followed, and every text is redacted first.
 
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),

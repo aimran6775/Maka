@@ -557,6 +557,7 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     model: str,
     redactions: int0,
     skipped: int0,
+    skillId: str, // safety 2026-10-11 M4: the skill the instructions were saved as (not attached)
   }),
   // Added v1 (phase 4 step 18): one action on this Mac through the shell, as it went: done,
   // failed, refused (the shell or the policy said no), handed off (a sensitive app), halted

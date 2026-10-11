@@ -1720,3 +1720,20 @@ Superintendent or the Chief still lands where it belongs. A kill plan then reach
 a venture has no Ranger of the specialty for through the Ranger that made them, who holds
 the grants that made them; model spend stays per Ranger, as the brief asks, and rolls up
 through the crew.
+
+## D158. An import reads what the owner can see, and its instructions are a skill the owner turns on
+
+The second safety review (M4) found three ways a home could put words or files into the
+park the owner never read: `readText` followed symbolic links (a SOUL.md linked to a
+private key would land in layout.json), the OpenClaw workspace could point anywhere, and
+the Peak's preview showed 600 characters of a persona that also carried AGENTS.md, so a
+hidden instruction rode into the system prompt. A symbolic link is now never followed
+(the link itself is looked at with `lstat`, and an injected fs without `lstat` reads
+nothing, the stricter reading), the workspace must sit inside the home or `workspace/` is
+used with a warning, and the preview is the whole persona and the whole instructions.
+The brief's "persona, instructions, memory and model mapped to a Ranger" is kept, but the
+instructions map to a skill, not to the persona: a skill is a text the owner reads at the
+Peak and enables on a card, so the hidden line is seen before it reaches a prompt, and the
+import attaches it to nobody. The alternative, keeping the instructions in the persona
+behind a full preview, was rejected because a preview is read once and a persona runs on
+every turn; D150 stands for everything else.

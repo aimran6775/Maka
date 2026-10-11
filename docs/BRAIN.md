@@ -326,12 +326,17 @@ banner and the hotkey are on the Mac's list in the runbook.
 
 Part E step 19 done: import from OpenClaw and Hermes homes. At the Peak the Superintendent
 points at a home (the known ones on this machine are listed), previews what would come over
-and imports it as one Ranger: SOUL.md becomes the persona, AGENTS.md and TOOLS.md the
-imported operating instructions, IDENTITY.md the name, MEMORY.md and the last daily logs
+and imports it as one Ranger: SOUL.md becomes the persona, AGENTS.md and TOOLS.md a skill
+("Imported instructions for …") saved but attached to nobody until the owner has read it
+and enables it on the Ranger's card (never words in the persona the owner did not choose),
+IDENTITY.md the name, MEMORY.md and the last daily logs
 the memory, and the model named in `openclaw.json` or `config.yaml` the Ranger's worker when
 it maps to a provider the park has (anthropic, openrouter, ollama; anything else is a
 warning, not a guess). Keys are never transferred: `.env`, `auth.json`, credentials,
-sessions and databases are never opened and the config is read for its model only; every
+sessions and databases are never opened, the config is read for its model only, a symbolic
+link is never followed (a SOUL.md pointing at a private key reads nothing and is listed as
+skipped), the OpenClaw workspace stays inside the home whatever the config says, and the
+preview shows the whole persona and the whole instructions (safety 2026-10-11 M4); every
 text is redacted first and a memory line that carried a key or a token is dropped whole.
 The owner's profile (USER.md) stays out of a Ranger's memory. Memory items are written
 through the judge like any other (D142); without a judge they go to the Ranger's import
@@ -420,6 +425,9 @@ goes only to that venture's Ranger of the specialty, work items carry their vent
 (recipes, purchases and kill items name it), results attribute by the item's venture, and
 a kill pauses an object through the Ranger that made it when the venture has no Ranger of
 the specialty (D157).
+M4 done: an import follows no symbolic link, keeps the workspace inside the home, previews
+everything, and turns the home's instructions into a skill the owner enables rather than
+persona (D158).
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

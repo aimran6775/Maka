@@ -20,6 +20,9 @@
 //
 //   readHome(dir, { fs, maxItems }) -> { kind, root, name, persona, instructions, memories,
 //                                       model, policy, skipped, warnings, redactions, read }
+//   (safety 2026-10-11 M4: symbolic links are never followed, the OpenClaw workspace stays
+//   inside the home, the persona is SOUL.md alone and the instructions become a skill the
+//   owner enables)
 //   candidates({ home, fs })        -> the known homes that exist on this machine
 //   createImporter({ agents, memory, workspaceRoot, bus, clock, log }) -> { preview, run }
 
@@ -38,6 +41,7 @@ export const KNOWN_HOMES = Object.freeze([
 // Never opened, whatever the home: where keys and sessions live.
 export const NEVER_READ = Object.freeze([/^\.env($|\.)/i, /^auth\.json$/i, /^credentials/i, /\.key$/i, /\.pem$/i, /^sessions?$/i, /\.db$/i, /\.sqlite3?$/i, /^secrets?/i, /^token/i]);
 export const PERSONA_MAX = 4000; // shared/world.js: an agent's persona
+export const INSTRUCTIONS_MAX = 4000; // sidecar/recipes/schema.js: a skill's instructions
 export const MEMORY_ITEM_MAX = 600;
 export const MEMORY_ITEMS_MAX = 40;
 export const DAILY_LOGS_MAX = 7;
@@ -48,9 +52,27 @@ export function neverRead(name) {
   return NEVER_READ.some((re) => re.test(name));
 }
 
-async function readText(fs, file, read) {
+// Is this path a symbolic link? (lstat, so the link itself is looked at; an fs without
+// lstat cannot say, and then nothing is read: safety 2026-10-11 M4.)
+async function isSymlink(fs, file) {
+  if (typeof fs.lstat !== 'function') return true;
+  try {
+    return (await fs.lstat(file)).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+// One text file of the home. A symbolic link is never followed (safety 2026-10-11 M4: a
+// SOUL.md pointing at a private key would otherwise land in the park) and is listed as
+// skipped; a never-read name is not opened.
+async function readText(fs, file, read, skipped = null) {
   const base = path.basename(file);
   if (neverRead(base)) return null;
+  if (await isSymlink(fs, file)) {
+    if (skipped) skipped.push(`${base} (a symbolic link: not followed, nothing read)`);
+    return null;
+  }
   try {
     const text = await fs.readFile(file, 'utf8');
     read.push(file);
@@ -67,6 +89,12 @@ async function exists(fs, file) {
   } catch {
     return false;
   }
+}
+
+// Is `child` inside `parent` (or the same)? Both resolved; no `..` escape.
+export function insideDir(parent, child) {
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
 // The model named in a config, as { provider, model } or null. JSON (OpenClaw) is parsed and
@@ -195,7 +223,13 @@ export async function readHome(dir, { fs = fsp, maxItems = MEMORY_ITEMS_MAX } = 
       try {
         const cfg = JSON.parse(cfgText);
         const ws = (cfg.agents && cfg.agents.defaults && cfg.agents.defaults.workspace) || (cfg.agent && cfg.agent.workspace) || cfg.workspace;
-        if (typeof ws === 'string' && ws.trim()) workspace = path.resolve(root, ws.replace(/^~(?=$|\/)/, os.homedir()));
+        if (typeof ws === 'string' && ws.trim()) {
+          const wanted = path.resolve(root, ws.replace(/^~(?=$|\/)/, os.homedir()));
+          // The workspace stays inside the home (safety 2026-10-11 M4): a config pointing
+          // anywhere else would make the import read that place.
+          if (insideDir(root, wanted) && !(await isSymlink(fs, wanted))) workspace = wanted;
+          else warnings.push(`openclaw.json names a workspace outside the home (${wanted}): not followed; only files under ${root} are read`);
+        }
       } catch {
         warnings.push('openclaw.json is not valid JSON; the model was not read');
       }
@@ -211,10 +245,10 @@ export async function readHome(dir, { fs = fsp, maxItems = MEMORY_ITEMS_MAX } = 
     for (const f of ['.env', 'auth.json']) if (await has(f)) skipped.push(`${f} (never opened: keys stay where they are)`);
   }
   for (const f of ['.env', 'auth.json', 'credentials.json', 'sessions']) if (kind !== 'hermes' && (await has(f))) skipped.push(`${f} (never opened: keys and sessions stay where they are)`);
-  const soul = await readText(fs, path.join(workspace, 'SOUL.md'), read);
-  const agentsMd = await readText(fs, path.join(workspace, 'AGENTS.md'), read);
-  const identity = await readText(fs, path.join(workspace, 'IDENTITY.md'), read);
-  const toolsMd = await readText(fs, path.join(workspace, 'TOOLS.md'), read);
+  const soul = await readText(fs, path.join(workspace, 'SOUL.md'), read, skipped);
+  const agentsMd = await readText(fs, path.join(workspace, 'AGENTS.md'), read, skipped);
+  const identity = await readText(fs, path.join(workspace, 'IDENTITY.md'), read, skipped);
+  const toolsMd = await readText(fs, path.join(workspace, 'TOOLS.md'), read, skipped);
   if (await exists(fs, path.join(workspace, 'USER.md'))) skipped.push('USER.md (the owner\'s profile: personal data stays out of a Ranger\'s memory)');
   if (await exists(fs, path.join(workspace, 'memories', 'USER.md'))) skipped.push('memories/USER.md (the owner\'s profile: personal data stays out of a Ranger\'s memory)');
   if (await exists(fs, path.join(workspace, 'HEARTBEAT.md'))) skipped.push('HEARTBEAT.md (a schedule for that agent, not a Ranger\'s)');
@@ -237,17 +271,20 @@ export async function readHome(dir, { fs = fsp, maxItems = MEMORY_ITEMS_MAX } = 
     dropped.push(...r.dropped);
   };
   for (const f of ['MEMORY.md', path.join('memories', 'MEMORY.md'), path.join('memory', 'MEMORY.md')]) {
-    const t = await readText(fs, path.join(workspace, f), read);
+    const t = await readText(fs, path.join(workspace, f), read, skipped);
     if (t) take(t, f);
   }
   // OpenClaw's daily logs: the last few days, newest first.
   const logDir = path.join(workspace, 'memory');
   try {
-    const days = (await fs.readdir(logDir)).filter((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f)).sort().reverse().slice(0, DAILY_LOGS_MAX);
-    for (const d of days) {
-      if (memories.length >= maxItems) break;
-      const t = await readText(fs, path.join(logDir, d), read);
-      if (t) take(t, `memory/${d}`);
+    if (await isSymlink(fs, logDir)) skipped.push('memory/ (a symbolic link: not followed)');
+    else {
+      const days = (await fs.readdir(logDir)).filter((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f)).sort().reverse().slice(0, DAILY_LOGS_MAX);
+      for (const d of days) {
+        if (memories.length >= maxItems) break;
+        const t = await readText(fs, path.join(logDir, d), read, skipped);
+        if (t) take(t, `memory/${d}`);
+      }
     }
   } catch {
     /* no daily logs */
@@ -258,8 +295,13 @@ export async function readHome(dir, { fs = fsp, maxItems = MEMORY_ITEMS_MAX } = 
   const mapped = mapModel(model);
   if (mapped.warning) warnings.push(mapped.warning);
   if (!soul) warnings.push('no SOUL.md: the Ranger gets no persona from the home');
-  const persona = [personaRed.text.trim(), instructionsRed.text.trim() ? `Operating instructions (imported):\n${instructionsRed.text.trim()}` : ''].filter(Boolean).join('\n\n');
-  if (persona.length > PERSONA_MAX) warnings.push(`the persona and instructions were clipped to ${PERSONA_MAX} characters`);
+  // The persona is SOUL.md alone; AGENTS.md and TOOLS.md are operating instructions, kept
+  // apart so they become a skill the owner enables, never words in the system prompt the
+  // owner did not choose (safety 2026-10-11 M4).
+  const persona = personaRed.text.trim();
+  const instructions = instructionsRed.text.trim();
+  if (persona.length > PERSONA_MAX) warnings.push(`the persona was clipped to ${PERSONA_MAX} characters`);
+  if (instructions.length > INSTRUCTIONS_MAX) warnings.push(`the instructions were clipped to ${INSTRUCTIONS_MAX} characters`);
   const counts = {};
   for (const r of redactions) counts[r.kind] = (counts[r.kind] || 0) + r.count;
   return {
@@ -268,8 +310,9 @@ export async function readHome(dir, { fs = fsp, maxItems = MEMORY_ITEMS_MAX } = 
     workspace,
     name,
     persona: persona.slice(0, PERSONA_MAX),
-    personaChars: personaRed.text.trim().length,
-    instructionsChars: instructionsRed.text.trim().length,
+    instructions: instructions.slice(0, INSTRUCTIONS_MAX),
+    personaChars: persona.length,
+    instructionsChars: instructions.length,
     memories: memories.map((m) => ({ kind: m.kind, text: m.text, source: m.source })),
     model,
     policy: mapped.policy,
@@ -290,7 +333,7 @@ export async function candidates({ home = os.homedir(), fs = fsp } = {}) {
   return out;
 }
 
-export function createImporter({ agents, memory = null, getLayout, workspaceRoot, bus, clock = { now: () => Date.now() }, fs = fsp, home = os.homedir(), log = console } = {}) {
+export function createImporter({ agents, memory = null, skills = null, getLayout, workspaceRoot, bus, clock = { now: () => Date.now() }, fs = fsp, home = os.homedir(), log = console } = {}) {
   if (!agents || !workspaceRoot || !bus || !getLayout) throw new TypeError('createImporter needs agents, getLayout, workspaceRoot and bus');
   // Where the Ranger stands: the zone given, else the specialty's camp (made if missing, as
   // the Chief does when hiring), else the Ranger Station; never the Peak or the Gate.
@@ -308,7 +351,9 @@ export function createImporter({ agents, memory = null, getLayout, workspaceRoot
     async preview({ path: dir } = {}) {
       if (typeof dir !== 'string' || !dir.trim()) throw Object.assign(new Error('path is required'), { code: 'BAD_REQUEST', status: 400 });
       const r = await readHome(dir, { fs });
-      return { ...r, personaPreview: r.persona.slice(0, 600), memories: r.memories.slice(0, 10), memoryCount: r.memories.length };
+      // The whole persona and the whole instructions (safety 2026-10-11 M4): what the owner
+      // approves is what they read, not its first 600 characters.
+      return { ...r, personaPreview: r.persona, instructionsPreview: r.instructions, memories: r.memories.slice(0, 10), memoryCount: r.memories.length };
     },
     // Creates the Ranger, then its memory items through the judge; without a judge the
     // items go to the Ranger's import folder as a file, never into memory (D142).
@@ -321,6 +366,22 @@ export function createImporter({ agents, memory = null, getLayout, workspaceRoot
       if (venture) spec.venture = venture;
       if (r.policy) spec.policy = r.policy;
       const agent = await agents.create(spec, { by: 'superintendent' });
+      // The operating instructions become a skill, saved but attached to nobody: the owner
+      // reads it and enables it on the Ranger's card (safety 2026-10-11 M4). Without the
+      // skills module they go to the import folder as a file.
+      let skill = null;
+      let skillNote = 'none (no instructions in the home)';
+      if (r.instructions) {
+        const id = `imported-${agent.id.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`.replace(/-+$/, '').slice(0, 60);
+        if (skills && typeof skills.saveSkill === 'function') {
+          try {
+            skill = await skills.saveSkill({ id, title: `Imported instructions for ${agent.name}`.slice(0, 120), summary: `AGENTS.md / TOOLS.md of the ${r.kind} home at ${r.root}, redacted; not attached until you enable it`.slice(0, 300), instructions: r.instructions, source: `import:${r.kind}` }, { by: 'superintendent' });
+            skillNote = `saved as skill "${skill.id}" (not attached: enable it on the Ranger's card after reading it)`;
+          } catch (err) {
+            skillNote = `could not be saved as a skill (${err.message}); written to import/instructions.md instead`;
+          }
+        } else skillNote = 'written to import/instructions.md (no skills module); nothing of it is in the persona';
+      }
       const stored = [];
       const notStored = [];
       for (const m of r.memories) {
@@ -342,7 +403,8 @@ export function createImporter({ agents, memory = null, getLayout, workspaceRoot
         '',
         `Source: ${r.root}${r.workspace !== r.root ? ` (workspace ${r.workspace})` : ''}`,
         `Ranger: ${agent.name} (${agent.id})`,
-        `Persona: ${r.personaChars} character(s) from SOUL.md; instructions: ${r.instructionsChars} character(s)`,
+        `Persona: ${r.personaChars} character(s) from SOUL.md (the instructions are not in it)`,
+        `Instructions: ${r.instructionsChars} character(s) from AGENTS.md / TOOLS.md: ${skillNote}`,
         `Model: ${r.model ? `${r.model.provider || '?'} / ${r.model.model}` : 'none named'}${r.policy ? ` → worker ${r.policy.worker.provider} ${r.policy.worker.model}` : ''}`,
         `Memory: ${stored.length} item(s) stored through the judge, ${notStored.length} not stored`,
         `Redacted before anything was kept: ${r.redactions.length ? r.redactions.map((x) => `${x.count} ${x.kind}`).join(', ') : 'nothing'}`,
@@ -353,9 +415,10 @@ export function createImporter({ agents, memory = null, getLayout, workspaceRoot
       ].filter((l) => l !== '').join('\n');
       await fsp.writeFile(path.join(dirOut, 'README.md'), `${report}\n`);
       if (notStored.length) await fsp.writeFile(path.join(dirOut, 'memory.md'), `# Memory items not stored (${notStored[0].reason})\n\n${notStored.map((m) => `- ${m.text}  (${m.source})`).join('\n')}\n`);
-      emit('import.home', { kind: r.kind, agentId: agent.id, persona: r.personaChars > 0, instructions: r.instructionsChars > 0, memoriesStored: stored.length, memoriesSkipped: notStored.length, model: r.policy ? `${r.policy.worker.provider}/${r.policy.worker.model}` : '', redactions: r.redactions.reduce((n, x) => n + x.count, 0), skipped: r.skipped.length });
+      if (r.instructions && !skill) await fsp.writeFile(path.join(dirOut, 'instructions.md'), `# Operating instructions from the ${r.kind} home (not applied)\n\nRead them, and save what you want as a skill at the Peak.\n\n${r.instructions}\n`);
+      emit('import.home', { kind: r.kind, agentId: agent.id, persona: r.personaChars > 0, instructions: r.instructionsChars > 0, memoriesStored: stored.length, memoriesSkipped: notStored.length, model: r.policy ? `${r.policy.worker.provider}/${r.policy.worker.model}` : '', redactions: r.redactions.reduce((n, x) => n + x.count, 0), skipped: r.skipped.length, ...(skill ? { skillId: skill.id } : {}) });
       log.info && log.info(`import: ${agent.id} from ${r.kind} home ${r.root}: ${stored.length} memory item(s) stored, ${notStored.length} not`);
-      return { agent, kind: r.kind, root: r.root, persona: r.personaChars, instructions: r.instructionsChars, memoriesStored: stored, memoriesSkipped: notStored.length, model: r.model, policy: r.policy, redactions: r.redactions, skipped: r.skipped, warnings: r.warnings, report: path.join(agent.id, 'import', 'README.md') };
+      return { agent, kind: r.kind, root: r.root, persona: r.personaChars, instructions: r.instructionsChars, skillId: skill ? skill.id : null, memoriesStored: stored, memoriesSkipped: notStored.length, model: r.model, policy: r.policy, redactions: r.redactions, skipped: r.skipped, warnings: r.warnings, report: path.join(agent.id, 'import', 'README.md') };
     },
   };
 }

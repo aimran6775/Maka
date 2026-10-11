@@ -157,7 +157,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const computer = await createComputerControl({ bus, env, workspaceRoot, ownHosts: [`${host}:${port}`, `localhost:${port}`], log }).init();
   Object.assign(registry, computer.tools);
   // Phase 4 step 19: another agent's home (OpenClaw, Hermes) imported as a Ranger.
-  const importer = createImporter({ agents, memory, getLayout: layoutState.get, workspaceRoot, bus, log });
+  const importer = createImporter({ agents, memory, skills: recipes, getLayout: layoutState.get, workspaceRoot, bus, log });
   // A finished connector sync or work item rolls the day up (debounced), so the Peak's
   // results follow the syncs without a reflection.
   let rollupTimer = null;

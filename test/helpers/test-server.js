@@ -129,7 +129,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   Object.assign(registry, purchases.tools);
   const computer = await createComputerControl({ bus, env, workspaceRoot, clock, log: { error() {} } }).init();
   Object.assign(registry, computer.tools);
-  const importer = createImporter({ agents, memory, getLayout: layoutState.get, workspaceRoot, bus, clock, home: importHome || os.homedir(), log: { error() {} } });
+  const importer = createImporter({ agents, memory, skills: recipes, getLayout: layoutState.get, workspaceRoot, bus, clock, home: importHome || os.homedir(), log: { error() {} } });
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, getConnectors: () => connectors, getMail: () => mailSystem, getResults: () => results, log: { error() {} } }).init();
   await workspace.check();
   // `research`: endpoints for the fakes ({ braveBaseUrl, duckBaseUrl, wikiApi, wikiRest, hnApi });

@@ -362,10 +362,16 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 
 - At the Peak's import section the homes found on this machine are listed. Point at one,
   Preview: the kind, the persona and instruction sizes, the memory item count, the model
-  and what it maps to, what was redacted and what is skipped (`.env`, `auth.json`, USER.md).
-- Import as a Ranger: a `crew.agent created` with the persona, the worker policy when the
-  model mapped, `memory.write stored` events through the judge (or the items in
-  `<agent>/import/memory.md` without one), an `import.home` event with the counts, and
+  and what it maps to, what was redacted and what is skipped (`.env`, `auth.json`, USER.md),
+  then the whole persona and the whole instructions, so a hidden line in AGENTS.md is read
+  before anything is imported. Make `SOUL.md` a symbolic link to any file and Preview again:
+  persona 0 chars, "SOUL.md (a symbolic link: not followed, nothing read)" under skipped
+  (safety 2026-10-11 M4).
+- Import as a Ranger: a `crew.agent created` with the persona (SOUL.md alone), the worker
+  policy when the model mapped, `memory.write stored` events through the judge (or the
+  items in `<agent>/import/memory.md` without one), an `import.home` event with the counts
+  and the `skillId`, the instructions as that skill in the Peak's skills list attached to
+  nobody (enable it on the Ranger's card after reading it), and
   `<agent>/import/README.md` saying keys were never transferred.
 
 ## 16. Telegram (phase 4)
