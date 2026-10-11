@@ -7,10 +7,14 @@
 //!   * keeps a menu bar item with the Entrance Gate count, the Away toggle, the login item
 //!     and the updater (tray.rs),
 //!   * owns the Keychain and hands the sidecar a session-scoped credential broker
-//!     (credentials.rs, broker.rs; phase 3 step 2).
+//!     (credentials.rs, broker.rs; phase 3 step 2),
+//!   * drives this Mac for a Ranger over that same socket (computer.rs; phase 4 step 18):
+//!     a banner window while it drives and the ⌃⌥⌘H hotkey that halts it.
 //! Closing the window hides it; the app keeps running (24/7 is the point) until Quit.
 
 pub mod broker;
+pub mod computer;
+pub mod computer_policy;
 pub mod credentials;
 pub mod local_http;
 pub mod sidecar;
@@ -25,6 +29,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 pub const MAIN_WINDOW: &str = "main";
+pub const BANNER_WINDOW: &str = "banner";
 pub const READY_TIMEOUT: Duration = Duration::from_secs(60);
 pub const STOP_GRACE: Duration = Duration::from_secs(8);
 pub const MAX_RESTARTS_PER_MINUTE: usize = 3;
@@ -44,6 +49,10 @@ pub struct Shell {
     pub splash: Mutex<Option<String>>,
     /// The credential broker (step 2): one per session, closed on exit.
     pub broker: Mutex<Option<broker::Broker>>,
+    /// Computer control (phase 4 step 18): the halt flag, who drives, the banner hook.
+    pub computer: Arc<computer::Computer>,
+    /// The halt hotkey's registration, kept alive for the life of the app.
+    pub hotkey: Mutex<Option<global_hotkey::GlobalHotKeyManager>>,
 }
 
 pub type ShellState = Arc<Shell>;
@@ -71,6 +80,7 @@ pub fn run() {
                 *shell.splash.lock().unwrap() = Some(u.to_string());
             }
             tray::install(app.handle())?;
+            install_computer_control(app.handle(), &shell);
             let handle = app.handle().clone();
             let shell2 = shell.clone();
             std::thread::Builder::new()
@@ -109,6 +119,66 @@ pub fn run() {
             RunEvent::Reopen { .. } => show_main(app),
             _ => {}
         });
+}
+
+/// Computer control's two visible parts (phase 4 step 18): the banner window (hidden until
+/// a Ranger drives) and the halt hotkey. The hotkey halts in the shell at once and tells the
+/// sidecar through its own API, with the per-boot token, so the park says so too.
+pub fn install_computer_control(app: &AppHandle, shell: &ShellState) {
+    match WebviewWindowBuilder::new(app, BANNER_WINDOW, WebviewUrl::App("banner.html".into()))
+        .title("Maka is driving this Mac")
+        .inner_size(430.0, 44.0)
+        .position(20.0, 40.0)
+        .decorations(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false)
+        .build()
+    {
+        Ok(_) => {
+            let handle = app.clone();
+            shell.computer.set_banner(Box::new(move |on| {
+                if let Some(w) = handle.get_webview_window(BANNER_WINDOW) {
+                    let _ = if on { w.show() } else { w.hide() };
+                }
+            }));
+        }
+        Err(e) => eprintln!("maka: banner window not created ({e}); computer control shows no banner"),
+    }
+    use global_hotkey::hotkey::{Code, HotKey, Modifiers};
+    use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
+    match GlobalHotKeyManager::new() {
+        Ok(manager) => {
+            let key = HotKey::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER), Code::KeyH);
+            match manager.register(key) {
+                Ok(()) => {
+                    *shell.hotkey.lock().unwrap() = Some(manager);
+                    let shell2 = shell.clone();
+                    std::thread::Builder::new()
+                        .name("maka-halt-hotkey".into())
+                        .spawn(move || {
+                            let rx = GlobalHotKeyEvent::receiver();
+                            while let Ok(ev) = rx.recv() {
+                                if ev.id != key.id() || ev.state != HotKeyState::Pressed {
+                                    continue;
+                                }
+                                shell2.computer.halt();
+                                eprintln!("maka: computer control halted by {}", computer_policy::HALT_HOTKEY_LABEL);
+                                let url = shell2.url.lock().unwrap().clone();
+                                let token = shell2.token.lock().unwrap().clone();
+                                if let Some(u) = url {
+                                    let _ = local_http::post_json(&format!("{u}/api/computer/halt"), "{\"by\":\"hotkey\"}", token.as_deref(), Duration::from_secs(5));
+                                }
+                            }
+                        })
+                        .expect("spawn the halt hotkey thread");
+                }
+                Err(e) => eprintln!("maka: halt hotkey not registered ({e}); halt computer control from the Peak"),
+            }
+        }
+        Err(e) => eprintln!("maka: hotkey manager not started ({e}); halt computer control from the Peak"),
+    }
 }
 
 pub fn show_main(app: &AppHandle) {
@@ -241,7 +311,7 @@ pub fn session_env(_app: &AppHandle, shell: &Shell, launch: &sidecar::Launch) ->
     if guard.is_none() {
         let store: Arc<dyn credentials::Store> = Arc::from(credentials::open(&launch.home));
         let base = std::env::temp_dir();
-        match broker::start(store.clone(), &base) {
+        match broker::start(store.clone(), shell.computer.clone(), &base) {
             Ok(b) => {
                 println!("maka: credentials from {} via {}", store.describe(), b.socket.display());
                 *guard = Some(b);

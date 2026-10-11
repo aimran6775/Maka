@@ -453,3 +453,24 @@ test('phase 4 step 17 purchases: the snapshot carries the summary, purchase.upda
   assert.deepEqual(purchaseExecutors(layout).map((a) => a.id), ['ranger']);
   assert.deepEqual(purchaseExecutors(defaultLayout()), []);
 });
+
+test('phase 4 step 18 computer control: the snapshot carries the status, computer.handoff rows wait and return, computer.action keeps the sessions and the halt', async () => {
+  const { pendingComputerHandoffs } = await import('../frontend/state.js');
+  const base = applySnapshot(initialState(), { contract: 1, layout: defaultLayout(), objectKinds: OBJECT_KINDS, agentStates: {}, computer: { wired: true, platform: 'macos', permissions: { accessibility: true, screenRecording: false }, halted: null, sessions: [], pending: 0, hotkey: '⌃⌥⌘H' } });
+  assert.equal(base.computer.wired, true);
+  let s = applyEvent(base, makeEvent('agent.run.start', { runId: 'run-1', agentId: 'ranger', provider: 'fake', model: 'm', prompt: 'drive', maxTurns: 5, budgetUsd: 0.5, tools: ['computer.click'] }, { ts: 1 }));
+  s = applyEvent(s, makeEvent('computer.action', { agentId: 'ranger', action: 'session', status: 'session_start', runId: 'run-1' }, { ts: 2 }));
+  assert.deepEqual(s.computer.sessions, [{ agentId: 'ranger', runId: 'run-1', since: 2, actions: 0 }]);
+  s = applyEvent(s, makeEvent('computer.action', { agentId: 'ranger', action: 'click', status: 'done', runId: 'run-1', app: 'Safari' }, { ts: 3 }));
+  assert.equal(s.computer.sessions[0].actions, 1);
+  s = applyEvent(s, makeEvent('computer.handoff', { handoffId: 'chand-1', agentId: 'ranger', status: 'waiting', kind: 'sensitive_app', runId: 'run-1', app: 'Terminal', action: 'type', reason: 'never driven' }, { ts: 4 }));
+  assert.equal(pendingComputerHandoffs(s).length, 1);
+  assert.equal(s.agentStates.ranger, 'waiting');
+  s = applyEvent(s, makeEvent('computer.handoff', { handoffId: 'chand-1', agentId: 'ranger', status: 'returned', kind: 'sensitive_app', runId: 'run-1', app: 'Terminal', notes: 'done it' }, { ts: 5 }));
+  assert.equal(pendingComputerHandoffs(s).length, 0);
+  assert.ok(s.runs['run-1'].items.some((i) => i.kind === 'note' && /Computer handoff \(sensitive_app, Terminal\) returned — done it/.test(i.text)));
+  s = applyEvent(s, makeEvent('computer.action', { agentId: 'ranger', action: 'click', status: 'halted', runId: 'run-1', reason: 'halted by the hotkey' }, { ts: 6 }));
+  assert.deepEqual(s.computer.halted, { by: 'halted by the hotkey', at: 6 });
+  s = applyEvent(s, makeEvent('computer.action', { agentId: 'ranger', action: 'session', status: 'session_end', runId: 'run-1', reason: 'halted' }, { ts: 7 }));
+  assert.deepEqual(s.computer.sessions, []);
+});

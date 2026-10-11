@@ -37,6 +37,9 @@ export function initialState() {
     memory: null, // Ranger memory counts from the snapshot (phase 4 step 11); `stale` after a memory.* event
     scoutMemory: null, // the Scout's memory summary from the snapshot (phase 4 step 10); `stale` after scout.brief
     results: null, // the results engine's summary from the snapshot (phase 4 step 9); `latest` patched by results.rollup
+    computer: null, // computer control from the snapshot (phase 4 step 18: wired, permissions, halted, sessions, pending); computer.action session events patch sessions
+    computerHandoffs: {}, // handoffId -> latest computer.handoff payload (+ ts)
+    computerHandoffOrder: [], // handoffIds, oldest first
     purchases: null, // supplier purchases from the snapshot (phase 4 step 17: open, heldUsd, paid, paidUsd, unreconciled, sources, recent); purchase.update patches recent and marks stale
 
     channels: null, // { adapters: [row per channel], pairing } from the snapshot; channel.connect patches rows (phase 4 step 1)
@@ -120,6 +123,7 @@ export function applySnapshot(state, snap) {
   next.creative = snap.creative || null;
   next.results = snap.results || null;
   next.purchases = snap.purchases || null;
+  next.computer = snap.computer || null;
   next.scoutMemory = snap.scoutMemory || null;
   next.memory = snap.memory || null;
   next.recipes = snap.recipes || null;
@@ -389,6 +393,28 @@ export function applyEvent(state, event) {
       next.scoutMemory = { ...(next.scoutMemory || { totals: { briefs: 0, go: 0, noGo: 0, needsMore: 0, joined: 0, decided: 0 }, byNiche: [], byChannel: [], recent: [] }), latest: { briefId: p.briefId, change: p.change, at: event.ts, decision: p.decision || null, recommendation: p.recommendation || null }, stale: true };
       return next;
     }
+    case 'computer.handoff': {
+      const prev = next.computerHandoffs[p.handoffId];
+      next.computerHandoffs = { ...next.computerHandoffs, [p.handoffId]: { ...(prev || {}), ...p, ts: event.ts } };
+      if (!prev) next.computerHandoffOrder = [...next.computerHandoffOrder, p.handoffId].slice(-100);
+      const run = p.runId ? next.runs[p.runId] : null;
+      if (run && run.status === 'running') {
+        if (p.status === 'waiting') next = setAgent(next, p.agentId, 'waiting', p.runId);
+        else next = updateRun(next, p.runId, (r) => ({ ...r, items: [...r.items, { kind: 'note', text: `Computer handoff (${p.kind}${p.app ? `, ${p.app}` : ''}) ${p.status}${p.notes ? ` — ${p.notes}` : ''}` }] }));
+      }
+      return next;
+    }
+    case 'computer.action': {
+      // What the shell did, as it proved it: the session list follows start / end, a halt
+      // marks the control halted until the snapshot says otherwise.
+      const c = next.computer || { wired: true, sessions: [], pending: 0, halted: null };
+      if (p.status === 'session_start') next.computer = { ...c, sessions: [...(c.sessions || []).filter((s) => s.runId !== p.runId), { agentId: p.agentId, runId: p.runId || null, since: event.ts, actions: 0 }] };
+      else if (p.status === 'session_end') next.computer = { ...c, sessions: (c.sessions || []).filter((s) => s.runId !== p.runId) };
+      else if (p.status === 'halted') next.computer = { ...c, halted: c.halted || { by: p.reason || 'halted', at: event.ts } };
+      else if (p.status === 'done') next.computer = { ...c, sessions: (c.sessions || []).map((s) => (s.runId === p.runId ? { ...s, actions: (s.actions || 0) + 1 } : s)) };
+      if (p.runId && next.runs[p.runId] && p.status !== 'done') next = updateRun(next, p.runId, (r) => ({ ...r, items: [...r.items, { kind: 'note', text: `Computer ${p.action} ${p.status}${p.app ? ` in ${p.app}` : ''}${p.reason ? ` — ${p.reason}` : ''}` }] }));
+      return next;
+    }
     case 'purchase.update': {
       // A purchase changed state: the row is what the event proved; the table is re-read
       // from /api/purchases. A `reconciled` event keeps the row paid with its reconciliation.
@@ -585,6 +611,10 @@ export function workFor(state, agentId) {
 // Gate items still waiting on the Superintendent, oldest first.
 export function pendingHandoffs(state) {
   return state.browserHandoffOrder.map((id) => state.browserHandoffs[id]).filter((h) => h && h.status === 'waiting');
+}
+
+export function pendingComputerHandoffs(state) {
+  return state.computerHandoffOrder.map((id) => state.computerHandoffs[id]).filter((h) => h && h.status === 'waiting');
 }
 
 export function pendingGate(state) {

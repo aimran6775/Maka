@@ -4,7 +4,7 @@ import { el, createWindow, setChildren, fmtUsd } from './windows.js';
 import { workerLines } from './worker.js';
 import { sparkline } from './sparkline.js';
 import { parsePurchaseItems, purchaseRowText, purchaseExecutors } from './purchases.js';
-import { grantedTools, toolUses, lastModel, pendingGate, pendingHandoffs, recentGate, judgeVerdicts, workInTransit, workFor } from '../state.js';
+import { grantedTools, toolUses, lastModel, pendingGate, pendingHandoffs, pendingComputerHandoffs, recentGate, judgeVerdicts, workInTransit, workFor } from '../state.js';
 import { LEASH_LEVEL_LABELS, LEASH_LEVELS, DOMAINS, resolveAllLeash, resolveLeash } from '../../shared/leash.js';
 
 export function createInspect({ parent, getState, api, x, y, w }) {
@@ -150,6 +150,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       run ? row('spend', `${fmtUsd(run.spentUsd)} reconciled${run.unreconciledTurns ? ` · ${run.unreconciledTurns} unpriced turn(s)` : ''}`) : null,
       run ? row('judge', judgeVerdicts(run).length ? judgeVerdicts(run).map((v) => `${v.scope} ${v.verdict}${v.notes ? ` (${v.notes})` : v.reason ? ` (${v.reason})` : ''}`).join('; ') : 'not consulted yet') : null,
       row('at the Gate', waiting.length ? waiting.map((it) => `${it.domain}: ${it.summary}`).join('; ') : 'nothing waiting'),
+      s.computer ? row('computer', (() => { const mine = pendingComputerHandoffs(s).filter((h) => h.agentId === agent.id); const open = (s.computer.sessions || []).find((c) => c.agentId === agent.id); if (mine.length) return el('span', {}, `HANDOFF: ${mine.map((h) => `${h.kind}${h.app ? ` (${h.app})` : ''}: ${h.reason || ''}`).join('; ')} `, el('button', { class: 'btn small', text: 'Hand back', onclick: async () => { const notes = window.prompt('What did you do? (a note for the Ranger)') || ''; for (const h of mine) await api.post(`/api/computer/handoff/${encodeURIComponent(h.handoffId)}/return`, { notes }); } })); if (open) return `driving this Mac since ${new Date(open.since).toLocaleTimeString()} · ${open.actions} action(s) · trace at ${agent.id}/computer-trace/`; return s.computer.wired ? 'idle (computer_control)' : `not wired: ${s.computer.reason || 'the macOS app is not running'}`; })()) : null,
       s.browser ? row('browser', (() => { const mine = pendingHandoffs(s).filter((h) => h.agentId === agent.id); const open = (s.browser.sessions || []).find((b) => b.agentId === agent.id); if (mine.length) return `HANDOFF: ${mine.map((h) => `${h.kind} at ${h.url}`).join('; ')}`; if (open) return `open at ${open.url}`; return s.browser.wired ? `closed · trace at ${agent.id}/browser-trace/` : 'not wired (no Chromium found)'; })()) : null,
       row('spend', `${fmtUsd(s.spendByAgent[agent.id] || 0)} since the mission${typeof agent.budgetUsd === 'number' ? ` of $${agent.budgetUsd.toFixed(2)} budget` : ''}`),
       s.mail ? row('addresses', (() => { const mine = mailCache.addresses.filter((a) => a.agentId === agent.id || (a.kind === 'station' && a.station === agent.roomId)); if (!mailCache.addresses.length) loadMail(s, { id: agent.roomId, kind: 'zone' }); return mine.length ? mine.map((a) => a.address).join(', ') : 'none loaded'; })()) : null,
@@ -837,6 +838,12 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ...briefsSection(s),
       ...creativeSection(s),
       s.browser ? row('browser', `${s.browser.wired ? `${s.browser.chromium}${s.browser.headless ? ' (headless)' : ''}` : 'not wired: no Chromium found (browser.chromiumPath or CHROMIUM)'} · ${(s.browser.sessions || []).length} open · ${pendingHandoffs(s).length} handoff(s) waiting`) : null,
+      // Phase 4 step 18: this Mac. Observe by default; the halt and the resume are the Superintendent's.
+      s.computer ? row('computer', `${s.computer.wired ? `wired (${s.computer.platform}${s.computer.permissions ? `; accessibility ${s.computer.permissions.accessibility ? 'granted' : 'NOT granted'}, screen recording ${s.computer.permissions.screenRecording ? 'granted' : 'NOT granted'}` : ''})` : `not wired: ${s.computer.reason || 'the macOS app is not running'}`} · ${s.computer.halted ? `HALTED by ${s.computer.halted.by}` : 'not halted'} · ${(s.computer.sessions || []).length} driving · ${pendingComputerHandoffs(s).length} handoff(s) waiting · ${s.computer.hotkey || '⌃⌥⌘H'} halts`) : null,
+      s.computer ? el('div', { class: 'row' },
+        el('button', { class: 'btn', text: 'Halt the Mac', disabled: Boolean(s.computer.halted), onclick: async () => { const r = await api.post('/api/computer/halt', {}); missionNotice.textContent = r.ok ? 'Computer control halted: every Ranger action on this Mac is refused until you resume.' : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } }),
+        el('button', { class: 'btn', text: 'Resume', disabled: !s.computer.halted, onclick: async () => { const r = await api.post('/api/computer/resume', {}); missionNotice.textContent = r.ok ? 'Computer control resumed.' : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } }),
+      ) : null,
       ...backupSection(s),
       row('judge today', s.judge ? `${fmtUsd(s.judge.today.usd)} of $${s.judge.caps.judgeUsdPerDay} cap · ${s.judge.today.calls} call(s) · ${s.judge.provider}/${s.judge.model || 'default'}` : 'no judge wired'),
       s.ollama ? el('div', { class: 'k', text: 'worker (local model, Ollama)' }) : null,

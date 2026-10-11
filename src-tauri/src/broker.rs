@@ -15,6 +15,15 @@
 //! `NONE` (GET of a missing name) or `ERR <message>`. Values travel base64-encoded so a
 //! newline in a token can never break the framing. The token dies with the session, the
 //! socket is removed on exit, and a wrong token is refused before any store access.
+//!
+//! Phase 4 step 18 adds one op on the same socket, so computer control never needs a port:
+//!
+//! ```text
+//! <token> COMPUTER <action> <base64 json>   ->   OK <base64 json> | ERR <message>
+//! ```
+//!
+//! answered by the `ComputerHost` the shell passes to `start` (computer.rs on macOS; the
+//! `NoComputer` host says it is not available).
 
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -29,6 +38,23 @@ pub enum Request {
     Set(String, String),
     Del(String),
     List,
+    /// Phase 4 step 18: `COMPUTER <action> <base64 json>`.
+    Computer(String, String),
+}
+
+/// What answers a `COMPUTER` request: the shell's computer control, or nothing.
+pub trait ComputerHost: Send + Sync {
+    /// Returns the JSON answer (as text) or an error message for `ERR`.
+    fn handle(&self, action: &str, request_json: &str) -> Result<String, String>;
+}
+
+/// No computer control on this host (tests, platforms without it).
+pub struct NoComputer;
+
+impl ComputerHost for NoComputer {
+    fn handle(&self, _action: &str, _request_json: &str) -> Result<String, String> {
+        Err("computer control is not available in this shell".into())
+    }
 }
 
 /// Parses one request line (the token already split off). Errors are messages for `ERR`.
@@ -45,12 +71,18 @@ pub fn parse_request(line: &str) -> Result<Request, String> {
             let value = base64_decode(b64).ok_or("SET value is not valid base64")?;
             Ok(Request::Set(name, String::from_utf8(value).map_err(|_| "SET value is not UTF-8")?))
         }
+        "COMPUTER" => {
+            let action = parts.next().ok_or("COMPUTER needs an action")?.to_string();
+            let b64 = parts.next().ok_or("COMPUTER needs a base64 json request")?;
+            let value = base64_decode(b64).ok_or("COMPUTER request is not valid base64")?;
+            Ok(Request::Computer(action, String::from_utf8(value).map_err(|_| "COMPUTER request is not UTF-8")?))
+        }
         other => Err(format!("unknown op {other}")),
     }
 }
 
 /// Answers one already-authenticated request.
-pub fn handle(store: &dyn Store, req: Request) -> String {
+pub fn handle(store: &dyn Store, computer: &dyn ComputerHost, req: Request) -> String {
     let r = match req {
         Request::Get(name) => store.get(&name).map(|v| match v {
             Some(v) => format!("OK {}", base64_encode(v.as_bytes())),
@@ -59,6 +91,7 @@ pub fn handle(store: &dyn Store, req: Request) -> String {
         Request::Set(name, value) => store.set(&name, &value).map(|_| "OK".to_string()),
         Request::Del(name) => store.delete(&name).map(|_| "OK".to_string()),
         Request::List => store.list().map(|names| format!("OK {}", names.join(","))),
+        Request::Computer(action, json) => computer.handle(&action, &json).map(|answer| format!("OK {}", base64_encode(answer.as_bytes()))),
     };
     match r {
         Ok(line) => line,
@@ -67,7 +100,7 @@ pub fn handle(store: &dyn Store, req: Request) -> String {
 }
 
 /// The full line: token check first, then the request.
-pub fn answer(store: &dyn Store, token: &str, line: &str) -> String {
+pub fn answer(store: &dyn Store, computer: &dyn ComputerHost, token: &str, line: &str) -> String {
     let line = line.trim_end_matches(['\r', '\n']);
     let (given, rest) = match line.split_once(' ') {
         Some(x) => x,
@@ -77,7 +110,7 @@ pub fn answer(store: &dyn Store, token: &str, line: &str) -> String {
         return "ERR bad token".to_string();
     }
     match parse_request(rest) {
-        Ok(req) => handle(store, req),
+        Ok(req) => handle(store, computer, req),
         Err(e) => format!("ERR {e}"),
     }
 }
@@ -186,7 +219,7 @@ impl Broker {
 /// Starts the broker on a fresh socket under `base` (a 0700 directory per session) and
 /// serves it from a thread for the life of the process.
 #[cfg(unix)]
-pub fn start(store: Arc<dyn Store>, base: &Path) -> Result<Broker, String> {
+pub fn start(store: Arc<dyn Store>, computer: Arc<dyn ComputerHost>, base: &Path) -> Result<Broker, String> {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::UnixListener;
 
@@ -205,8 +238,9 @@ pub fn start(store: Arc<dyn Store>, base: &Path) -> Result<Broker, String> {
             for conn in listener.incoming() {
                 let Ok(stream) = conn else { continue };
                 let store = store.clone();
+                let computer = computer.clone();
                 let token = thread_token.clone();
-                std::thread::spawn(move || serve_one(stream, &*store, &token));
+                std::thread::spawn(move || serve_one(stream, &*store, &*computer, &token));
             }
         })
         .map_err(|e| e.to_string())?;
@@ -214,14 +248,14 @@ pub fn start(store: Arc<dyn Store>, base: &Path) -> Result<Broker, String> {
 }
 
 #[cfg(unix)]
-fn serve_one(stream: std::os::unix::net::UnixStream, store: &dyn Store, token: &str) {
+fn serve_one(stream: std::os::unix::net::UnixStream, store: &dyn Store, computer: &dyn ComputerHost, token: &str) {
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
     let mut reader = BufReader::new(stream.try_clone().expect("clone socket"));
     let mut line = String::new();
     let reply = match reader.read_line(&mut line) {
         Ok(0) => return,
         Ok(_) if line.len() > 128 * 1024 => "ERR request too long".to_string(),
-        Ok(_) => answer(store, token, &line),
+        Ok(_) => answer(store, computer, token, &line),
         Err(e) => format!("ERR read: {e}"),
     };
     let mut w = stream;
@@ -231,7 +265,7 @@ fn serve_one(stream: std::os::unix::net::UnixStream, store: &dyn Store, token: &
 }
 
 #[cfg(not(unix))]
-pub fn start(_store: Arc<dyn Store>, _base: &Path) -> Result<Broker, String> {
+pub fn start(_store: Arc<dyn Store>, _computer: Arc<dyn ComputerHost>, _base: &Path) -> Result<Broker, String> {
     Err("the credential broker needs Unix domain sockets".into())
 }
 
@@ -253,17 +287,29 @@ mod tests {
     fn requests_parse_and_the_token_gates_everything() {
         let dir = std::env::temp_dir().join(format!("maka-broker-{}", std::process::id()));
         let store = Indexed(FileStore::new(dir.join("ks.json")));
-        assert_eq!(answer(&store, "t0k", "nope GET ANTHROPIC_API_KEY"), "ERR bad token");
-        assert_eq!(answer(&store, "t0k", "GET"), "ERR missing token");
-        assert_eq!(answer(&store, "t0k", "t0k GET ANTHROPIC_API_KEY\n"), "NONE");
-        assert_eq!(answer(&store, "t0k", &format!("t0k SET ANTHROPIC_API_KEY {}", base64_encode(b"sk-1"))), "OK");
-        assert_eq!(answer(&store, "t0k", "t0k GET ANTHROPIC_API_KEY"), format!("OK {}", base64_encode(b"sk-1")));
-        assert_eq!(answer(&store, "t0k", "t0k LIST"), "OK ANTHROPIC_API_KEY");
-        assert_eq!(answer(&store, "t0k", "t0k SET x ***"), "ERR SET value is not valid base64");
-        assert_eq!(answer(&store, "t0k", "t0k FROB x"), "ERR unknown op FROB");
-        assert_eq!(answer(&store, "t0k", "t0k DEL ANTHROPIC_API_KEY"), "OK");
-        assert_eq!(answer(&store, "t0k", "t0k LIST"), "OK ");
+        let none = NoComputer;
+        assert_eq!(answer(&store, &none, "t0k", "nope GET ANTHROPIC_API_KEY"), "ERR bad token");
+        assert_eq!(answer(&store, &none, "t0k", "GET"), "ERR missing token");
+        assert_eq!(answer(&store, &none, "t0k", "t0k GET ANTHROPIC_API_KEY\n"), "NONE");
+        assert_eq!(answer(&store, &none, "t0k", &format!("t0k SET ANTHROPIC_API_KEY {}", base64_encode(b"sk-1"))), "OK");
+        assert_eq!(answer(&store, &none, "t0k", "t0k GET ANTHROPIC_API_KEY"), format!("OK {}", base64_encode(b"sk-1")));
+        assert_eq!(answer(&store, &none, "t0k", "t0k LIST"), "OK ANTHROPIC_API_KEY");
+        assert_eq!(answer(&store, &none, "t0k", "t0k SET x ***"), "ERR SET value is not valid base64");
+        assert_eq!(answer(&store, &none, "t0k", "t0k FROB x"), "ERR unknown op FROB");
+        assert_eq!(answer(&store, &none, "t0k", "t0k DEL ANTHROPIC_API_KEY"), "OK");
+        assert_eq!(answer(&store, &none, "t0k", "t0k LIST"), "OK ");
         assert!(parse_request("SET only_name").is_err());
+        // Phase 4 step 18: the COMPUTER op parses and is answered by the host.
+        assert_eq!(parse_request(&format!("COMPUTER status {}", base64_encode(b"{\"action\":\"status\"}"))).unwrap(), Request::Computer("status".into(), "{\"action\":\"status\"}".into()));
+        assert!(parse_request("COMPUTER status").is_err());
+        assert_eq!(answer(&store, &none, "t0k", &format!("t0k COMPUTER status {}", base64_encode(b"{}"))), "ERR computer control is not available in this shell");
+        struct Echo;
+        impl ComputerHost for Echo {
+            fn handle(&self, action: &str, json: &str) -> Result<String, String> {
+                Ok(format!("{{\"action\":\"{action}\",\"got\":{json}}}"))
+            }
+        }
+        assert_eq!(answer(&store, &Echo, "t0k", &format!("t0k COMPUTER click {}", base64_encode(b"{\"x\":1}"))), format!("OK {}", base64_encode(b"{\"action\":\"click\",\"got\":{\"x\":1}}")));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -274,7 +320,7 @@ mod tests {
         use std::os::unix::net::UnixStream;
         let dir = std::env::temp_dir().join(format!("maka-broker-sock-{}", std::process::id()));
         let store: Arc<dyn Store> = Arc::new(Indexed(FileStore::new(dir.join("ks.json"))));
-        let broker = start(store, &dir).unwrap();
+        let broker = start(store, Arc::new(NoComputer), &dir).unwrap();
         let ask = |line: String| {
             let mut s = UnixStream::connect(&broker.socket).unwrap();
             s.write_all(line.as_bytes()).unwrap();

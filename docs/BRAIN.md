@@ -279,6 +279,28 @@ purchase reads "no charge source" rather than a pretended match (D148). The Peak
 purchases and lets the Superintendent cancel an open one; `purchase.update` carries every
 state change.
 
+Part E step 18 done: computer control, macOS only, strictest defaults. A new leash domain
+`computer_control` sits at Observe in every park until the Superintendent raises it at the
+Gate: until then every `computer.*` tool is refused before the shell is even asked. The
+Control desk fixture grants the seven tools (screenshot, locate by the accessibility tree,
+click, type, key chords, app focus, the running apps) and never stands at the Peak. The
+shell does the driving (`src-tauri/src/computer.rs`: NSWorkspace, AXUIElement, CGEvent,
+CGDisplayCreateImage) and the sidecar reaches it over the credential broker's Unix socket
+with one more op, `COMPUTER`, never over HTTP. Every action asks for the frontmost app
+first: banking, password managers, System Settings, Keychain Access and terminals always
+hand off to the Superintendent (`computer.handoff`), who does the thing and hands back;
+the Ranger's action is then refused, not retried, and the shell keeps the same list as its
+own lock and never captures or types into such an app. Then a screenshot before, the
+action, a screenshot after, a trace line with both paths and a `computer.action` event. The
+first action of a run begins a session and the shell shows an always-on-top banner ("A Maka
+Ranger is driving this Mac · ⌃⌥⌘H halts it") until the run ends; the hotkey halts in the
+shell at once and tells the sidecar, which ends every session, abandons waiting handoffs
+and refuses every action until the Superintendent resumes at the Peak. At Draft every
+action waits at the Gate and asks the judge; at Act the judge reviews every action (it is
+never research) and the day's action cap holds (D149). Linux tests cover the protocol and
+the policy over a fake shell on the socket; the frameworks, the permissions dialogs, the
+banner and the hotkey are on the Mac's list in the runbook.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

@@ -342,7 +342,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, computer = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -423,6 +423,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         creative: creative ? await creative.status() : null,
         results: results ? results.summary() : null,
         purchases: purchases ? purchases.summary() : null,
+        computer: computer ? await computer.status() : null,
         scoutMemory: scoutMemory ? scoutMemory.summary() : null,
         memory: memory ? memory.summary() : null,
         recipes: recipes ? recipes.summary() : null,
@@ -902,6 +903,36 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
       if (action === 'connect') return sendJson(res, 202, await rethrow(() => channels.connect(name, body)));
       if (action === 'disconnect') return sendJson(res, 202, await rethrow(() => channels.disconnect(name)));
       throw new HttpError(404, 'no such route');
+    }
+    // Phase 4 step 18: computer control. Status, the handoffs a sensitive app raised, the
+    // Superintendent's hand-back, the halt (the hotkey posts it too) and the resume.
+    if (p === '/api/computer' && method === 'GET') {
+      if (!computer) throw new HttpError(404, 'no computer control');
+      return sendJson(res, 200, { ...(await computer.status()), handoffs: computer.handoffs({ pendingOnly: true }) });
+    }
+    if (p === '/api/computer/handoffs' && method === 'GET') {
+      if (!computer) throw new HttpError(404, 'no computer control');
+      return sendJson(res, 200, computer.handoffs());
+    }
+    if (p.startsWith('/api/computer/handoff/') && p.endsWith('/return') && method === 'POST') {
+      if (!computer) throw new HttpError(404, 'no computer control');
+      const body = await readJsonBody(req);
+      const id = decodeURIComponent(p.slice('/api/computer/handoff/'.length, -'/return'.length));
+      return sendJson(res, 200, await rethrow(() => computer.returnHandoff(id, { notes: typeof body.notes === 'string' ? body.notes : '' })));
+    }
+    if (p === '/api/computer/halt' && method === 'POST') {
+      if (!computer) throw new HttpError(404, 'no computer control');
+      const body = await readJsonBody(req);
+      return sendJson(res, 200, await computer.halt({ by: body.by === 'hotkey' ? 'the hotkey' : 'superintendent' }));
+    }
+    if (p === '/api/computer/resume' && method === 'POST') {
+      if (!computer) throw new HttpError(404, 'no computer control');
+      await readJsonBody(req);
+      return sendJson(res, 200, await computer.resume({ by: 'superintendent' }));
+    }
+    if (p.startsWith('/api/computer/trace/') && method === 'GET') {
+      if (!computer) throw new HttpError(404, 'no computer control');
+      return sendJson(res, 200, await computer.trace(decodeURIComponent(p.slice('/api/computer/trace/'.length)), { limit: Number(url.searchParams.get('limit')) || 50 }));
     }
     if (p === '/api/browser' && method === 'GET') {
       if (!browser) throw new HttpError(404, 'no browser control');

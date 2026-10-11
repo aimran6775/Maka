@@ -9,3 +9,5 @@ pub mod broker;
 pub mod local_http;
 #[path = "../../src/voice_text.rs"]
 pub mod voice_text;
+#[path = "../../src/computer_policy.rs"]
+pub mod computer_policy;

@@ -45,6 +45,10 @@ export const OBJECT_KINDS = deepFreeze({
   ledger_desk: { label: 'Ledger desk', grants: ['ledger.read'], hint: "Rangers in this zone (the Books Ranger) read the park's books: the day rows the results engine rolled up from the ledgers and the connector syncs (revenue, refunds, fees, ad spend, orders, model spend for the park, a venture or a Ranger), the unit economics, which connectors are synced, and today's leash ledger. Read only; a figure no source holds reads \"no data\"." },
   // Phase 4 step 17: supplier purchases through that browser. purchase.request is money_out
   // with the amount declared and held until the receipt; the payment page always hands off.
+  // Phase 4 step 18: this Mac, through the shell's Accessibility and CGEvent APIs, under the
+  // computer_control leash (Observe by default: nothing runs until the Superintendent raises
+  // it at the Gate). Never at the Peak.
+  control_desk: { label: 'Control desk', grants: ['computer.screenshot', 'computer.locate', 'computer.click', 'computer.type', 'computer.key', 'computer.focus', 'computer.apps'], hint: 'Rangers in this zone drive this Mac through the app (screenshot, locate by the accessibility tree, click, type, key chords, app focus) under the computer_control leash, which starts at Observe: nothing runs until you raise it. Every action is traced with screenshots before and after, a banner shows while a Ranger drives, ⌃⌥⌘H halts it, and banking, password managers, System Settings and the Terminal are always handed to you.' },
   field_office: { label: 'Field office', grants: ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.download', 'browser.screenshot', 'purchase.request', 'purchase.receipt'], hint: 'Rangers in this zone drive a real browser with their own profile (open, read, click, type, upload, download, screenshot) under the browser_control leash; a login, code, captcha or payment page is handed to you. They can request a supplier purchase (money out, the amount declared and held) that another Ranger here drives up to the payment page, which is always yours to pay; the receipt settles the ledger.' },
 });
 
@@ -53,7 +57,7 @@ export const OBJECT_KIND_NAMES = deepFreeze(Object.keys(OBJECT_KINDS));
 // Safety review L5: the Chief Ranger at the Mountain Peak is unjudged by design (D51), so
 // no connector fixture (money tools) may stand there. Placement refuses them, a layout
 // holding one is invalid, and the run manager grants nothing from one that is there anyway.
-export const PEAK_REFUSED_KINDS = deepFreeze(['park_store', 'notice_board', 'fee_booth', 'outpost']);
+export const PEAK_REFUSED_KINDS = deepFreeze(['park_store', 'notice_board', 'fee_booth', 'outpost', 'control_desk']);
 
 // The first object that is a refused fixture in a mountain_peak room, or null.
 export function peakConnectorProblem(layout) {

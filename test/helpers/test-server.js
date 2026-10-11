@@ -25,6 +25,7 @@ import { createCreative } from '../../sidecar/creative/index.js';
 import { createResults } from '../../sidecar/results.js';
 import { createLedgerDesk } from '../../sidecar/ledger-desk.js';
 import { createPurchases } from '../../sidecar/purchases.js';
+import { createComputerControl } from '../../sidecar/computer/control.js';
 import { createScoutMemory } from '../../sidecar/scout-memory.js';
 import { createMemory } from '../../sidecar/memory/index.js';
 import { createRecipes } from '../../sidecar/recipes/index.js';
@@ -125,6 +126,8 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   Object.assign(registry, ledgerDesk.tools);
   const purchases = await createPurchases({ bus, store, trails, ledger, browser: browserControl, getLayout: layoutState.get, getConnectors: () => connectors, knownVentures: () => (chief && chief.state().plan ? chief.state().plan.ventures.map((v) => v.id) : []), netGuard, workspaceRoot, clock, log: { error() {} } }).init();
   Object.assign(registry, purchases.tools);
+  const computer = await createComputerControl({ bus, env, workspaceRoot, clock, log: { error() {} } }).init();
+  Object.assign(registry, computer.tools);
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, getConnectors: () => connectors, getMail: () => mailSystem, getResults: () => results, log: { error() {} } }).init();
   await workspace.check();
   // `research`: endpoints for the fakes ({ braveBaseUrl, duckBaseUrl, wikiApi, wikiRest, hnApi });
@@ -188,6 +191,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     creative,
     results,
     purchases,
+    computer,
     scoutMemory,
     memory,
     recipes,
@@ -222,6 +226,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     agents,
     trails,
     purchases,
+    computer,
     chief,
     scheduler,
     reflect,
@@ -310,6 +315,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
       runs.cancel();
       await runs.waitForIdle();
       if (browserControl) await browserControl.close();
+      await computer.close();
       if (connectors) await connectors.close();
       if (channels) await channels.close();
       if (mcp) await mcp.close();

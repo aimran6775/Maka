@@ -392,6 +392,13 @@ it to you and refuses every click or keystroke on it. Pay in the window, hand th
 with a note, and the Ranger files the receipt; the hold becomes spend at what you paid.
 Cancel an open purchase from the Peak to release the hold.
 
+Step 18, computer control (macOS only): place a Control desk and raise the `computer_control`
+leash from Observe at the Gate, and a Ranger in that zone can drive this Mac through the app:
+screenshots, the accessibility tree, clicks, keys, typed text, app focus. A banner shows
+while it drives and ⌃⌥⌘H halts it; banking, password managers, System Settings and terminals
+are always handed to you; every action is traced with a screenshot before and after. Outside
+the app the tools say not wired.
+
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),
 so the camp card and a Ranger's mail.search show it.

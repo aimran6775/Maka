@@ -25,6 +25,9 @@ tauri-plugin-autostart = "=2.7.0"
 tauri-plugin-updater = { version = "=2.13.3", default-features = false, features = ["native-tls", "zip"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.152"
+# Computer control (phase 4 step 18): the halt hotkey (⌃⌥⌘H) and PNG screenshots.
+global-hotkey = "=0.8.0"
+png = "=0.17.16"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "=3.7.0"
@@ -32,10 +35,15 @@ security-framework = "=3.7.0"
 # (AVAudioEngine for the microphone, AVSpeechSynthesizer for the station voice) through the
 # objc2 bindings, so the shell stays Rust and this crate still type-checks from Linux.
 objc2 = "=0.6.5"
-objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString", "NSError", "NSObject"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString", "NSError", "NSObject", "NSArray", "NSEnumerator"] }
 objc2-speech = { version = "=0.3.2", default-features = false, features = ["std", "SFSpeechRecognizer", "SFSpeechRecognitionRequest", "SFSpeechRecognitionResult", "SFSpeechRecognitionTask", "SFTranscription", "block2", "objc2-avf-audio"] }
 objc2-avf-audio = { version = "=0.3.2", default-features = false, features = ["std", "AVAudioEngine", "AVAudioNode", "AVAudioIONode", "AVAudioBuffer", "AVAudioFormat", "AVAudioTime", "AVAudioTypes", "AVSpeechSynthesis", "block2"] }
 block2 = "=0.6.2"
+# Computer control (phase 4 step 18): CGEvent and the display (core-graphics), the
+# Accessibility C API through core-foundation types, NSWorkspace for the apps.
+core-foundation = "=0.10.1"
+core-graphics = "=0.25.0"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "libc", "NSWorkspace", "NSRunningApplication", "NSApplication"] }
 
 [profile.release]
 codegen-units = 1

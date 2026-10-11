@@ -329,6 +329,22 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 - From a Ranger: `purchase.request` at Observe is refused, at Draft it waits at the Gate
   with the amount on the card.
 
+## 15m. Computer control (phase 4)
+
+- In a browser (no shell): the Peak's computer row says not wired; a Ranger in a zone with
+  a Control desk calling `computer.screenshot` gets `NOT_WIRED` after the leash let it
+  through, and `LEASH_OBSERVE` before that in a fresh park (the domain starts at Observe).
+- In the app on the Mac: the row says wired with the two permissions; the first action asks
+  for Accessibility and Screen Recording. Raise `computer_control` to Draft at the Gate:
+  the Ranger's click waits as a Gate card with the judge's reading; approve it and the
+  banner shows, the click lands, `computer.action done` carries two screenshot paths under
+  `<agent>/computer-trace/`.
+- Bring Terminal to the front and let the Ranger act: a `computer.handoff` waits with the
+  app named, nothing is typed; hand it back with a note and the Ranger's action is refused
+  with that note; a second action in Terminal is refused without a new handoff.
+- Press ⌃⌥⌘H while a Ranger drives: the banner goes, the row says HALTED by the hotkey,
+  every action is refused until Resume at the Peak.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

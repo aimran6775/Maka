@@ -900,6 +900,38 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     return g;
   }
 
+  // Control desk (phase 4 step 18): a desk with a screen that shows a small banner, built
+  // from primitives (no kit has one).
+  function makeControlDesk() {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5c4a3a, roughness: 0.85 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.6, metalness: 0.3 });
+    const screen = new THREE.MeshStandardMaterial({ color: 0x1b2a3a, emissive: 0x2f7fbf, emissiveIntensity: 0.6 });
+    const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 1.0), wood);
+    top.position.y = 1.0;
+    top.castShadow = true;
+    g.add(top);
+    for (const [x, z] of [[-0.9, -0.4], [0.9, -0.4], [-0.9, 0.4], [0.9, 0.4]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.95, 0.08), dark);
+      leg.position.set(x, 0.48, z);
+      g.add(leg);
+    }
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.12, 0.3, 8), dark);
+    stand.position.set(0, 1.2, -0.2);
+    g.add(stand);
+    const monitor = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 0.05), dark);
+    monitor.position.set(0, 1.7, -0.2);
+    monitor.castShadow = true;
+    g.add(monitor);
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.6), screen);
+    glass.position.set(0, 1.7, -0.17);
+    g.add(glass);
+    const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.03, 0.3), dark);
+    keyboard.position.set(0, 1.07, 0.2);
+    g.add(keyboard);
+    return g;
+  }
+
   function syncFixtures(state) {
     if (!model) return;
     const wanted = new Map(model.fixtures.map((f) => [f.id, f]));
@@ -914,7 +946,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     for (const f of model.fixtures) {
       if (dynamic.fixtures.has(f.id)) continue;
       const proto = kit.fixtures[f.kind];
-      const obj = proto ? proto.clone() : f.kind === 'radio_tower' ? makeTower() : f.kind === 'field_office' ? makeFieldOffice() : f.kind === 'outpost' ? makeOutpost() : f.kind === 'ledger_desk' ? makeLedgerDesk() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+      const obj = proto ? proto.clone() : f.kind === 'radio_tower' ? makeTower() : f.kind === 'field_office' ? makeFieldOffice() : f.kind === 'outpost' ? makeOutpost() : f.kind === 'ledger_desk' ? makeLedgerDesk() : f.kind === 'control_desk' ? makeControlDesk() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
       place(obj, f.x, f.y, f.z, { scale: proto ? 3.2 : 1 });
       obj.userData.pick = { type: 'object', id: f.id };
       obj.traverse((o) => (o.userData.pick = obj.userData.pick));

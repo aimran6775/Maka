@@ -540,6 +540,35 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
   // done (the success check passed), failed (a step failed, a delegation was refused, the
   // check failed, a restart) or refused before it began (not granted, no Ranger of the
   // specialty, a missing fixture, a leash at Observe, a missing parameter).
+  // Added v1 (phase 4 step 18): one action on this Mac through the shell, as it went: done,
+  // failed, refused (the shell or the policy said no), handed off (a sensitive app), halted
+  // (the hotkey); plus the session's start and end (the banner). Screenshot paths, never
+  // pixels. `computer.handoff` is the Superintendent's turn: a sensitive app in front, or a
+  // halt the Superintendent lifts.
+  'computer.action': payload(['agentId', 'action', 'status'], {
+    agentId: nonEmpty,
+    action: { type: 'string', enum: ['screenshot', 'locate', 'click', 'type', 'key', 'focus', 'apps', 'session'] },
+    status: { type: 'string', enum: ['done', 'failed', 'refused', 'handoff', 'halted', 'session_start', 'session_end'] },
+    runId: str,
+    app: str,
+    reason: str,
+    code: str,
+    before: str,
+    after: str,
+    ms: int0,
+    handoffId: str,
+  }),
+  'computer.handoff': payload(['handoffId', 'agentId', 'status', 'kind'], {
+    handoffId: nonEmpty,
+    agentId: nonEmpty,
+    status: { type: 'string', enum: ['waiting', 'returned', 'abandoned'] },
+    kind: { type: 'string', enum: ['sensitive_app', 'halted'] },
+    runId: str,
+    app: str,
+    action: str,
+    reason: str,
+    notes: str,
+  }),
   // Added v1 (phase 4 step 17): a supplier purchase through the browser changed state.
   // `amountUsd` is the amount declared and held; `paidUsd` is what the receipt proved.
   'purchase.update': payload(['purchaseId', 'status', 'venture', 'amountUsd'], {

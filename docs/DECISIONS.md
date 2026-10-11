@@ -1531,3 +1531,30 @@ matcher takes one charge of the paid amount within a week and refuses to choose 
 two, and since none of the wired connectors (Stripe, Shopify, Etsy, the ad networks) carries
 the owner's card charges, a paid purchase reads "no charge source" with the receipt as the
 record, rather than a match nothing proved.
+
+## D149. Computer control: Observe until raised, the socket not a port, the shell's own locks, hand off rather than drive
+
+The brief asks for computer control on macOS with the strictest defaults, over the existing
+broker socket and never as raw HTTP, traced with screenshots, with a banner, a halt hotkey,
+sensitive apps always handed off, judge review on every action at Act with cap, and no
+autonomous use until the Superintendent raises the leash at the Gate. Read strictly: the
+new domain starts at Observe in `defaultLeash`, so an existing park gets it at Observe on
+upgrade and a Ranger's call is refused before the shell is asked; even a screenshot is a
+computer_control action rather than research, because the screen shows whatever is on it.
+The socket is the credential broker's, with one more op, because that socket already has
+the per-session token, the 0700 directory and a one-request-per-connection discipline, and
+a port would be reachable by anything on the machine. The shell checks the frontmost app
+against the same sensitive list the sidecar holds and refuses before any capture or input,
+so a sidecar bug or an out-of-date list on one side cannot drive a terminal or a password
+manager; a sensitive app hands off rather than waits for a "returned with notes" and then
+proceeds, because there is no note that makes typing into a bank acceptable: the
+Superintendent does the thing, the Ranger's action is refused with the notes and a second
+try in the same app is refused without a new handoff. The halt is two-sided for the same
+reason: the hotkey halts in the shell before the sidecar hears of it, and the sidecar keeps
+its own halted flag even if the shell forgot, until the Superintendent resumes. The judge
+already reviews every non-research call the leash lets through at Act; the computer tools
+also ask for it at Draft (`judgeAtDraft`), so a Gate card for a click arrives with the
+judge's reading. The Control desk is refused at the Peak like the connector fixtures (L5):
+the Chief is unjudged and never drives the Mac. What this environment cannot run (the
+frameworks, the permission dialogs, the banner, the hotkey) is type-checked for Apple
+Silicon from here and listed for the Mac in the runbook, as the voice is.

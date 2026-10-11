@@ -43,6 +43,7 @@ import { createCreative } from './creative/index.js';
 import { createResults } from './results.js';
 import { createLedgerDesk } from './ledger-desk.js';
 import { createPurchases } from './purchases.js';
+import { createComputerControl } from './computer/control.js';
 import { createScoutMemory } from './scout-memory.js';
 import { createMemory } from './memory/index.js';
 import { createRecipes } from './recipes/index.js';
@@ -151,6 +152,9 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   // Phase 4 step 17: supplier purchases through the browser, the amount held in the ledger.
   const purchases = await createPurchases({ bus, store, trails, ledger, browser, getLayout: layoutState.get, getConnectors: () => connectors, knownVentures: () => (chief.state().plan ? chief.state().plan.ventures.map((v) => v.id) : []), netGuard, workspaceRoot, log }).init();
   Object.assign(registry, purchases.tools);
+  // Phase 4 step 18: this Mac through the shell's socket; not wired without the app.
+  const computer = await createComputerControl({ bus, env, workspaceRoot, log }).init();
+  Object.assign(registry, computer.tools);
   // A finished connector sync or work item rolls the day up (debounced), so the Peak's
   // results follow the syncs without a reflection.
   let rollupTimer = null;
@@ -221,6 +225,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     creative,
     results,
     purchases,
+    computer,
     scoutMemory,
     memory,
     recipes,

@@ -42,6 +42,18 @@ test('tauri.conf.json: valid JSON, the version comes from package.json, every re
   assert.match(ent, /com\.apple\.security\.device\.audio-input/, 'the hardened runtime needs the microphone entitlement');
   const lib = await read('src/lib.rs');
   for (const cmd of ['voice_status', 'voice_listen_start', 'voice_listen_stop', 'voice_speak', 'voice_stop_speaking']) assert.match(lib, new RegExp(`voice::${cmd}`), `${cmd} is registered`);
+  // Phase 4 step 18: computer control over the broker socket, the banner window, the halt hotkey.
+  const broker = await read('src/broker.rs');
+  assert.match(broker, /"COMPUTER" =>/, 'the broker answers the COMPUTER op');
+  assert.match(broker, /pub trait ComputerHost/);
+  assert.match(lib, /install_computer_control/, 'the banner and the hotkey are installed at setup');
+  assert.match(lib, /broker::start\(store\.clone\(\), shell\.computer\.clone\(\), &base\)/, 'the broker gets the computer host');
+  assert.match(lib, /Modifiers::CONTROL \| Modifiers::ALT \| Modifiers::SUPER\), Code::KeyH/, 'the halt hotkey is ⌃⌥⌘H');
+  assert.match(lib, /\/api\/computer\/halt/, 'the hotkey tells the sidecar');
+  assert.match(await read('ui/banner.html'), /driving this Mac/);
+  const policy = await read('src/computer_policy.rs');
+  for (const id of ['com.apple.systempreferences', 'com.apple.Terminal', 'com.apple.keychainaccess', 'com.1password']) assert.ok(policy.includes(`"${id}"`), `${id} is on the shell's sensitive list`);
+  assert.match(await read('host-tests/src/lib.rs'), /computer_policy\.rs/, 'the policy runs in the host tests');
 });
 
 test('Cargo.toml pins every crate exactly and the sidecar stays dependency-free', async () => {

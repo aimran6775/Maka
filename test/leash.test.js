@@ -16,7 +16,8 @@ test('levels are ordered, labels exist, data is frozen', () => {
 });
 
 test('domains are exactly the brief\'s final phase 1 list', () => {
-  assert.deepEqual([...DOMAINS], ['outbound_messages', 'publishing', 'money_out', 'money_in', 'data_deletion', 'account_settings', 'account_creation', 'browser_control', 'research']);
+  // Phase 4 step 18 added computer_control (additive; Observe by default).
+  assert.deepEqual([...DOMAINS], ['outbound_messages', 'publishing', 'money_out', 'money_in', 'data_deletion', 'account_settings', 'account_creation', 'browser_control', 'research', 'computer_control']);
 });
 
 test('defaults follow the brief: draft everywhere, research act_free, money_out capped at 0', () => {

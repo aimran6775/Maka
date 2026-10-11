@@ -160,6 +160,31 @@ built app, verify:
    (Chrome's WebGPU, not SwiftShader); `--webgpu` should print `webgpu drew the park OK`.
 5. Record the outcome in the release notes.
 
+### Computer control (phase 4 step 18), on the Mac
+
+`src-tauri/src/computer.rs` is type-checked for Apple Silicon from Linux and its pure part
+(the sensitive list, chords, the locate matcher) runs in the host tests, but Accessibility,
+CGEvent, the display capture, the banner and the hotkey only run here. In the dev loop and
+once in the built app, verify:
+
+1. With a Control desk placed and `computer_control` raised to Draft at the Gate, a Ranger's
+   first `computer.screenshot` makes macOS ask for Screen Recording and the first
+   `computer.locate` for Accessibility (System Settings → Privacy & Security); until granted
+   the action fails with the setting named and `/api/computer` shows the permission false.
+2. With both granted: the banner window ("A Maka Ranger is driving this Mac · ⌃⌥⌘H halts
+   it") appears at the top left when the first action runs and goes when the run ends; the
+   trace folder holds a before and an after PNG per action and the PNG opens.
+3. `computer.locate` on Finder or TextEdit returns nodes with sensible frames; a
+   `computer.click` at a match's centre lands on it; `computer.type` types into a TextEdit
+   document; `computer.key` with `cmd+s` opens its save sheet.
+4. Bring Terminal (or System Settings) to the front: the next action raises a handoff, the
+   Ranger's card shows it, nothing is typed; `computer.focus` on Terminal is refused.
+5. Press ⌃⌥⌘H while a Ranger drives: the banner goes at once, `/api/computer` says halted
+   by the hotkey, the next action is refused HALTED, Resume at the Peak lifts it. The hotkey
+   registers at launch (a failure prints `maka: halt hotkey not registered` and the Peak's
+   Halt button is the fallback).
+6. Record the outcome in the release notes; a failed expectation blocks the publish.
+
 ## 5. Publish to makapark.com
 
 The site is static: `dist/site/` is the whole thing. Cloudflare Pages (the domain is on

@@ -32,6 +32,7 @@ export const DOMAINS = deepFreeze([
   'account_creation',
   'browser_control',
   'research', // read-only: fetching pages, reading workspace files
+  'computer_control', // phase 4 step 18: driving this Mac through the shell (Observe by default)
 ]);
 
 // Which domain each phase 1 tool belongs to. Phase 2 connectors add their own rows.
@@ -53,6 +54,15 @@ export const TOOL_DOMAINS = deepFreeze({
   // receipt is the record of what the Superintendent paid (no domain, it moves nothing).
   'purchase.request': 'money_out',
   'purchase.receipt': null,
+  // Phase 4 step 18: every action on this Mac, reads included (a screenshot shows whatever
+  // is on the screen), falls under computer_control.
+  'computer.screenshot': 'computer_control',
+  'computer.locate': 'computer_control',
+  'computer.click': 'computer_control',
+  'computer.type': 'computer_control',
+  'computer.key': 'computer_control',
+  'computer.focus': 'computer_control',
+  'computer.apps': 'computer_control',
   'creative.copy': null, // phase 4 step 8: deliverables in the workspace outbox, judge reviewed
   'creative.image': null, // metered under the hosted worker cap; uploads are the ads tools' publishing
   // Phase 2 step 12 mail tools. `mail.send` decides between outbound_messages and
@@ -170,6 +180,8 @@ export function defaultLeash() {
   for (const d of DOMAINS) domains[d] = { level: 'draft' };
   domains.research = { level: 'act_free' };
   domains.money_out = { level: 'draft', dailyCapUsd: 0 };
+  // Phase 4 step 18: no autonomous use of the Mac at all until the Superintendent raises it.
+  domains.computer_control = { level: 'observe' };
   return { version: 1, domains };
 }
 
