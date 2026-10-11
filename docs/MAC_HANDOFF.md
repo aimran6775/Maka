@@ -63,6 +63,29 @@ weaken a fix from docs/SECURITY_REVIEW_2026-10-10.md or docs/SECURITY_REVIEW_202
    17, 18), then the business loop: results after a day of real syncs, the Scout's first
    venture brief, a starter recipe, a supplier purchase that stops at the payment page.
 
+## Progress on this Mac (2026-10-11, local session)
+
+- Step 1 done (0e9bd4c, c2259c1, 9732ca4): Node v22.22.0, Ollama 0.40.3 + qwen3:8b on the
+  LaCie, Google Chrome found, assets verified; test:fast 356/356, demo, demo:phase4,
+  park-check and park-check --webgpu (the documented device-lost fallback) all green.
+  Four Mac-only gaps found and fixed with tests: the injected __CF_USER_TEXT_ENCODING in
+  child envs, the symlinked-/var upload sandbox false positive, a waitForIdle race the
+  slow ExFAT exposed, Chromium discovery in the scripts; run-fast gained --test-force-exit.
+- Step 2 done: the park from ~/Maka (internal disk) with the workspace on the LaCie;
+  `park: webgpu` in real Chrome; provider rows honest; a real force-unmount flipped the
+  workspace to offline (ENOENT) and the remount brought it back. NOTE: the LaCie hosts
+  Woven.sparsebundle (mounted at /Volumes/Woven) — detach it before unmounting the drive.
+- Step 3 half done: a real qwen3:8b Ranger run (brief → fs.write permission → approve →
+  outbox/hello.md → spend 2 reconciled worker turns at $0). The judge/Chief half waits on
+  ANTHROPIC_API_KEY (rotate the exposed one first).
+- Step 6 started: full Xcode present; Rust 1.99 + tauri-cli 2.12.2 installed; shell:check
+  (16 host tests) and src-tauri cargo test (20, Keychain included) green here;
+  `cargo tauri dev` boots the app (after the find_node fix), the Keychain broker runs and
+  /api/computer says wired with both permissions; release:dry and park:bench green.
+  Still owner's: Developer ID certificate, notarytool profile, the updater key pair
+  (`cargo tauri signer generate`), ~/.maka-release.env, and section 4's eyes-on checks.
+- GitHub: push as aimran6775 (`gh auth switch --user aimran6775`; tars16775 is denied).
+
 ## Rules that still hold here
 - Commit per step with test:fast green; push to main; keep CODE_MAP / BRAIN / DECISIONS /
   README / LIVE_TEST / RELEASE_RUNBOOK true to what you verified on this Mac (move items
