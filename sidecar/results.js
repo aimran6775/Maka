@@ -197,6 +197,14 @@ export function createResults({ bus, store, agents, trails = null, chief = null,
     return null;
   }
 
+  // The venture of the work item a run serves, when the item names one (safety 2026-10-11
+  // M3): the trails set the item's runId as the run starts, so it is known by the time a
+  // tool result arrives.
+  const ventureOfItemRun = (runId) => {
+    if (!runId || !trails || typeof trails.list !== 'function') return null;
+    const item = trails.list().find((it) => it.runId === runId);
+    return item && typeof item.venture === 'string' && item.venture ? item.venture : null;
+  };
   bus.listen((event) => {
     if (event.type === 'agent.run.start') runAgent.set(event.payload.runId, event.payload.agentId);
     if (event.type === 'cost.estimate') {
@@ -208,7 +216,10 @@ export function createResults({ bus, store, agents, trails = null, chief = null,
     if (event.type === 'agent.tool_result' && event.payload.ok && ATTRIBUTED_TOOLS[event.payload.name]) {
       const agentId = agentOfRun(event.payload.runId);
       const agent = agentId ? agents.get(agentId) : null;
-      if (!agent || !agent.venture) return;
+      // The work item's venture first (M3: a Ranger of venture A working a venture B item
+      // makes B's objects), else the Ranger's own.
+      const venture = ventureOfItemRun(event.payload.runId) || (agent && agent.venture) || null;
+      if (!agent || !venture) return;
       let row;
       try {
         row = JSON.parse(event.payload.output || '');
@@ -219,7 +230,7 @@ export function createResults({ bus, store, agents, trails = null, chief = null,
         if (o.id === undefined || o.id === null) continue;
         const kind = data.attribution[o.kind] || (data.attribution[o.kind] = {});
         const type = kind[o.type] || (kind[o.type] = {});
-        type[String(o.id)] = { venture: agent.venture, agentId, at: event.ts };
+        type[String(o.id)] = { venture, agentId, at: event.ts };
       }
       track(save());
     }
@@ -538,18 +549,26 @@ export function createResults({ bus, store, agents, trails = null, chief = null,
   function killPlan(ventureId) {
     const layout = getLayout();
     const crew = layout.agents.filter((a) => a.venture === ventureId);
-    const owner = (specialty) => crew.find((a) => a.specialty === specialty) || null;
-    const steps = [];
     const att = data.attribution;
-    const has = (kind, type, id) => att[kind] && att[kind][type] && att[kind][type][String(id)] && att[kind][type][String(id)].venture === ventureId;
+    const recordOf = (kind, type, id) => (att[kind] && att[kind][type] && att[kind][type][String(id)]) || null;
+    // The venture's own Ranger of the specialty, else the Ranger that made the object (M3:
+    // a venture B item worked by venture A's Ranger is still paused when B is killed).
+    const owner = (specialty, kind, type, id) => {
+      const own = crew.find((a) => a.specialty === specialty);
+      if (own) return own.id;
+      const rec = recordOf(kind, type, id);
+      return rec && rec.agentId && layout.agents.some((a) => a.id === rec.agentId) ? rec.agentId : null;
+    };
+    const steps = [];
+    const has = (kind, type, id) => Boolean(recordOf(kind, type, id)) && recordOf(kind, type, id).venture === ventureId;
     const meta = connectorData('meta_ads');
-    if (meta) for (const c of meta.campaigns || []) if (has('meta_ads', 'campaign', c.id) && c.effectiveStatus === 'ACTIVE') steps.push({ connector: 'meta_ads', object: `campaign ${c.id} "${c.name}"`, tool: 'meta_ads.set_status', input: { campaignId: c.id, status: 'PAUSED' }, specialty: 'ads', agentId: (owner('ads') || {}).id || null });
+    if (meta) for (const c of meta.campaigns || []) if (has('meta_ads', 'campaign', c.id) && c.effectiveStatus === 'ACTIVE') steps.push({ connector: 'meta_ads', object: `campaign ${c.id} "${c.name}"`, tool: 'meta_ads.set_status', input: { campaignId: c.id, status: 'PAUSED' }, specialty: 'ads', agentId: owner('ads', 'meta_ads', 'campaign', c.id) });
     const google = connectorData('google_ads');
-    if (google) for (const c of google.campaigns || []) if (has('google_ads', 'campaign', c.id) && c.status === 'ENABLED') steps.push({ connector: 'google_ads', object: `campaign ${c.id} "${c.name}"`, tool: 'google_ads.set_status', input: { campaignId: c.id, status: 'PAUSED' }, specialty: 'ads', agentId: (owner('ads') || {}).id || null });
+    if (google) for (const c of google.campaigns || []) if (has('google_ads', 'campaign', c.id) && c.status === 'ENABLED') steps.push({ connector: 'google_ads', object: `campaign ${c.id} "${c.name}"`, tool: 'google_ads.set_status', input: { campaignId: c.id, status: 'PAUSED' }, specialty: 'ads', agentId: owner('ads', 'google_ads', 'campaign', c.id) });
     const shopify = connectorData('shopify');
-    if (shopify) for (const p of shopify.products || []) if (has('shopify', 'product', p.id) && p.status === 'active') steps.push({ connector: 'shopify', object: `product ${p.id} "${p.title}"`, tool: 'shopify.update_product', input: { productId: p.id, status: 'draft' }, specialty: 'storefront', agentId: (owner('storefront') || {}).id || null });
+    if (shopify) for (const p of shopify.products || []) if (has('shopify', 'product', p.id) && p.status === 'active') steps.push({ connector: 'shopify', object: `product ${p.id} "${p.title}"`, tool: 'shopify.update_product', input: { productId: p.id, status: 'draft' }, specialty: 'storefront', agentId: owner('storefront', 'shopify', 'product', p.id) });
     const etsy = connectorData('etsy');
-    if (etsy) for (const l of etsy.listings || []) if (has('etsy', 'listing', l.listingId) && l.state === 'active') steps.push({ connector: 'etsy', object: `listing ${l.listingId} "${l.title}"`, tool: 'etsy.update_listing', input: { listingId: l.listingId, state: 'inactive' }, specialty: 'storefront', agentId: (owner('storefront') || {}).id || null });
+    if (etsy) for (const l of etsy.listings || []) if (has('etsy', 'listing', l.listingId) && l.state === 'active') steps.push({ connector: 'etsy', object: `listing ${l.listingId} "${l.title}"`, tool: 'etsy.update_listing', input: { listingId: l.listingId, state: 'inactive' }, specialty: 'storefront', agentId: owner('storefront', 'etsy', 'listing', l.listingId) });
     return steps;
   }
 

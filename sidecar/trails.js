@@ -38,6 +38,7 @@ export function briefFor(item) {
     item.brief,
     '',
     `Budget: $${item.budgetUsd.toFixed(2)} of model spend.`,
+    ...(item.venture ? [`Venture: ${item.venture} (what this work makes belongs to it).`] : []),
   ];
   if (item.deadline) lines.push(`Deadline: ${item.deadline}.`);
   if (item.evidence && item.evidence.length) lines.push('', 'Evidence required with the deliverable:', ...item.evidence.map((e) => `- ${e}`));
@@ -151,8 +152,11 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
     get: (id) => (find(id) ? { ...find(id) } : null),
     forAgent: (agentId) => items.filter((it) => it.fromAgentId === agentId || it.toAgentId === agentId).reverse(),
     inTransit: () => items.filter((it) => it.status === 'queued' || it.status === 'running'),
-    async delegate({ toAgentId, brief, budgetUsd = 0.5, deadline = null, evidence = [], maxTurns = DEFAULT_ITEM_TURNS } = {}, { by } = {}) {
+    // `venture` (safety 2026-10-11 M3): the venture the work is for, when it is not the
+    // receiver's own; the results engine attributes what the run makes to it.
+    async delegate({ toAgentId, brief, budgetUsd = 0.5, deadline = null, evidence = [], maxTurns = DEFAULT_ITEM_TURNS, venture = null } = {}, { by } = {}) {
       if (!by) throw fail('BAD_REQUEST', 'delegate needs a delegating agent (by)');
+      if (venture !== null && venture !== undefined && (typeof venture !== 'string' || !venture.trim() || venture.length > 80)) throw fail('BAD_REQUEST', 'venture must be a venture id (a short string) or null');
       if (typeof brief !== 'string' || !brief.trim()) throw fail('BAD_REQUEST', 'brief is required');
       if (typeof budgetUsd !== 'number' || !(budgetUsd >= 0)) throw fail('BAD_REQUEST', 'budgetUsd must be a non-negative number');
       if (deadline !== null && deadline !== undefined && typeof deadline !== 'string') throw fail('BAD_REQUEST', 'deadline must be a string');
@@ -178,6 +182,7 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
         evidence,
         fromAgentId: from.id,
         toAgentId: to.id,
+        venture: venture ? venture.trim() : to.venture || null,
         fromRoomId: from.roomId,
         toRoomId: to.roomId,
         trailId: `trail:${from.roomId}:${to.roomId}`,
@@ -193,7 +198,7 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
       };
       items.push(item);
       if (items.length > maxItems) items = items.filter((it) => it.status === 'queued' || it.status === 'running').concat(items.filter((it) => it.status !== 'queued' && it.status !== 'running').slice(-maxItems));
-      emit('work.handoff', { fromAgentId: item.fromAgentId, toAgentId: item.toAgentId, fromRoomId: item.fromRoomId, toRoomId: item.toRoomId, trailId: item.trailId, workItemId: item.id, summary: item.brief.slice(0, 200) });
+      emit('work.handoff', { fromAgentId: item.fromAgentId, toAgentId: item.toAgentId, fromRoomId: item.fromRoomId, toRoomId: item.toRoomId, trailId: item.trailId, workItemId: item.id, summary: item.brief.slice(0, 200), ...(item.venture ? { venture: item.venture } : {}) });
       let started;
       try {
         before.set('pending:' + item.id, null);

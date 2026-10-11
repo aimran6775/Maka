@@ -250,7 +250,9 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 - Click the Peak: "recipes" lists the five starter recipes from `workspace/_peak/recipes/`.
   Type a venture id and `venture=<id>` in the params, click Plan on "Weekly ad review":
   without a Notice board in the Ads Ranger's camp it says "needs a Notice board in …";
-  place one in BUILD, Plan again: "Plan ok: review → <ranger>".
+  place one in BUILD, Plan again: "Plan ok: review → <ranger>". Plan it for a venture id
+  that has no Ads Ranger of its own: "needs an ads Ranger in venture …: hire one into …
+  first", and no other venture's Ranger is named (safety 2026-10-11 M3).
 - Run it: `recipe.run { status: 'started' }` then `{ status: 'step' }` with the work item;
   the Ranger walks the trail; its reads run as research; `outbox/ads/review-<venture>.md`
   lands and `recipe.run { status: 'done', deliverables: 1 }` closes the run; the Peak's

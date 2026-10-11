@@ -1701,3 +1701,22 @@ receipt with no proof). While writing the test it showed that the earlier rule "
 payment page is not re-raised" (L1) was keyed on the browser session, so a second purchase
 by the same Ranger on the same supplier within one session would not have handed off at
 the cart; the suppression now counts for the run the hand-back was given in only.
+
+## D157. Work belongs to the venture it was done for, and a recipe never borrows another venture's Ranger
+
+The second safety review (M3) found recipe steps falling back to any Ranger of the
+specialty when the venture had none, while results attributed by the Ranger's own venture:
+a recipe for venture B run by A's Ranger scored A with B's listing, and a kill of B never
+paused it. Two things changed. A recipe step for a named venture now goes only to that
+venture's Ranger of the specialty, and the plan says `NO_RANGER` with the venture to hire
+into; the review's alternative, hiring into B as the Chief does, was not taken, because a
+plan is a read and a hire is a Chief decision with a budget behind it, so the plan reports
+and the owner or the Chief hires. Without a venture a recipe still takes any Ranger of the
+specialty, since there is no venture to misattribute. Second, a work item carries the
+venture it is for (recipes, purchases and the reflection's kill items name theirs; a
+delegation with none takes the receiver's own), and the results engine attributes what a
+run makes to its item's venture before the Ranger's, so a cross-venture delegation by the
+Superintendent or the Chief still lands where it belongs. A kill plan then reaches objects
+a venture has no Ranger of the specialty for through the Ranger that made them, who holds
+the grants that made them; model spend stays per Ranger, as the brief asks, and rolls up
+through the crew.

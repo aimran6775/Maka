@@ -195,8 +195,12 @@ document under `_peak/recipes/<id>/v<N>.json` (a goal, steps that are task brief
 specialty with a budget, the evidence to leave, the fixtures its Ranger's zone needs and
 what it depends on, the leash levels it needs, a success check over the deliverables),
 granted to a role or a Ranger, and run as work items along the trails in dependency order:
-the plan first names what is missing (a parameter, a Ranger of the specialty, a fixture in
-the receiver's zone, a leash at Observe) and notes where a step will wait at the Gate;
+the plan first names what is missing (a parameter, a Ranger of the specialty in the named
+venture (another venture's Ranger is never drafted in: its results and kills would land on
+the wrong venture; safety 2026-10-11 M3), a fixture in the receiver's zone, a leash at
+Observe) and notes where a step will wait at the Gate; every step's work item carries the
+venture, and the results engine attributes what a run makes to its item's venture before
+the Ranger's own;
 each `work.done` delegates what it unblocked; a failed step or a failed check fails the
 run. The Superintendent runs recipes from the Peak as itself; a Ranger or the Chief runs a
 granted one with `recipe.run`, and its steps are the Chief's delegations under the mission
@@ -411,7 +415,11 @@ the park until it changes again, and read-only counts only without destructiveHi
 tool may now hold itself at the Gate through `holdAtGate` (D155). M2 done: a payment
 hand-back takes the amount the Superintendent paid, a purchase settles at it or else at
 max(declared, reported), the receipt's evidence must be on the handoff's host, and a
-payment hand-back counts for its own run only (D156).
+payment hand-back counts for its own run only (D156). M3 done: a recipe step for a venture
+goes only to that venture's Ranger of the specialty, work items carry their venture
+(recipes, purchases and kill items name it), results attribute by the item's venture, and
+a kill pauses an object through the Ranger that made it when the venture has no Ranger of
+the specialty (D157).
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

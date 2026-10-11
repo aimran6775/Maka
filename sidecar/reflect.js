@@ -350,7 +350,7 @@ export function createReflect({
         for (const [agentId, mine] of byAgent) {
           const brief = [`KILL venture ${v.id}: the results engine's rule says kill because ${v.proposal.because.join('; ')}.`, 'Pause everything below with exactly these tool calls, one each, and report what each tool answered. Do not create, activate or change anything else.', ...mine.map((s) => `- ${s.tool} ${JSON.stringify(s.input)}  (${s.connector} ${s.object})`)].join('\n');
           try {
-            const item = await trails.delegate({ toAgentId: agentId, brief, budgetUsd: 0.25, evidence: ['the tool results'] }, { by: CHIEF_ID });
+            const item = await trails.delegate({ toAgentId: agentId, brief, budgetUsd: 0.25, evidence: ['the tool results'], venture: v.id }, { by: CHIEF_ID });
             record.items.push(item.id);
           } catch (err) {
             record.notes.push(`delegation to ${agentId} refused: ${err.code || ''} ${err.message}`.trim());

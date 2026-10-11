@@ -38,6 +38,10 @@ import { grantsForRun } from '../sidecar/runs.js';
 import { createPurchases } from '../sidecar/purchases.js';
 import { allGrantsFor } from '../shared/world.js';
 import { makeEvent } from '../shared/events.js';
+import { startTestServer } from './helpers/test-server.js';
+import { fakeProvider, text, end } from './helpers/fake-provider.js';
+import { createAgents } from '../sidecar/agents.js';
+import { createResults } from '../sidecar/results.js';
 
 const local = createNetGuard({ allowLocal: true });
 const quiet = { warn() {}, error() {} };
@@ -693,5 +697,117 @@ test('M2: the receipt\'s evidence must be a page on the host the Superintendent 
     assert.equal(stale.ok, true, 'the latest read is still on the supplier host, so it stands (the Ranger shares one trace)');
   } finally {
     await h.cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------------------
+// M3: a recipe for venture B never runs on venture A's Ranger; results attribute by the item.
+// ---------------------------------------------------------------------------------------
+
+const TWO_STEP = {
+  id: 'two-step',
+  title: 'Two steps',
+  goal: 'Write a note for {venture} then a summary of it.',
+  params: [{ name: 'venture', required: true }, { name: 'tone', default: 'plain' }],
+  steps: [
+    { id: 'note', title: 'The note', specialty: 'storefront', budgetUsd: 0.3, fixtures: ['supply_cache'], brief: 'Write outbox/notes/{venture}.md in a {tone} tone.', evidence: ['outbox/notes/{venture}.md'] },
+    { id: 'summary', title: 'The summary', specialty: 'books', budgetUsd: 0.2, dependsOn: ['note'], fixtures: ['supply_cache'], brief: 'Summarise the note into outbox/notes/{venture}-summary.md.' },
+  ],
+  leashNeeds: [{ domain: 'publishing', level: 'draft' }],
+  successCheck: { kind: 'files', patterns: ['outbox/notes/*.md'] },
+};
+
+function campsLayout() {
+  const layout = defaultLayout();
+  layout.rooms.push({ id: 'listings', name: 'Listings Camp', kind: 'product_listings', x: 21, y: 1, w: 8, h: 6 });
+  layout.rooms.push({ id: 'finance', name: 'Finance Camp', kind: 'finance', x: 31, y: 1, w: 8, h: 6 });
+  layout.objects.push({ id: 'cache-l', kind: 'supply_cache', roomId: 'listings', x: 22, y: 2 });
+  layout.objects.push({ id: 'cache-f', kind: 'supply_cache', roomId: 'finance', x: 32, y: 2 });
+  layout.agents.push({ id: 'sam', name: 'Sam', roomId: 'listings', x: 21, y: 1, role: 'ranger', specialty: 'storefront', venture: 'lantern-co' });
+  layout.agents.push({ id: 'sue', name: 'Sue', roomId: 'listings', x: 23, y: 1, role: 'ranger', specialty: 'storefront', venture: 'other-co' });
+  layout.agents.push({ id: 'bea', name: 'Bea', roomId: 'finance', x: 31, y: 1, role: 'ranger', specialty: 'books', venture: 'lantern-co' });
+  return layout;
+}
+
+test('M3: a recipe step for a venture goes only to that venture\'s Ranger of the specialty (NO_RANGER otherwise, never another venture\'s), the work item carries the venture, and a delegation names it', async () => {
+  const worker = fakeProvider(Array(6).fill([text('done'), end()]));
+  const srv = await startTestServer({ layout: campsLayout(), withChief: true, makeProvider: async () => ({ provider: worker, model: 'm', price: null }) });
+  try {
+    assert.equal((await srv.post('/api/recipes', TWO_STEP)).status, 201);
+    // The review's scenario: a recipe for other-co, whose only books Ranger is lantern-co's Bea.
+    const plan = (await srv.post('/api/recipes/two-step/plan', { ventureId: 'other-co', params: { venture: 'other-co' } })).body;
+    assert.equal(plan.ok, false);
+    assert.deepEqual(plan.problems.map((p) => p.code), ['NO_RANGER']);
+    assert.match(plan.problems[0].message, /needs a books Ranger in venture other-co .* hire one into other-co first/);
+    assert.equal(plan.assignments.note.agentId, 'sue', 'other-co\'s own storefront Ranger');
+    assert.equal(plan.assignments.summary, undefined, 'Bea of lantern-co is not drafted in');
+    const run = await srv.post('/api/recipes/two-step/run', { ventureId: 'other-co', params: { venture: 'other-co' } });
+    assert.equal(run.status, 400);
+    assert.equal(run.body.code, 'NO_RANGER');
+    // lantern-co has both: the plan stands, and the delegated item carries the venture.
+    const ok = (await srv.post('/api/recipes/two-step/plan', { ventureId: 'lantern-co', params: { venture: 'lantern-co' } })).body;
+    assert.equal(ok.ok, true, JSON.stringify(ok.problems));
+    assert.deepEqual([ok.assignments.note.agentId, ok.assignments.summary.agentId], ['sam', 'bea']);
+    const started = await srv.post('/api/recipes/two-step/run', { ventureId: 'lantern-co', params: { venture: 'lantern-co' } });
+    assert.equal(started.status, 202, JSON.stringify(started.body));
+    const item = srv.trails.get(started.body.steps.note.workItemId);
+    assert.equal(item.venture, 'lantern-co');
+    // With no venture named, any Ranger of the specialty still serves (the item takes the receiver's venture).
+    const anyone = (await srv.post('/api/recipes/two-step/plan', { params: { venture: 'x' } })).body;
+    assert.equal(anyone.ok, true, JSON.stringify(anyone.problems));
+    // A delegation names its venture; a bad one is refused; the event carries it; the brief names it.
+    await assert.rejects(srv.trails.delegate({ toAgentId: 'sam', brief: 'List for other-co', venture: 7 }, { by: 'superintendent' }), (e) => e.code === 'BAD_REQUEST');
+    const cross = await srv.trails.delegate({ toAgentId: 'sam', brief: 'List the lantern for other-co', venture: 'other-co' }, { by: 'superintendent' });
+    assert.equal(cross.venture, 'other-co');
+    assert.equal(srv.trails.get(cross.id).venture, 'other-co');
+    const own = await srv.trails.delegate({ toAgentId: 'sam', brief: 'Own work' }, { by: 'superintendent' });
+    assert.equal(own.venture, 'lantern-co', 'no venture named: the receiver\'s own');
+    await srv.runs.waitForIdle();
+    const handoffs = srv.events ? srv.events.filter((e) => e.type === 'work.handoff') : [];
+    assert.ok(!srv.events || handoffs.some((e) => e.payload.workItemId === cross.id && e.payload.venture === 'other-co'));
+  } finally {
+    await srv.close();
+  }
+});
+
+test('M3: results attribute what a run makes to its work item\'s venture, not the Ranger\'s, and a kill of that venture pauses it through the Ranger that made it', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-safety4-results-'));
+  const store = createStore({ root: path.join(dir, 'home') });
+  await store.init();
+  const bus = createEventBus();
+  const clock = fakeClock(Date.UTC(2026, 9, 11, 12));
+  const layoutState = createLayoutState({ initial: campsLayout(), store, bus, clock });
+  const agents = createAgents({ layoutState, bus, clock });
+  // Two foreign items for Sam (lantern-co): one for other-co, which has its own storefront
+  // Ranger (Sue), one for third-co, which has no crew at all.
+  const items = { 'work-b': { id: 'work-b', toAgentId: 'sam', venture: 'other-co', status: 'running', runId: 'r-b' }, 'work-c': { id: 'work-c', toAgentId: 'sam', venture: 'third-co', status: 'running', runId: 'r-c' } };
+  const trails = { get: (id) => items[id] || null, list: () => Object.values(items) };
+  const chief = { state: () => ({ mission: { id: 'm' }, plan: { ventures: [{ id: 'lantern-co', name: 'Lantern Co', budgetUsd: 10 }, { id: 'other-co', name: 'Other Co', budgetUsd: 10 }, { id: 'third-co', name: 'Third Co', budgetUsd: 10 }] } }) };
+  const syncedAt = clock.now();
+  const etsy = { syncedAt, shop: { currency: 'USD' }, listings: [{ listingId: 501, title: 'Lantern for Other Co', state: 'active' }, { listingId: 502, title: 'Sam\'s own', state: 'active' }, { listingId: 503, title: 'Lantern for Third Co', state: 'active' }], receipts: [] };
+  const connectors = { data: (kind) => (kind === 'etsy' ? etsy : { syncedAt: null }), list: () => [{ kind: 'etsy', label: 'etsy', connected: true, summary: 'fake', syncedAt }] };
+  const results = await createResults({ bus, store, agents, trails, chief, getConnectors: () => connectors, getMail: () => null, getLayout: layoutState.get, clock, log: { error() {} } }).init();
+  try {
+    const ts = clock.now();
+    // Sam (lantern-co) works a venture B item and creates a listing; then an own run creates another.
+    bus.emit(makeEvent('agent.run.start', { runId: 'r-b', agentId: 'sam', provider: 'ollama', model: 'w', prompt: 'x', maxTurns: 4, budgetUsd: 1, tools: [] }, { ts }));
+    bus.emit(makeEvent('agent.tool_result', { runId: 'r-b', turn: 1, callId: 'c1', name: 'etsy.create_listing', ok: true, output: JSON.stringify({ listingId: 501, title: 'Lantern for Other Co' }) }, { ts }));
+    bus.emit(makeEvent('agent.run.start', { runId: 'r-own', agentId: 'sam', provider: 'ollama', model: 'w', prompt: 'x', maxTurns: 4, budgetUsd: 1, tools: [] }, { ts }));
+    bus.emit(makeEvent('agent.tool_result', { runId: 'r-own', turn: 1, callId: 'c2', name: 'etsy.create_listing', ok: true, output: JSON.stringify({ listingId: 502, title: 'Sam\'s own' }) }, { ts }));
+    bus.emit(makeEvent('agent.run.start', { runId: 'r-c', agentId: 'sam', provider: 'ollama', model: 'w', prompt: 'x', maxTurns: 4, budgetUsd: 1, tools: [] }, { ts }));
+    bus.emit(makeEvent('agent.tool_result', { runId: 'r-c', turn: 1, callId: 'c3', name: 'etsy.create_listing', ok: true, output: JSON.stringify({ listingId: 503, title: 'Lantern for Third Co' }) }, { ts }));
+    await results.close();
+    const att = results.attribution();
+    assert.deepEqual([att.etsy.listing['501'].venture, att.etsy.listing['501'].agentId], ['other-co', 'sam'], 'the item\'s venture, by the Ranger who made it');
+    assert.equal(att.etsy.listing['502'].venture, 'lantern-co', 'an own run attributes to the Ranger\'s venture');
+    assert.equal(att.etsy.listing['503'].venture, 'third-co');
+    // A kill of other-co pauses its listing through its own storefront Ranger (Sue); a kill of
+    // third-co, which has no crew, through Sam, who made it; lantern-co's kill touches neither.
+    assert.deepEqual(results.killPlan('other-co').map((s) => [s.object, s.agentId, s.input.state]), [['listing 501 "Lantern for Other Co"', 'sue', 'inactive']]);
+    assert.deepEqual(results.killPlan('third-co').map((s) => [s.object, s.agentId, s.input.state]), [['listing 503 "Lantern for Third Co"', 'sam', 'inactive']]);
+    assert.deepEqual(results.killPlan('lantern-co').map((s) => s.object), ['listing 502 "Sam\'s own"'], 'and lantern-co\'s kill never touches the other ventures\' listings');
+  } finally {
+    await results.close();
+    await fsp.rm(dir, { recursive: true, force: true });
   }
 });

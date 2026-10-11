@@ -357,8 +357,9 @@ mutes an item) or forget it.
 Step 12, recipes and skills: the Peak lists versioned playbooks (`_peak/recipes/`; five
 to start: the Etsy listing pipeline, a weekly ad review, a support inbox sweep, a supplier
 reorder check, a monthly books close). Plan shows what a run would do and what is missing
-(a Ranger, a fixture, a leash at Observe); Run turns the steps into work items along the
-trails in order, and every tool still passes its leash at the Gate. Grant a recipe to
+(a Ranger of the specialty in that venture, a fixture, a leash at Observe); Run turns the
+steps into work items along the trails in order, each marked with the venture so results
+land on it, and every tool still passes its leash at the Gate. Grant a recipe to
 Rangers or the Chief and they run it with `recipe.run`. Skills (`_peak/skills/`) are
 instruction packs you attach to a Ranger on its card; they open its prompt.
 

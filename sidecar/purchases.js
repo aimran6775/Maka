@@ -223,7 +223,7 @@ export function createPurchases({ bus, store, trails, ledger, browser = null, ge
     eventFor(p, 'requested');
     let item;
     try {
-      item = await trails.delegate({ toAgentId: picked.agent.id, brief: purchaseBrief(p), budgetUsd: PURCHASE_DEFAULT_BUDGET_USD, evidence: [`outbox/purchases/${id}.json`] }, { by });
+      item = await trails.delegate({ toAgentId: picked.agent.id, brief: purchaseBrief(p), budgetUsd: PURCHASE_DEFAULT_BUDGET_USD, evidence: [`outbox/purchases/${id}.json`], venture: p.venture }, { by });
     } catch (err) {
       purchases = purchases.filter((x) => x !== p);
       await ledger.releaseHold(id);

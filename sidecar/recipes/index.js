@@ -10,7 +10,8 @@
 // starter library under `recipes/starter/` is copied in on the first boot and never
 // overwrites a version that exists), granted to a role or a Ranger (`_peak/recipes/grants.json`).
 // Running one turns its steps into work items along the trails in dependency order: each
-// step goes to a Ranger of its specialty (the venture's own crew first), after the run
+// step goes to a Ranger of its specialty (the venture's own crew only when a venture is
+// named, safety 2026-10-11 M3; the work item carries the venture), after the run
 // checked that every fixture the step names stands in that Ranger's zone and that no leash
 // the recipe needs is at Observe (a stricter level than needed is a note: the step will
 // wait at the Gate). The steps are the Superintendent's delegations when the Superintendent
@@ -170,10 +171,14 @@ export function createRecipes({ store, bus, trails, agents, getLayout, leashStat
     return [...recipes.keys()].filter((id) => mayRun(id, agentId)).map((id) => latest(id)).filter(Boolean);
   }
 
-  // Receivers per step: the venture's crew with the specialty first, then any Ranger of it.
+  // Receivers per step: with a venture, only that venture's crew with the specialty
+  // (safety 2026-10-11 M3: a Ranger of another venture would score its own venture with
+  // this one's results, and a kill of this venture would never reach what it made); with
+  // no venture, any Ranger of the specialty.
   function receiverFor(step, ventureId, layout) {
     const rangers = layout.agents.filter((a) => (a.role || 'ranger') === 'ranger' && a.specialty === step.specialty);
-    return rangers.find((a) => ventureId && a.venture === ventureId) || rangers[0] || null;
+    if (ventureId) return rangers.find((a) => a.venture === ventureId) || null;
+    return rangers[0] || null;
   }
 
   function plan(recipe, { ventureId = null, params = {} } = {}) {
@@ -187,7 +192,7 @@ export function createRecipes({ store, bus, trails, agents, getLayout, leashStat
     for (const s of steps) {
       const to = receiverFor(s, ventureId, layout);
       if (!to) {
-        problems.push({ code: 'NO_RANGER', message: `step ${s.id} needs a ${s.specialty} Ranger${ventureId ? ` (none in venture ${ventureId} or elsewhere)` : ''}: hire one first` });
+        problems.push({ code: 'NO_RANGER', message: ventureId ? `step ${s.id} needs a ${s.specialty} Ranger in venture ${ventureId} (none there; a Ranger of another venture is not used, so its results and kills stay with the right venture): hire one into ${ventureId} first` : `step ${s.id} needs a ${s.specialty} Ranger: hire one first` });
         continue;
       }
       assignments[s.id] = { agentId: to.id, roomId: to.roomId };
@@ -219,7 +224,7 @@ export function createRecipes({ store, bus, trails, agents, getLayout, leashStat
       if (earlier.length) context.push(`Earlier steps delivered: ${earlier.map((e) => `${e.deliverables.join(', ') || 'no files'} (${(e.summary || '').slice(0, 200)})`).join(' · ')} — read them with fs.read where you need them.`);
       const brief = `${context.join('\n')}\n\n${substitute(step.brief, run.params)}`;
       try {
-        const item = await trails.delegate({ toAgentId: target.agentId, brief, budgetUsd: step.budgetUsd, deadline: step.deadline || null, evidence: step.evidence || [] }, { by: run.delegatedBy });
+        const item = await trails.delegate({ toAgentId: target.agentId, brief, budgetUsd: step.budgetUsd, deadline: step.deadline || null, evidence: step.evidence || [], venture: run.ventureId || null }, { by: run.delegatedBy });
         run.steps[step.id] = { ...run.steps[step.id], status: 'delegated', workItemId: item.id, agentId: target.agentId, delegatedAt: clock.now() };
         emit('recipe.run', { recipeRunId: run.id, recipeId: run.recipeId, version: run.version, status: 'step', by: run.by, ventureId: run.ventureId || '', stepId: step.id, workItemId: item.id, agentId: target.agentId, steps: recipe.steps.length, done: done.size });
       } catch (err) {

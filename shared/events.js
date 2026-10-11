@@ -176,6 +176,7 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     trailId: str,
     workItemId: nonEmpty,
     summary: str,
+    venture: str, // safety 2026-10-11 M3: the venture the item is for, when one is named
   }),
   // Added v1 (additive): the Superintendent re-rolled the park seed.
   'layout.seed': payload(['seed'], { seed: int1 }),
