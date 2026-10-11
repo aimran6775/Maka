@@ -523,6 +523,35 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     error: str,
     ref: str,
   }),
+  // Added v1 (phase 4 step 11): Ranger memory. `memory.recall` is a lookup (a tool call, or
+  // the automatic recall into a run's context); `memory.write` a proposed item stored after
+  // the judge accepted it or refused with the reason (secrets and personal data are counted
+  // as `redactions`, never carried); `memory.forget` a removal; `memory.feedback` the
+  // Superintendent's 👍 / 👎 with the running counts.
+  'memory.recall': payload(['agentId', 'query', 'count', 'itemIds', 'automatic'], {
+    agentId: nonEmpty,
+    runId: str,
+    query: str,
+    count: int0,
+    itemIds: { type: 'array', items: nonEmpty },
+    automatic: bool,
+    turn: int0,
+  }),
+  'memory.write': payload(['agentId', 'scope', 'owner', 'kind', 'status'], {
+    memoryId: str,
+    agentId: nonEmpty,
+    scope: { type: 'string', enum: ['agent', 'venture', 'station'] },
+    owner: nonEmpty,
+    kind: { type: 'string', enum: ['fact', 'preference', 'procedure'] },
+    status: { type: 'string', enum: ['stored', 'refused'] },
+    reason: str,
+    verdict: str,
+    redactions: int0,
+    runId: str,
+    text: str,
+  }),
+  'memory.forget': payload(['memoryId', 'by'], { memoryId: nonEmpty, agentId: str, scope: str, owner: str, by: nonEmpty }),
+  'memory.feedback': payload(['memoryId', 'vote', 'by', 'up', 'down'], { memoryId: nonEmpty, agentId: str, vote: { type: 'string', enum: ['up', 'down'] }, by: nonEmpty, up: int0, down: int0, muted: bool }),
   // Added v1 (phase 4 step 10): a venture brief entered the Scout's memory (recorded by
   // brief.submit) or the Chief decided on it (brief.decide); niche and channel are what the
   // brief declared, `estimates` how many checkable figures it gave.

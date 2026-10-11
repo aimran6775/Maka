@@ -37,6 +37,39 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     );
   }
 
+  // Phase 4 step 11: the Ranger's memory on its card, with 👍 / 👎 and forget.
+  const memoryCache = { key: null, agentId: null, rows: [], loading: false };
+  function loadMemory(agentId, key) {
+    if ((memoryCache.key === key && memoryCache.agentId === agentId) || memoryCache.loading) return;
+    memoryCache.loading = true;
+    api.get(`/api/memory?agentId=${encodeURIComponent(agentId)}`).then((r) => {
+      memoryCache.rows = r.ok ? r.body : [];
+      memoryCache.key = key;
+      memoryCache.agentId = agentId;
+    }).finally(() => {
+      memoryCache.loading = false;
+      if (selectionRefresh) selectionRefresh();
+    });
+  }
+  const memoryNotice = el('div', { class: 'notice' });
+  function memorySection(s, agent) {
+    if (!s.memory) return [];
+    loadMemory(agent.id, `${s.memory.latest ? s.memory.latest.at : 0}`);
+    const rows = memoryCache.agentId === agent.id ? memoryCache.rows : [];
+    const vote = async (id, v) => { const r = await api.post(`/api/memory/${encodeURIComponent(id)}/feedback`, { vote: v }); memoryNotice.textContent = r.ok ? `${v === 'up' ? '👍' : '👎'} recorded (${r.body.up} up, ${r.body.down} down${r.body.muted ? '; muted: never recalled' : ''})` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; };
+    const forget = async (id) => { const r = await api.del(`/api/memory/${encodeURIComponent(id)}`); memoryNotice.textContent = r.ok ? 'Forgotten.' : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; };
+    return [
+      el('div', { class: 'k', text: `memory (${rows.length} item(s) this Ranger can recall: its own, its venture\'s, its station\'s; writes ${s.memory.judge ? 'need the judge\'s approval' : 'are refused: no judge wired'})` }),
+      ...(rows.length ? rows.slice(0, 12).map((m) => el('div', { class: `kv ${m.muted ? 'muted' : ''}` },
+        el('span', { class: 'v small', text: `[${m.kind}, ${m.scope}${m.scope !== 'agent' ? ` ${m.owner}` : ''}] ${m.text}${m.tags && m.tags.length ? ` · #${m.tags.join(' #')}` : ''} · ${new Date(m.createdAt).toLocaleDateString()} · used ${m.uses || 0}×${m.muted ? ' · MUTED' : ''}${m.redactions && m.redactions.length ? ' · redacted' : ''}` }),
+        el('button', { class: 'btn small', text: `👍 ${m.feedback.up}`, title: 'This helped', onclick: () => vote(m.id, 'up') }),
+        el('button', { class: 'btn small', text: `👎 ${m.feedback.down}`, title: 'This is wrong or unhelpful (a net −1 mutes it)', onclick: () => vote(m.id, 'down') }),
+        el('button', { class: 'btn small', text: 'forget', onclick: () => forget(m.id) }),
+      )) : [el('div', { class: 'muted small', text: 'nothing stored yet: a Ranger proposes items with memory.write and the judge accepts them; secrets and personal data are removed first' })]),
+      memoryNotice,
+    ];
+  }
+
   function renderAgent(s, agent) {
     setTitle(`INSPECT · ${agent.name}`);
     const st = s.agentStates[agent.id] || 'idle';
@@ -66,6 +99,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       s.mail ? row('addresses', (() => { const mine = mailCache.addresses.filter((a) => a.agentId === agent.id || (a.kind === 'station' && a.station === agent.roomId)); if (!mailCache.addresses.length) loadMail(s, { id: agent.roomId, kind: 'zone' }); return mine.length ? mine.map((a) => a.address).join(', ') : 'none loaded'; })()) : null,
       s.queuedRuns.some((r) => r.agentId === agent.id) ? row('queued', `${s.queuedRuns.filter((r) => r.agentId === agent.id).length} run(s) waiting for this Ranger`) : null,
       agentActions(s, agent),
+      ...memorySection(s, agent),
       ...workFor(s, agent.id).slice(0, 8).map((it) => el('div', { class: `use ${it.status === 'done' ? 'ok' : it.status === 'failed' || it.status === 'cancelled' ? 'failed' : 'running'}`, text: `${it.fromAgentId === agent.id ? '→ ' + it.toAgentId : '← ' + it.fromAgentId} · ${it.status} · ${(it.brief || '').slice(0, 50)}${it.deliverables && it.deliverables.length ? ` · ${it.deliverables.length} file(s)` : ''}` })),
       el('div', { class: 'k', text: 'leash (per domain, enforced by the gate)' }),
       leash.length

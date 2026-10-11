@@ -42,6 +42,10 @@ const SAMPLES = {
   'channel.inbound': { channel: 'telegram', chatId: '12345', userId: '777', action: 'gate', paired: true, outcome: 'accepted', itemId: 'gate-1', decision: 'approve', messageId: '42' },
   'channel.connect': { channel: 'telegram', status: 'up', message: 'long polling as @maka_bot', by: 'env' },
   'channel.delivery': { channel: 'telegram', chatId: '12345', kind: 'gate_card', status: 'sent', itemId: 'gate-1', messageId: '43' },
+  'memory.recall': { agentId: 'a1', runId: 'r1', query: 'etsy fees', count: 1, itemIds: ['mem-1'], automatic: true, turn: 0 },
+  'memory.write': { memoryId: 'mem-1', agentId: 'a1', scope: 'venture', owner: 'lantern-co', kind: 'fact', status: 'stored', redactions: 1, runId: 'r1', verdict: 'approve', text: 'Etsy charges $0.20 per listing' },
+  'memory.forget': { memoryId: 'mem-1', agentId: 'a1', scope: 'venture', owner: 'lantern-co', by: 'superintendent' },
+  'memory.feedback': { memoryId: 'mem-1', agentId: 'a1', vote: 'down', by: 'superintendent', up: 0, down: 1, muted: true },
   'scout.brief': { briefId: 'brief-2026-10-11-abc', change: 'decided', agentId: 'scout-1', title: 'Garden lanterns', recommendation: 'go', decision: 'go', ventureId: 'lantern-co', niche: 'garden lanterns', channel: 'etsy', by: 'chief-ranger' },
   'results.rollup': { day: '2026-10-11', reason: 'sync', park: { revenue: 120.5, refunds: 10, fees: null, adSpend: 24, orders: 3, modelSpend: 0.12, mailIn: 2, mailOut: 1, contributionPerOrder: 28.83, modelCostPerOrder: 0.04 }, ventures: [{ id: 'lantern-co', revenue: null, refunds: null, fees: null, adSpend: null, orders: null, modelSpend: 0.12, mailIn: 0, mailOut: 0, contributionPerOrder: null, modelCostPerOrder: null }], proposals: [{ venture: 'lantern-co', verdict: 'no_data', because: ['no connector has synced'] }] },
   'browser.handoff': { handoffId: 'hand-1', agentId: 'ranger-1', status: 'waiting', kind: 'login', runId: 'run-1', url: 'https://shop.example/login', title: 'Sign in', reason: 'the page asks for a password', headless: false },
@@ -126,6 +130,8 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('channel.delivery', { channel: 'telegram', chatId: '1', kind: 'gate_card', status: 'queued' });
   bad('results.rollup', { day: '2026-10-11', reason: 'sync', park: { revenue: 'none' }, ventures: [] });
   bad('scout.brief', { briefId: 'b', change: 'scored' });
+  bad('memory.write', { agentId: 'a1', scope: 'global', owner: 'x', kind: 'fact', status: 'stored' });
+  bad('memory.feedback', { memoryId: 'm', vote: 'meh', by: 'x', up: 0, down: 0 });
   bad('results.rollup', { day: '2026-10-11', reason: 'sync', park: {}, ventures: [], proposals: [{ venture: 'v', verdict: 'maybe', because: [] }] });
   bad('judge.verdict', { ...SAMPLES['judge.verdict'], verdict: 'shrug' });
   bad('crew.agent', { agentId: 'x', change: 'cloned' });

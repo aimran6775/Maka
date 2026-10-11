@@ -1374,3 +1374,21 @@ the brief joins, which is what makes the join possible. The history reaches the 
 Scout as plain lines in its system prompt and the judge as part of the question it is
 asked about the next brief; neither gets a number the engine did not record, and when
 nothing is recorded yet the paragraph says exactly that.
+
+## D142. Memory is written only through redaction and the judge; recall is lexical and muted by a thumbs-down
+
+The brief asks for memory items "proposed by the Ranger and accepted by the judge" with
+"redaction of secrets and personal data before storage". Both are taken at their
+strictest. Every proposed text and tag goes through pattern redaction before anything
+else sees it, the judge included, so a key or an address a worker model pasted never
+reaches the disk or a second model; the Ranger is told what was removed so it can
+rephrase, and the record keeps the counts, never the values. The judge is then the one
+accepting authority: without a judge key, at the judge's daily cap, after a failed call
+or on any verdict but approve, nothing is stored and the refusal says why, because an
+item "accepted by the judge" that no judge saw would be a memory the harness invented.
+Recall is a plain lexical score over the items a Ranger may see (its own, its venture's,
+its station's), with no embeddings: the sidecar stays dependency-free, the ranking is
+explainable (the matched terms are returned), and the Superintendent's votes are the
+only learning signal: a net thumbs-down mutes an item from every recall while leaving it
+on the card, forget removes it. Juniors read their crew's memory and cannot write, since
+a Junior's bounded subtask is not where durable knowledge should be minted.

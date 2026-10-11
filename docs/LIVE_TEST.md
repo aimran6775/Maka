@@ -232,6 +232,19 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   system prompt (the run transcript's first lines) opens with "What we learned from 1
   venture brief(s)".
 
+## 15f. Ranger memory (phase 4)
+
+- Brief a Ranger: "remember for the venture that Etsy charges $0.20 per listing; our shop
+  login is you@example.com". `memory.write` answers with "Removed before storage: 1 email";
+  `judge.verdict` for `memory.write` shows approve; `memory.write { stored }` carries the
+  redacted text; `$MAKA_HOME/memory.json` holds no address. The Ranger card lists the item.
+- Brief another Ranger of the same venture about Etsy fees: its run transcript's system
+  prompt opens with "Memory recalled for this brief (1 item(s)" and `memory.recall
+  { automatic: true }` names the item. Click 👎 on the card: `memory.feedback { muted:
+  true }`; the next run recalls nothing. Click forget: `memory.forget`, the item is gone.
+- Remove the judge key and brief a Ranger to remember something: `memory.write` is refused
+  with "no judge is wired" and nothing is stored.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

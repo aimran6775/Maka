@@ -24,6 +24,7 @@ import { createResearch } from '../../sidecar/research/index.js';
 import { createCreative } from '../../sidecar/creative/index.js';
 import { createResults } from '../../sidecar/results.js';
 import { createScoutMemory } from '../../sidecar/scout-memory.js';
+import { createMemory } from '../../sidecar/memory/index.js';
 import { createChannels } from '../../sidecar/channels/registry.js';
 import { createMcpManager } from '../../sidecar/mcp/manager.js';
 import { createOllama } from '../../sidecar/ollama.js';
@@ -75,7 +76,10 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const toolContext = { netGuard };
   const registry = { ...TOOLS, ...CREW_TOOLS };
   let scoutMemory = null;
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent, fetch: localFetch, workspaceOnline: () => workspace.state().online, systemExtras: (agent) => (agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []) });
+  // Phase 4 step 11: Ranger memory, always wired (writes need the judge).
+  const memory = await createMemory({ store, bus, agents, getLayout: layoutState.get, judge, clock, log: { error() {} } }).init();
+  Object.assign(registry, memory.tools);
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent, fetch: localFetch, workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...memory.promptLines(agent, info || {})] });
   runsRef = runs;
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, clock, workspaceRoot }).init();
   toolContext.trails = trails;
@@ -166,6 +170,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     creative,
     results,
     scoutMemory,
+    memory,
     setup,
     ollama,
     backup,
@@ -208,6 +213,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     research,
     results,
     scoutMemory,
+    memory,
     setup,
     ollama,
     backup,

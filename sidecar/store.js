@@ -17,6 +17,7 @@
 //   mail-addresses.json    mail routing rules (station addresses, Ranger aliases)
 //   channels.json          owner channels: the pairing code and the paired chats (phase 4)
 //   mcp-servers.json       MCP servers configured at the Peak (no secret values; phase 4)
+//   memory.json            Ranger memory items: facts, preferences, procedures per agent / venture / station (phase 4 step 11)
 //   scout-memory.json      every venture brief with its estimates, the Chief's go / no-go (phase 4 step 10)
 //   results.json           the results engine: daily rollups, model spend by day / agent / tier,
 //                          attribution of connector objects to ventures (phase 4 step 9)
@@ -84,6 +85,7 @@ export function createStore({ root, fs = fsp }) {
   const mcpFile = path.join(root, 'mcp-servers.json');
   const resultsFile = path.join(root, 'results.json');
   const scoutMemoryFile = path.join(root, 'scout-memory.json');
+  const memoryFile = path.join(root, 'memory.json');
   const reflectionsDir = path.join(root, 'reflections');
   const runsDir = path.join(root, 'runs');
 
@@ -107,6 +109,8 @@ export function createStore({ root, fs = fsp }) {
     loadMcpServers: (fallback) => readJson(mcpFile, fallback, { fs }),
     loadResults: (fallback) => readJson(resultsFile, fallback, { fs }),
     loadScoutMemory: (fallback) => readJson(scoutMemoryFile, fallback, { fs }),
+    loadMemory: (fallback) => readJson(memoryFile, fallback, { fs }),
+    saveMemory: (state) => writeJsonAtomic(memoryFile, state, { fs }),
     saveScoutMemory: (state) => writeJsonAtomic(scoutMemoryFile, state, { fs }),
     saveResults: (state) => writeJsonAtomic(resultsFile, state, { fs }),
     saveMcpServers: (state) => writeJsonAtomic(mcpFile, state, { fs }),

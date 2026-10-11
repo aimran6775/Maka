@@ -341,6 +341,13 @@ landed, whether a go held after 14 days). What was learned, by niche and channel
 into every Scout's prompt and the judge's review of the next brief, and the Research camp
 card shows it. Nothing unrecorded is scored.
 
+Step 11, Ranger memory: a Ranger stores facts, preferences and procedures for itself,
+its venture or its camp with `memory.write`; secrets and personal data are redacted
+first and the judge must accept the item, or nothing is stored. The best matches for a
+run's brief are recalled into its context automatically (lexical, no embeddings), and
+`memory.recall` finds the rest. Click a Ranger to see its memory, vote 👍 / 👎 (a net −1
+mutes an item) or forget it.
+
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),
 so the camp card and a Ranger's mail.search show it.

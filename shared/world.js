@@ -91,9 +91,9 @@ export const SPECIALTY_NAMES = deepFreeze(Object.keys(SPECIALTIES));
 // unions these with the fixture grants of the agent's zone.
 export const ROLE_GRANTS = deepFreeze({
   superintendent: [],
-  chief_ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'crew.hire', 'brief.decide'],
-  ranger: ['crew.spawn_junior', 'delegate', 'work.check'],
-  junior_ranger: [],
+  chief_ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'crew.hire', 'brief.decide', 'memory.recall', 'memory.write'],
+  ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'memory.recall', 'memory.write'],
+  junior_ranger: ['memory.recall'], // a Junior reads its crew's memory; writing is a Ranger's (phase 4 step 11)
 });
 
 export function roleGrants(role) {

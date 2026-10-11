@@ -32,6 +32,7 @@ export function initialState() {
     connectorEvents: [], // connector.sync / connector.error payloads this session, oldest first (bounded)
     research: null, // { search, searchKey, trends, judge } from the snapshot
     creative: null, // { images, imageKey, model, judge, hostedToday, hostedCap } from the snapshot (phase 4 step 8)
+    memory: null, // Ranger memory counts from the snapshot (phase 4 step 11); `stale` after a memory.* event
     scoutMemory: null, // the Scout's memory summary from the snapshot (phase 4 step 10); `stale` after scout.brief
     results: null, // the results engine's summary from the snapshot (phase 4 step 9); `latest` patched by results.rollup
 
@@ -116,6 +117,7 @@ export function applySnapshot(state, snap) {
   next.creative = snap.creative || null;
   next.results = snap.results || null;
   next.scoutMemory = snap.scoutMemory || null;
+  next.memory = snap.memory || null;
   next.channels = snap.channels || null;
   next.mcp = Array.isArray(snap.mcp) ? snap.mcp : null;
   next.setup = snap.setup || null;
@@ -365,6 +367,13 @@ export function applyEvent(state, event) {
       if (p.change === 'submitted') m.plan = { ...(m.plan || {}), id: p.planId, missionId: p.missionId, version: p.version, summary: p.summary || '', ventures: p.ventures || [], by: p.by, runId: p.runId, submittedAt: event.ts };
       next.mission = m;
       break;
+    }
+    case 'memory.recall':
+    case 'memory.write':
+    case 'memory.forget':
+    case 'memory.feedback': {
+      next.memory = { ...(next.memory || { items: 0, muted: 0, byScope: {}, byKind: {}, judge: false }), latest: { type: event.type, at: event.ts, agentId: p.agentId || null, memoryId: p.memoryId || null, status: p.status || null, count: p.count ?? null }, stale: true };
+      return next;
     }
     case 'scout.brief': {
       next.scoutMemory = { ...(next.scoutMemory || { totals: { briefs: 0, go: 0, noGo: 0, needsMore: 0, joined: 0, decided: 0 }, byNiche: [], byChannel: [], recent: [] }), latest: { briefId: p.briefId, change: p.change, at: event.ts, decision: p.decision || null, recommendation: p.recommendation || null }, stale: true };

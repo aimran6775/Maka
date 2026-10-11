@@ -165,6 +165,22 @@ to the judge's review of the next brief (the brief tool's scope), asking for che
 estimates and more evidence where past ones ran high; the Research camp card shows it
 (D141).
 
+Step 11 done: Ranger memory (`sidecar/memory/`). A memory item is a fact, a preference or
+a procedure with a scope (the Ranger itself, its venture, its station), stored in
+`memory.json`; a Ranger recalls its own items, its venture's and its camp's. A Ranger
+proposes an item with `memory.write`: the text is redacted first (`redact.js`: provider
+and platform key shapes, bot tokens, JWTs, bearer values, password assignments, emails,
+phone and card numbers, IBANs, ids replaced by a bracketed label) and stored only when
+the judge, asked whether it is durable, true, free of secrets and personal data and
+specific, says approve; no judge, a judge at its cap or any other verdict stores nothing
+and the Ranger is told why, including what was removed (D142). Recall is lexical
+(`recall.js`: stems, idf, a little recency, a bounded 👍 bonus; no embeddings, no
+dependency): `memory.recall` is a tool, and the top five matches for a run's brief go into
+its system prompt automatically through the run manager's `systemExtras`, each recall an
+event naming the items. The Superintendent votes 👍 / 👎 on the Ranger card (a net −1
+mutes an item: listed, never recalled) and forgets items for good; Juniors recall and do
+not write.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

@@ -53,10 +53,10 @@ export function grantsForRun(layout, agentId) {
   return base.filter((t) => !withheld.has(t));
 }
 export const DEFAULT_MAX_CONCURRENT = 4;
-function safeExtras(fn, agent) {
+function safeExtras(fn, agent, info) {
   if (typeof fn !== 'function') return [];
   try {
-    const out = fn(agent);
+    const out = fn(agent, info);
     return Array.isArray(out) ? out.filter((x) => typeof x === 'string' && x.trim()) : [];
   } catch (err) {
     console.error('system extras failed:', err);
@@ -91,7 +91,7 @@ export function createRunManager({
   makeProvider = defaultMakeProvider,
   permissionTimeoutMs = PERMISSION_TIMEOUT_MS,
   systemPrompt = DEFAULT_SYSTEM_PROMPT,
-  systemExtras = null, // (agentRecord) => string[] appended to the system prompt (phase 4 step 10: the Scout's memory)
+  systemExtras = null, // (agentRecord, { prompt, runId }) => string[] appended to the system prompt (phase 4 step 10: the Scout's memory; step 11: recalled memory)
   policy = defaultPolicy(),
   leash = defaultLeash(),
   leashState = null, // { get() } live policy; wins over the static `leash`
@@ -109,7 +109,7 @@ export function createRunManager({
   }
 
   const router = createRouter(policy); // throws POLICY_INVALID
-  const extrasFor = (agent) => safeExtras(systemExtras, agent);
+  const extrasFor = (agent, info) => safeExtras(systemExtras, agent, info);
   const running = new Map(); // runId -> { runId, agentId, abort, record, flush, done }
   const queue = []; // [{ runId, agentId, launch, record, ... }] in arrival order
   const pendingPrompts = new Map(); // promptId -> { resolve, timer, runId }
@@ -323,7 +323,7 @@ export function createRunManager({
           ask,
           registry,
           grants: typeof grants === 'function' ? grants : (l, a) => [...grantsForRun(l, a), ...(toolContext.mcp && typeof toolContext.mcp.grantsFor === 'function' ? toolContext.mcp.grantsFor(l, a) : [])],
-          toolContext: { agents, runs: api, ...toolContext },
+          toolContext: { agents, runs: api, ...toolContext, brief: prompt }, // the brief reaches tools that review against it (brief.submit, memory.write)
           getLeash: currentLeash,
           ledger,
           submit: gateQueue ? { submit: (item) => gateQueue.submit({ ...item, runId, agentId }), log: (item) => gateQueue.log({ ...item, runId, agentId }) } : null,
@@ -376,7 +376,7 @@ export function createRunManager({
               provider,
               model: chosenModel,
               tier,
-              system: [system || systemPrompt, ...personaLines(agentOf(getLayout(), agentId) || agentRecord), ...extrasFor(agentOf(getLayout(), agentId) || agentRecord)].join(' '),
+              system: [system || systemPrompt, ...personaLines(agentOf(getLayout(), agentId) || agentRecord), ...extrasFor(agentOf(getLayout(), agentId) || agentRecord, { prompt, runId })].join(' '),
               prompt,
               tools: gate,
               emit: (ev) => bus.emit(ev),

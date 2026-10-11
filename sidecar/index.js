@@ -42,6 +42,7 @@ import { createResearch } from './research/index.js';
 import { createCreative } from './creative/index.js';
 import { createResults } from './results.js';
 import { createScoutMemory } from './scout-memory.js';
+import { createMemory } from './memory/index.js';
 import { createChannels } from './channels/registry.js';
 import { createTelegramAdapter } from './channels/telegram.js';
 import { createDiscordAdapter } from './channels/discord.js';
@@ -107,7 +108,11 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const registry = { ...TOOLS, ...CREW_TOOLS }; // chief tools join below; the gate reads it at call time
   const router = createRouter(policy);
   let scoutMemory = null;
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online, systemExtras: (agent) => (agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []) });
+  // Phase 4 step 11: Ranger memory. Items are redacted and judge-accepted before storage;
+  // the top matches for a run's brief go into its system prompt; 👍 / 👎 on the Ranger card.
+  const memory = await createMemory({ store, bus, agents, getLayout: layoutState.get, judge, log }).init();
+  Object.assign(registry, memory.tools);
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...memory.promptLines(agent, info || {})] });
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, workspaceRoot }).init();
   toolContext.trails = trails;
   const chief = await createChief({ bus, store, runs, agents, trails, ledger, router, getLayout: layoutState.get, workspaceRoot, log }).init();
@@ -199,6 +204,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     creative,
     results,
     scoutMemory,
+    memory,
     setup,
     ollama,
     backup,
@@ -250,6 +256,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   log.info(`  mail: ${mailStatus.domain} · resend ${mailStatus.keys.resend ? 'key configured' : 'not wired (RESEND_API_KEY)'} · cloudflare ${mailStatus.keys.cloudflare ? 'token configured' : 'not wired (CLOUDFLARE_API_TOKEN)'} · webhook ${mailSys.keys.webhook ? 'secret configured' : 'not wired (RESEND_WEBHOOK_SECRET)'} · ${mailSys.addresses} address(es), ${mailSys.counts.messages} message(s), poll every ${mailSys.sync.pollMs / 1000}s`);
   const resultsNow = results.summary();
   log.info(`  results: ${resultsNow.lastRollup ? `last rollup ${new Date(resultsNow.lastRollup.at).toISOString()} (${resultsNow.lastRollup.reason})` : 'no rollup yet'} · sources: ${Object.entries(resultsNow.sources).filter(([, v]) => v).map(([k]) => k).join(', ') || 'ledgers only (no connector synced)'}`);
+  const mem = memory.summary();
+  log.info(`  memory: ${mem.items} item(s) (${mem.byScope.agent} agent, ${mem.byScope.venture} venture, ${mem.byScope.station} station; ${mem.muted} muted) · writes ${mem.judge ? 'accepted by the judge' : 'refused: no judge wired'}`);
   const sm = scoutMemory.summary();
   log.info(`  scout memory: ${sm.totals.briefs} brief(s) recorded (${sm.totals.go} go, ${sm.totals.noGo} no-go, ${sm.totals.decided} decided by the Chief, ${sm.totals.joined} joined to results)`);
   log.info(`  reflection: daily at ${config.reflectAt || '07:00'}, next ${new Date(scheduler.state().reflection.nextRunAt).toISOString()}${reflect.latest() ? `, last ${reflect.latest().id} (${reflect.latest().status})` : ', none yet'}`);
@@ -276,7 +284,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const setupState = await setup.state();
   log.info(`  first run: ${setupState.firstRun ? 'yes (the park shows the first-run card)' : `done ${new Date(setupState.completedAt).toISOString()}${setupState.skipped ? ' (skipped)' : ''}`} · worker ${ollama.summary().worker}`);
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, results, scoutMemory, setup, ollama, backup, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, results, scoutMemory, memory, setup, ollama, backup, close };
 }
 
 function validateConfig(data) {

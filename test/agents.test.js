@@ -33,8 +33,8 @@ async function setup({ layout = defaultLayout() } = {}) {
 
 test('world data: parent roles, role grants, specialties, free tiles, layout fields are additive', () => {
   assert.deepEqual(PARENT_ROLES.junior_ranger, ['ranger']);
-  assert.deepEqual(roleGrants('ranger'), ['crew.spawn_junior', 'delegate', 'work.check']);
-  assert.deepEqual(roleGrants('junior_ranger'), []);
+  assert.deepEqual(roleGrants('ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'memory.recall', 'memory.write']);
+  assert.deepEqual(roleGrants('junior_ranger'), ['memory.recall']);
   assert.deepEqual(roleGrants('nobody'), []);
   for (const s of Object.values(SPECIALTIES)) assert.ok(s.persona.length > 20 && s.zoneKind);
   const layout = defaultLayout();
@@ -49,7 +49,7 @@ test('world data: parent roles, role grants, specialties, free tiles, layout fie
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, true);
   layout.agents[0].specialty = 'wizard';
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, false);
-  assert.deepEqual(allGrantsFor({ ...defaultLayout(), objects: [{ id: 'o', kind: 'trailhead_sign', roomId: 'ranger-station', x: 1, y: 1 }] }, 'ranger'), ['brief.submit', 'crew.spawn_junior', 'delegate', 'web.fetch', 'web.read', 'web.search', 'web.trends', 'work.check']);
+  assert.deepEqual(allGrantsFor({ ...defaultLayout(), objects: [{ id: 'o', kind: 'trailhead_sign', roomId: 'ranger-station', x: 1, y: 1 }] }, 'ranger'), ['brief.submit', 'crew.spawn_junior', 'delegate', 'memory.recall', 'memory.write', 'web.fetch', 'web.read', 'web.search', 'web.trends', 'work.check']);
   assert.deepEqual(childrenOf(defaultLayout(), 'ranger'), []);
 });
 
@@ -58,7 +58,7 @@ test('agents: create / get / update / remove with the hierarchy rules, Chief sin
   try {
     assert.equal(h.agents.list().length, 1);
     assert.equal(h.agents.list()[0].role, 'ranger');
-    assert.deepEqual(h.agents.list()[0].grants, ['crew.spawn_junior', 'delegate', 'work.check']);
+    assert.deepEqual(h.agents.list()[0].grants, ['crew.spawn_junior', 'delegate', 'memory.recall', 'memory.write', 'work.check']);
     await assert.rejects(h.agents.create({ name: 'X', role: 'superintendent', zoneId: 'ranger-station' }), /role must be one of/);
     await assert.rejects(h.agents.create({ name: '', role: 'ranger', zoneId: 'ranger-station' }), /name is required/);
     await assert.rejects(h.agents.create({ name: 'X', zoneId: 'nowhere' }), /unknown zone/);
@@ -93,7 +93,7 @@ test('agents: create / get / update / remove with the hierarchy rules, Chief sin
     // Juniors: one hop below a Ranger only.
     const junior = await h.agents.create({ name: 'Drafter', role: 'junior_ranger', zoneId: 'ranger-station', parentAgentId: scout.id, persona: 'draft listings' }, { by: scout.id });
     assert.equal(junior.parentAgentId, scout.id);
-    assert.deepEqual(junior.grants, [], 'juniors get no role grants');
+    assert.deepEqual(junior.grants, ['memory.recall'], 'juniors read their crew\'s memory and nothing else by role');
     await assert.rejects(h.agents.create({ name: 'Deeper', role: 'junior_ranger', zoneId: 'ranger-station', parentAgentId: junior.id }), (e) => e.code === 'DEPTH' && /one hop deep/.test(e.message));
     await assert.rejects(h.agents.create({ name: 'Odd', role: 'junior_ranger', zoneId: 'ranger-station', parentAgentId: CHIEF_ID }), /cannot report to a chief_ranger/);
     await assert.rejects(h.agents.create({ name: 'Odd', role: 'ranger', zoneId: 'ranger-station', parentAgentId: junior.id }), /cannot report to a junior_ranger/);
