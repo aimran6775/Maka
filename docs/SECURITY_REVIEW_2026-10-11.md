@@ -17,7 +17,7 @@ Nothing here may weaken a fix from docs/SECURITY_REVIEW_2026-10-10.md.
 | L1 | LOW | `netguard.js` guardedFetch re-sends the full init (Authorization, mcp-session-id) to every redirect hop; a cross-host redirect leaks the bearer. | Drop authorization and session headers when the host changes. | fixed d9cc2ca |
 | L2 | LOW | `mcp/manager.js` validateServerSpec refuses only authorization/cookie headers; x-api-key etc. stored plaintext in mcp-servers.json (contradicts D134). | Require `$SECRET:` for all header values. | fixed 66e11dc |
 | L3 | LOW | Stdio `env` values are not on the Gate card (names only); PATH/NODE_OPTIONS/DYLD_* can redirect npx to another binary. | Show the values, or refuse those names. | fixed 326ff66 |
-| L4 | LOW | Hosted cap check and the cost.estimate count are not atomic (`creative/images.js`, `voice.js`): N concurrent calls at cap−1 all pass. | A reserve-style hosted reservation in the ledger. | open |
+| L4 | LOW | Hosted cap check and the cost.estimate count are not atomic (`creative/images.js`, `voice.js`): N concurrent calls at cap−1 all pass. | A reserve-style hosted reservation in the ledger. | fixed 66591bf |
 | L5 | LOW | `results.js` kill rule reads `(w.orders \|\| 0) === 0`: null orders read as zero. | Require `w.orders !== null`. | open |
 | L6 | LOW | Every Peak question calls `reflect.gather()`, which rolls the day up as a side effect. | Read-only gather for questions. | open |
 
