@@ -39,6 +39,18 @@ pub struct Sidecar {
     pub started_at: Instant,
 }
 
+// A bundled or PATH candidate must be executable: the dev loop copies shell-check's
+// 0644 placeholder next to the exe, and it must lose to `node` on PATH, not be spawned.
+fn is_executable(p: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return fs::metadata(p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false);
+    }
+    #[cfg(not(unix))]
+    true
+}
+
 /// Where the sidecar's Node binary is. Order: `MAKA_NODE`, `node` next to the shell's
 /// executable (how Tauri lays out an `externalBin`), then `node` on `PATH` (development).
 pub fn find_node(exe_dir: Option<&Path>, env_node: Option<&str>, path_var: Option<&str>) -> Result<PathBuf, String> {
@@ -53,7 +65,7 @@ pub fn find_node(exe_dir: Option<&Path>, env_node: Option<&str>, path_var: Optio
     if let Some(dir) = exe_dir {
         for name in ["node", "node-aarch64-apple-darwin", "node-x86_64-apple-darwin"] {
             let p = dir.join(name);
-            if p.is_file() {
+            if p.is_file() && is_executable(&p) {
                 return Ok(p);
             }
             tried.push(p);
@@ -62,7 +74,7 @@ pub fn find_node(exe_dir: Option<&Path>, env_node: Option<&str>, path_var: Optio
     if let Some(path) = path_var {
         for dir in path.split(':').filter(|d| !d.is_empty()) {
             let p = Path::new(dir).join("node");
-            if p.is_file() {
+            if p.is_file() && is_executable(&p) {
                 return Ok(p);
             }
         }
@@ -209,6 +221,21 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let bundled = dir.join("node");
         fs::write(&bundled, b"#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            // Not executable (shell-check's placeholder copied by the dev loop): it must
+            // lose to node on PATH, and alone it is "not found".
+            fs::set_permissions(&bundled, fs::Permissions::from_mode(0o644)).unwrap();
+            let path_dir = dir.join("pathbin");
+            fs::create_dir_all(&path_dir).unwrap();
+            let on_path = path_dir.join("node");
+            fs::write(&on_path, b"#!/bin/sh\n").unwrap();
+            fs::set_permissions(&on_path, fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(find_node(Some(&dir), None, Some(path_dir.to_str().unwrap())).unwrap(), on_path);
+            assert!(find_node(Some(&dir), None, None).is_err());
+            fs::set_permissions(&bundled, fs::Permissions::from_mode(0o755)).unwrap();
+        }
         assert_eq!(find_node(Some(&dir), None, None).unwrap(), bundled);
         let explicit = dir.join("other");
         fs::write(&explicit, b"").unwrap();
