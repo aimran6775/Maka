@@ -26,7 +26,10 @@ weaken a fix from docs/SECURITY_REVIEW_2026-10-10.md or docs/SECURITY_REVIEW_202
     /Volumes/LaCie/Maka/ollama      OLLAMA_MODELS
   The drive MUST be APFS or Mac OS Extended: the 0600 keystore is refused on exFAT/NTFS
   (no POSIX permissions). Check with `diskutil info /Volumes/LaCie | grep "File System"`.
-  If it is exFAT, say so to the owner before anything else; reformatting erases the drive.
+  If it is exFAT and the owner chose to keep it (`--keep-exfat`), MAKA_HOME is on the
+  internal disk at ~/Maka/home and the repo/workspace/models on the drive; build the Tauri
+  app from a checkout on the internal disk (code signing needs xattrs that ExFAT handles
+  badly): `git clone /Volumes/LaCie/Maka/repo ~/Maka/build` and release from there.
 - Domain makapark.com on Cloudflare; mail on Resend only (receive + send). Applying mail
   DNS moves ALL mail for the domain to Resend: confirm with the owner that nothing else
   uses that domain's mail before applying.
