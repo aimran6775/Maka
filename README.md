@@ -356,6 +356,12 @@ trails in order, and every tool still passes its leash at the Gate. Grant a reci
 Rangers or the Chief and they run it with `recipe.run`. Skills (`_peak/skills/`) are
 instruction packs you attach to a Ranger on its card; they open its prompt.
 
+Step 13, the listing pipeline: run the starter recipe "Launch an Etsy listing" from the
+Peak with the venture, the product, its facts and a price: the Listings Ranger writes the
+product sheet and the copy (judge-reviewed), the Ads Ranger makes the image (judge-reviewed),
+the draft listing, the price and the activation each wait at the Gate; approve the third and
+the listing is live. The Park Store now grants `creative.copy`.
+
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),
 so the camp card and a Ranger's mail.search show it.

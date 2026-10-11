@@ -25,7 +25,8 @@ export const OBJECT_KINDS = deepFreeze({
   // logins, one-time codes, captchas and payment pages are handed to the Superintendent.
   // Phase 2 step 14: platform connectors (official APIs). The framework's own tools are
   // research; each connector adds read tools and leashed write tools (steps 15–17).
-  park_store: { label: 'Park Store', grants: ['connector.status', 'connector.sync', 'shopify.products', 'shopify.orders', 'shopify.inventory', 'shopify.create_product', 'shopify.update_product', 'shopify.set_price', 'etsy.listings', 'etsy.receipts', 'etsy.inventory', 'etsy.create_listing', 'etsy.update_listing', 'etsy.set_price'], hint: 'Rangers in this zone use the storefront connectors (Shopify, Etsy): read products, listings, orders and stock from the last sync; create or update a listing under the publishing leash; change a price under money_in.' },
+  // Phase 4 step 13: the Park Store also grants creative.copy, since listing copy is the storefront's work (the judge reviews it; images stay with the Notice board).
+  park_store: { label: 'Park Store', grants: ['connector.status', 'connector.sync', 'shopify.products', 'shopify.orders', 'shopify.inventory', 'shopify.create_product', 'shopify.update_product', 'shopify.set_price', 'etsy.listings', 'etsy.receipts', 'etsy.inventory', 'etsy.create_listing', 'etsy.update_listing', 'etsy.set_price', 'creative.copy'], hint: 'Rangers in this zone use the storefront connectors (Shopify, Etsy): read products, listings, orders and stock from the last sync; create or update a listing under the publishing leash; change a price under money_in; write listing copy for the judge with creative.copy.' },
   // Phase 2 step 17: the ad networks (Marketing camp). Reads are research; a new campaign,
   // a budget change and an activation are money_out with the daily budget as the amount.
   // Phase 4 step 8: creative.copy / creative.image write deliverables to the outbox (no domain).

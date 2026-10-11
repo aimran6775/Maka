@@ -128,7 +128,7 @@ async function harness({ shopify, etsy, env = {}, leash: leashPatch = {} } = {})
 test('the Park Store grants the storefront tools with their domains; Shopify syncs products, orders and stock; reads from the store; writes through the leash (publishing at Draft, money_in)', async () => {
   assert.equal(ENV_VARS.shopify, 'SHOPIFY_ACCESS_TOKEN');
   assert.equal(ENV_VARS.etsyClientId, 'ETSY_CLIENT_ID');
-  assert.deepEqual(OBJECT_KINDS.park_store.grants, ['connector.status', 'connector.sync', ...Object.keys(SHOPIFY_TOOLS), ...Object.keys(ETSY_TOOLS)]);
+  assert.deepEqual(OBJECT_KINDS.park_store.grants, ['connector.status', 'connector.sync', ...Object.keys(SHOPIFY_TOOLS), ...Object.keys(ETSY_TOOLS), 'creative.copy']);
   for (const name of [...Object.keys(SHOPIFY_TOOLS), ...Object.keys(ETSY_TOOLS)]) {
     const expected = /create|update/.test(name) ? 'publishing' : /set_price/.test(name) ? 'money_in' : 'research';
     assert.equal(TOOL_DOMAINS[name], expected, name);

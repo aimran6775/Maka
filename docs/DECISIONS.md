@@ -1409,3 +1409,16 @@ later steps run after that run has ended. A recipe therefore cannot multiply a R
 budget, cannot reach past a camp's fixtures, and leaves every money or publishing action to
 the tools' own leashes at the Gate; the recipe is sequence and briefs, not permission.
 Juniors neither run recipes nor receive grants: their work is bounded by their Ranger.
+
+## D144. Listing copy is the storefront's work; a price change is a proven $0
+
+The listing pipeline needs copy from the Ranger that owns the listing, so the Park Store
+grants `creative.copy` (the judge still reviews every claim against the product facts),
+while `creative.image` stays with the Notice board: a product image is the Ads Ranger's
+step, metered under the hosted cap, and the pipeline walks the trail to the Marketing camp
+for it. The price proposal is `etsy.set_price` under money_in, as the brief says; the
+Gate item carries a proven amount of 0 because a price moves no money, so the figure the
+Superintendent sees is the summary ("set listing N's price to 25.00"), and the cap on
+money_in counts an action, not a sum. The pipeline is a recipe and nothing more: every
+platform write is the tool's own leash at the Gate, the listing is created as a draft and
+activated only by a third, separate approval.

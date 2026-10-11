@@ -197,6 +197,17 @@ copied in once. Skills are instruction packs in `_peak/skills/` attached to a Ra
 their text and the recipes a Ranger may run open its system prompt, and both show on its
 card.
 
+Step 13 done: the listing pipeline end to end. The starter recipe `launch-etsy-listing`
+drives the Listings Ranger from product facts to a live listing: a product data file,
+listing copy through `creative.copy` (the Park Store now grants it; the judge checks every
+claim against the facts), a product image through `creative.image` by the Ads Ranger (the
+judge reads the prompt), a draft Etsy listing (publishing, at the Gate), the price
+proposal (`etsy.set_price`, money in, a proven $0 at the Gate since a price moves no money)
+and the activation (publishing, at the Gate). Nothing is live before the Superintendent's
+third approval, and the results engine attributes the listing to the venture through the
+Ranger's own write. `test/listing-pipeline.test.js` runs the whole chain against the fake
+Etsy, the fake Hugging Face and a fake judge; the phase 4 demo (step 20) walks it.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

@@ -38,7 +38,7 @@ import { defaultLeash } from '../../shared/leash.js';
 import { createWorkspaceWatcher } from '../../sidecar/workspace.js';
 import { createApp, createHttpServer, createLayoutState } from '../../sidecar/server.js';
 import { providerStatus } from '../../sidecar/providers/provider.js';
-import { keystoreStatus } from '../../sidecar/providers/keys.js';
+import { keystoreStatus, setKey } from '../../sidecar/providers/keys.js';
 import { defaultLayout } from '../../shared/world.js';
 import { REPO_ROOT } from '../../sidecar/index.js';
 
@@ -50,7 +50,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 // `netGuard`: the outbound URL guard the tools and the browser use (sidecar/netguard.js).
 // The fakes every suite talks to listen on 127.0.0.1, so the default here turns the guard
 // off; a test of the guard itself passes a strict one. The sidecar never turns it off.
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, recipes: recipeOpts = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, recipes: recipeOpts = null, keys = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -106,6 +106,9 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   }
   // `connectors`: an array of connector specs to define (tests pass fakes pointing at
   // fake servers); absent → no connector framework is wired.
+  // `keys`: { name: value } seeded into the 0600 keystore before anything reads it (a connector
+  // token, an OAuth client id), so a test can start connected without the sign-in dance.
+  if (keys) for (const [name, value] of Object.entries(keys)) await setKey(name, typeof value === 'string' ? value : JSON.stringify(value), { env, keystorePath });
   connectors = connectorSpecs ? createConnectors({ bus, store, scheduler, gateQueue, env, keystorePath, clock, fetch: globalThis.fetch, config: connectorConfig, log: { error() {}, warn() {} } }) : null;
   if (connectors) {
     for (const spec of connectorSpecs) connectors.define(spec);

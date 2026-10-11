@@ -259,6 +259,20 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   transcript's first lines) opens with `Skill "Gate etiquette"`. Grant a recipe to Rangers at
   the Peak: the same prompt names "Recipes you may run with recipe.run".
 
+## 15h. The listing pipeline (phase 4)
+
+- With Etsy connected, a Park Store and a Supply cache in the Listings camp, a Notice
+  board and a Supply cache in the Marketing camp and `HF_TOKEN` set: Peak → recipes →
+  "Launch an Etsy listing", params `venture=<id>`, `product=…`, `facts=…`, `price=25`,
+  Plan (ok), Run.
+- Expect in order: `recipe.run { step: 'product-data' }`, then `copy` and `image`
+  (`judge.verdict` for `creative.copy` and `creative.image`), `draft-listing` (a Gate card
+  under publishing: approve; the listing appears as a draft in the Etsy shop manager),
+  `price` (a Gate card under money in, $0.00: approve; the price changes), `publish` (a Gate
+  card under publishing: approve; the listing is active), `recipe.run { status: 'done',
+  deliverables: 4 }`. Reject the last card instead: the listing stays a draft and the run
+  fails with the step named.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

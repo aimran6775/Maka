@@ -4,7 +4,7 @@
   "source": "starter",
   "title": "Launch an Etsy listing",
   "goal": "Take one product from facts to a live Etsy listing for venture {venture}: product data, original copy, an original image, a price proposal, a draft listing, the judge's review and the Gate, then publish.",
-  "summary": "The listing pipeline (phase 4 step 13): every step is a Ranger's work item; publishing and the price pass the Gate; nothing goes live before the Superintendent approves the activation.",
+  "summary": "The listing pipeline (phase 4 step 13): every step is a Ranger's work item; the copy and the image go to the judge, the draft listing and the price pass the Gate; nothing goes live before the Superintendent approves the activation.",
   "params": [
     {
       "name": "venture",
@@ -58,7 +58,7 @@
       ],
       "fixtures": [
         "supply_cache",
-        "notice_board"
+        "park_store"
       ],
       "brief": "Read outbox/listings/{venture}/product.json. Write original listing copy for Etsy: a title of at most 140 characters, a description, and up to 13 tags, using only the facts in the file. Submit it with creative.copy (platform generic, name \"{venture}-listing\", the facts as productFacts, 2 variants). Then write outbox/listings/{venture}/copy.md with the variant you recommend and why.",
       "evidence": [
