@@ -250,7 +250,7 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
       item ? `Brief was: ${item.brief.slice(0, 600)}` : '',
       `Summary from the Ranger: ${p.summary || '(none)'}`,
       `Deliverables: ${p.deliverables.length ? p.deliverables.join(', ') : 'none'} · spend $${(p.spentUsd || 0).toFixed(2)}`,
-      p.deliverables.some((d) => /briefs\//.test(d)) ? 'A venture brief is among the deliverables (read it with work.check or fs.read): it carries the Scout\'s go / no-go, its evidence and the judge\'s verdict. Decide within the mission budget: go (delegate the first steps, hire if needed), no go, or more evidence; say which and why.' : '',
+      p.deliverables.some((d) => /briefs\//.test(d)) ? 'A venture brief is among the deliverables (read it with work.check or fs.read): it carries the Scout\'s go / no-go, its evidence and the judge\'s verdict. Decide within the mission budget: go (delegate the first steps, hire if needed), no go, or more evidence; say which and why, and record it with brief.decide (the briefId is the file name under outbox/briefs/, a go names the venture it joins) so the Scout\'s estimates are scored against that venture\'s results.' : '',
       '',
       'Current plan summary: ' + (plan ? plan.summary.slice(0, 800) : '(no plan)'),
       '',

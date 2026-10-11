@@ -1355,3 +1355,22 @@ Gate under the park's defaults. Nothing is paused from the reflection directly, 
 unattributed is touched, a venture with no kill item open gets one per Ranger and no
 more while it is open, and a venture with nothing attributed gets a note. A scale is a
 proposal only: a budget raise is money out and belongs to the Chief's plan and the Gate.
+
+## D141. The Scout's memory scores declared estimates against recorded results, and only those
+
+The brief asks for "a scored history (precision of the Scout's estimates, by niche and
+channel)". A brief's revenue model is prose, so nothing in it can be scored honestly;
+the venture brief therefore gains optional, checkable fields (the niche, the channel,
+first-month estimates for revenue, orders, ad spend and contribution per order) and the
+score is the distance between an estimate scaled to the days the venture has been
+observed and the figure the results engine recorded (D139). Where the engine holds no
+figure the estimate is unknown, not wrong; a brief no venture was launched from has no
+outcome at all, because what did not happen cannot be measured. A recommendation is
+judged only after 14 observed days and only from the venture's net: a go that pays is
+"held", one that loses is "missed", and before that it is "too early". The Chief's
+go / no-go is a tool call (`brief.decide`, Chief-only, no money) so it is recorded like
+every other decision instead of read out of the Chief's prose, and it names the venture
+the brief joins, which is what makes the join possible. The history reaches the next
+Scout as plain lines in its system prompt and the judge as part of the question it is
+asked about the next brief; neither gets a number the engine did not record, and when
+nothing is recorded yet the paragraph says exactly that.

@@ -14,14 +14,16 @@ import { webReadTool } from './read.js';
 import { createTrends, webTrendsTool, WIKI_API, WIKI_REST, HN_API } from './trends.js';
 import { briefSubmitTool, listBriefs } from './brief.js';
 
-export function createResearch({ env = process.env, keystorePath, fetch: fetchImpl = globalThis.fetch, judge = null, workspaceRoot, endpoints = {}, clock } = {}) {
+// `memory` (phase 4 step 10): the Scout's memory; brief.submit records every brief there and
+// the judge's review of a brief reads its scored history.
+export function createResearch({ env = process.env, keystorePath, fetch: fetchImpl = globalThis.fetch, judge = null, memory = null, workspaceRoot, endpoints = {}, clock } = {}) {
   const keyFor = (name) => resolveKey(name, { env, keystorePath });
   const trends = createTrends({ fetch: fetchImpl, wikiApi: endpoints.wikiApi || WIKI_API, wikiRest: endpoints.wikiRest || WIKI_REST, hnApi: endpoints.hnApi || HN_API, clock });
   const tools = Object.freeze({
     'web.search': webSearchTool({ keyFor, fetch: fetchImpl, braveBaseUrl: endpoints.braveBaseUrl || BRAVE_BASE_URL, duckBaseUrl: endpoints.duckBaseUrl || DUCK_BASE_URL }),
     'web.read': webReadTool({ fetch: fetchImpl }),
     'web.trends': webTrendsTool(trends),
-    'brief.submit': briefSubmitTool({ judge }),
+    'brief.submit': briefSubmitTool({ judge, memory }),
   });
   return {
     tools,

@@ -32,6 +32,7 @@ export function initialState() {
     connectorEvents: [], // connector.sync / connector.error payloads this session, oldest first (bounded)
     research: null, // { search, searchKey, trends, judge } from the snapshot
     creative: null, // { images, imageKey, model, judge, hostedToday, hostedCap } from the snapshot (phase 4 step 8)
+    scoutMemory: null, // the Scout's memory summary from the snapshot (phase 4 step 10); `stale` after scout.brief
     results: null, // the results engine's summary from the snapshot (phase 4 step 9); `latest` patched by results.rollup
 
     channels: null, // { adapters: [row per channel], pairing } from the snapshot; channel.connect patches rows (phase 4 step 1)
@@ -114,6 +115,7 @@ export function applySnapshot(state, snap) {
   next.research = snap.research || null;
   next.creative = snap.creative || null;
   next.results = snap.results || null;
+  next.scoutMemory = snap.scoutMemory || null;
   next.channels = snap.channels || null;
   next.mcp = Array.isArray(snap.mcp) ? snap.mcp : null;
   next.setup = snap.setup || null;
@@ -363,6 +365,10 @@ export function applyEvent(state, event) {
       if (p.change === 'submitted') m.plan = { ...(m.plan || {}), id: p.planId, missionId: p.missionId, version: p.version, summary: p.summary || '', ventures: p.ventures || [], by: p.by, runId: p.runId, submittedAt: event.ts };
       next.mission = m;
       break;
+    }
+    case 'scout.brief': {
+      next.scoutMemory = { ...(next.scoutMemory || { totals: { briefs: 0, go: 0, noGo: 0, needsMore: 0, joined: 0, decided: 0 }, byNiche: [], byChannel: [], recent: [] }), latest: { briefId: p.briefId, change: p.change, at: event.ts, decision: p.decision || null, recommendation: p.recommendation || null }, stale: true };
+      return next;
     }
     case 'results.rollup': {
       // The day's figures as the engine proved them; the full table is re-read from /api/results.

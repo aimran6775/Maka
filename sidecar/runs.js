@@ -53,6 +53,16 @@ export function grantsForRun(layout, agentId) {
   return base.filter((t) => !withheld.has(t));
 }
 export const DEFAULT_MAX_CONCURRENT = 4;
+function safeExtras(fn, agent) {
+  if (typeof fn !== 'function') return [];
+  try {
+    const out = fn(agent);
+    return Array.isArray(out) ? out.filter((x) => typeof x === 'string' && x.trim()) : [];
+  } catch (err) {
+    console.error('system extras failed:', err);
+    return [];
+  }
+}
 const FLUSH_DEBOUNCE_MS = 400;
 
 export const DEFAULT_SYSTEM_PROMPT = [
@@ -81,6 +91,7 @@ export function createRunManager({
   makeProvider = defaultMakeProvider,
   permissionTimeoutMs = PERMISSION_TIMEOUT_MS,
   systemPrompt = DEFAULT_SYSTEM_PROMPT,
+  systemExtras = null, // (agentRecord) => string[] appended to the system prompt (phase 4 step 10: the Scout's memory)
   policy = defaultPolicy(),
   leash = defaultLeash(),
   leashState = null, // { get() } live policy; wins over the static `leash`
@@ -98,6 +109,7 @@ export function createRunManager({
   }
 
   const router = createRouter(policy); // throws POLICY_INVALID
+  const extrasFor = (agent) => safeExtras(systemExtras, agent);
   const running = new Map(); // runId -> { runId, agentId, abort, record, flush, done }
   const queue = []; // [{ runId, agentId, launch, record, ... }] in arrival order
   const pendingPrompts = new Map(); // promptId -> { resolve, timer, runId }
@@ -364,7 +376,7 @@ export function createRunManager({
               provider,
               model: chosenModel,
               tier,
-              system: [system || systemPrompt, ...personaLines(agentOf(getLayout(), agentId) || agentRecord)].join(' '),
+              system: [system || systemPrompt, ...personaLines(agentOf(getLayout(), agentId) || agentRecord), ...extrasFor(agentOf(getLayout(), agentId) || agentRecord)].join(' '),
               prompt,
               tools: gate,
               emit: (ev) => bus.emit(ev),

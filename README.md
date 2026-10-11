@@ -334,6 +334,13 @@ listing, a refund). The reflection reads the rule verdicts (scale / hold / kill 
 no data, with the numbers) and a kill delegates the pauses to the venture's Rangers,
 through the Gate as usual. `GET /api/results`, "Roll up now" on the Peak.
 
+Step 10, the Scout's memory: every venture brief is kept with its niche, channel and
+first-month estimates; the Chief records go / no-go with `brief.decide`; a brief that
+became a venture is scored against that venture's recorded results (how far each estimate
+landed, whether a go held after 14 days). What was learned, by niche and channel, goes
+into every Scout's prompt and the judge's review of the next brief, and the Research camp
+card shows it. Nothing unrecorded is scored.
+
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),
 so the camp card and a Ranger's mail.search show it.

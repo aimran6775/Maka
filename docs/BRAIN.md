@@ -150,6 +150,21 @@ attributed listings still live) as work items to the venture's own Ads and Store
 Rangers, whose tools pass the Gate as usual (D140). The Peak draws the table and
 hand-drawn SVG sparklines (`frontend/ui/sparkline.js`), no chart library.
 
+Step 10 done: the Scout's memory (`sidecar/scout-memory.js`). Every venture brief a Scout
+submits is recorded with what it declared (the niche, the channel, first-month estimates:
+revenue, orders, ad spend, contribution per order; all optional fields added to the brief
+schema) and the judge's verdict; the Chief records its go / no-go with the new Chief-only
+tool `brief.decide`, naming the venture a go joins. A brief joined to a venture is scored
+against that venture's recorded results from the results engine: each monthly estimate is
+scaled to the days observed and scored by how far the figure landed from it, a go is
+"held" when the venture's net is positive after 14 days and "missed" when negative, and
+everything the engine does not hold stays unknown (a no-go that was never launched has no
+outcome). The scored history, grouped by niche and by channel, is the "What we learned"
+paragraph appended to every Scout's system prompt (`systemExtras` on the run manager) and
+to the judge's review of the next brief (the brief tool's scope), asking for checkable
+estimates and more evidence where past ones ran high; the Research camp card shows it
+(D141).
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

@@ -220,6 +220,34 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     return [el('div', { class: 'k', text: 'connectors for this camp (figures from the last sync only)' }), ...rows.flatMap(connectorRows)];
   }
 
+  // Phase 4 step 10: "what we learned" on the Research camp card, from the Scout's memory.
+  const scoutCache = { key: null, data: null, loading: false };
+  function loadScoutMemory(key) {
+    if (scoutCache.key === key || scoutCache.loading) return;
+    scoutCache.loading = true;
+    api.get('/api/scout-memory').then((r) => {
+      scoutCache.data = r.ok ? r.body : null;
+      scoutCache.key = key;
+    }).finally(() => {
+      scoutCache.loading = false;
+      if (selectionRefresh) selectionRefresh();
+    });
+  }
+  function scoutSection(s, room) {
+    if (room.kind !== 'research' || !s.scoutMemory) return [];
+    loadScoutMemory(`${s.scoutMemory.latest ? s.scoutMemory.latest.at : 0}`);
+    const d = scoutCache.data;
+    const t = (d && d.totals) || s.scoutMemory.totals;
+    const groups = d ? [...d.byNiche.map((g) => ['niche', g]), ...d.byChannel.map((g) => ['channel', g])] : [];
+    const est = (g) => Object.entries(g.precision || {}).map(([k, p]) => `${k.replace(/Usd$|PerMonth$/, '')} ${p.meanRatio === null ? '' : p.meanRatio < 1 ? `${(1 / Math.max(p.meanRatio, 0.01)).toFixed(1)}× high` : p.meanRatio > 1 ? `${p.meanRatio.toFixed(1)}× low` : 'on the mark'} (precision ${p.mean.toFixed(2)}/${p.scored})`).join(', ');
+    return [
+      el('div', { class: 'k', text: 'what we learned (the Scout\'s memory)' }),
+      row('briefs', t.briefs ? `${t.briefs} recorded · ${t.go} go, ${t.noGo} no-go, ${t.needsMore} needs more evidence · ${t.decided} decided by the Chief · ${t.joined} joined to a venture\'s results` : 'none recorded yet: a Scout\'s brief.submit records it here, the Chief\'s brief.decide adds the go / no-go, and the venture\'s results score the estimates'),
+      ...groups.slice(0, 8).map(([key, g]) => el('div', { class: 'use', text: `${key} "${g[key]}": ${g.briefs} brief(s), ${g.go} go / ${g.noGo} no-go · ${g.joined ? est(g) || 'joined, no checkable estimates' : 'not joined yet'}${g.held || g.missed || g.tooEarly ? ` · ${g.held} held, ${g.missed} missed, ${g.tooEarly} too early` : ''}` })),
+      ...(d ? d.briefs.slice(0, 6).map((b) => el('div', { class: `use ${/^held/.test(b.outcome) ? 'ok' : /^missed/.test(b.outcome) ? 'failed' : ''}`, text: `${new Date(b.submittedAt).toLocaleDateString()} · ${b.title} · ${b.recommendation.replace(/_/g, ' ')}${b.decision ? ` → Chief: ${b.decision.decision.replace(/_/g, ' ')}` : ' → undecided'} · ${b.joined ? `${b.ventureId}, ${b.daysObserved} day(s): ${b.outcome}` : b.outcome}` })) : []),
+    ];
+  }
+
   function renderZone(s, room) {
     setTitle(`INSPECT · ${room.name}`);
     const roster = s.layout.agents.filter((a) => a.roomId === room.id);
@@ -239,6 +267,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ...workInTransit(s, room.id).slice(0, 6).map((it) => el('div', { class: 'use running', text: `${it.fromAgentId} → ${it.toAgentId} · ${(it.brief || '').slice(0, 60)}` })),
       ...mailSection(s, room),
       ...connectorSection(s, room),
+      ...scoutSection(s, room),
       el('div', { class: 'k', text: 'leash defaults for this zone (a Ranger override still wins)' }),
       el('div', { class: 'leash' }, ...zoneLeash.map(([d, v]) => el('div', { class: 'kv' },
         el('span', { class: 'k', text: d }),

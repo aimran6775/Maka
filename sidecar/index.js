@@ -41,6 +41,7 @@ import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { createResearch } from './research/index.js';
 import { createCreative } from './creative/index.js';
 import { createResults } from './results.js';
+import { createScoutMemory } from './scout-memory.js';
 import { createChannels } from './channels/registry.js';
 import { createTelegramAdapter } from './channels/telegram.js';
 import { createDiscordAdapter } from './channels/discord.js';
@@ -105,7 +106,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const toolContext = { netGuard };
   const registry = { ...TOOLS, ...CREW_TOOLS }; // chief tools join below; the gate reads it at call time
   const router = createRouter(policy);
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online });
+  let scoutMemory = null;
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online, systemExtras: (agent) => (agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []) });
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, workspaceRoot }).init();
   toolContext.trails = trails;
   const chief = await createChief({ bus, store, runs, agents, trails, ledger, router, getLayout: layoutState.get, workspaceRoot, log }).init();
@@ -139,7 +141,12 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     rollupTimer = setTimeout(() => results.rollup({ reason: event.type === 'work.done' ? 'work.done' : `sync ${event.payload.connector}` }).catch((err) => log.error('results rollup failed:', err)), 1500);
     if (rollupTimer.unref) rollupTimer.unref();
   });
-  const research = createResearch({ env, keystorePath, judge, workspaceRoot });
+  // Phase 4 step 10: the Scout's memory: every brief recorded, joined to the results engine's
+  // actuals, the scored history in the Scout's prompt and the judge's review; the Chief's
+  // go / no-go through brief.decide.
+  scoutMemory = await createScoutMemory({ store, bus, getResults: () => results, log }).init();
+  Object.assign(registry, scoutMemory.tools);
+  const research = createResearch({ env, keystorePath, judge, memory: scoutMemory, workspaceRoot });
   // Phase 4 step 8: ad copy and images as outbox deliverables; images through Hugging Face
   // under the hosted worker cap, the judge checks every prompt for faces and logos first.
   const creative = createCreative({ env, keystorePath, netGuard, judge, ledger, caps: router.caps(), bus, workspaceRoot, config: config.creative || {}, log });
@@ -191,6 +198,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     research,
     creative,
     results,
+    scoutMemory,
     setup,
     ollama,
     backup,
@@ -242,6 +250,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   log.info(`  mail: ${mailStatus.domain} · resend ${mailStatus.keys.resend ? 'key configured' : 'not wired (RESEND_API_KEY)'} · cloudflare ${mailStatus.keys.cloudflare ? 'token configured' : 'not wired (CLOUDFLARE_API_TOKEN)'} · webhook ${mailSys.keys.webhook ? 'secret configured' : 'not wired (RESEND_WEBHOOK_SECRET)'} · ${mailSys.addresses} address(es), ${mailSys.counts.messages} message(s), poll every ${mailSys.sync.pollMs / 1000}s`);
   const resultsNow = results.summary();
   log.info(`  results: ${resultsNow.lastRollup ? `last rollup ${new Date(resultsNow.lastRollup.at).toISOString()} (${resultsNow.lastRollup.reason})` : 'no rollup yet'} · sources: ${Object.entries(resultsNow.sources).filter(([, v]) => v).map(([k]) => k).join(', ') || 'ledgers only (no connector synced)'}`);
+  const sm = scoutMemory.summary();
+  log.info(`  scout memory: ${sm.totals.briefs} brief(s) recorded (${sm.totals.go} go, ${sm.totals.noGo} no-go, ${sm.totals.decided} decided by the Chief, ${sm.totals.joined} joined to results)`);
   log.info(`  reflection: daily at ${config.reflectAt || '07:00'}, next ${new Date(scheduler.state().reflection.nextRunAt).toISOString()}${reflect.latest() ? `, last ${reflect.latest().id} (${reflect.latest().status})` : ', none yet'}`);
   log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${judge.route.provider}/${judge.route.model || 'default'} (cap $${judge.caps.judgeUsdPerDay}/day, $${ledger.judgeToday().usd.toFixed(2)} used today)`);
 
@@ -266,7 +276,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const setupState = await setup.state();
   log.info(`  first run: ${setupState.firstRun ? 'yes (the park shows the first-run card)' : `done ${new Date(setupState.completedAt).toISOString()}${setupState.skipped ? ' (skipped)' : ''}`} · worker ${ollama.summary().worker}`);
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, results, setup, ollama, backup, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, results, scoutMemory, setup, ollama, backup, close };
 }
 
 function validateConfig(data) {

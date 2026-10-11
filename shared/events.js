@@ -523,6 +523,22 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     error: str,
     ref: str,
   }),
+  // Added v1 (phase 4 step 10): a venture brief entered the Scout's memory (recorded by
+  // brief.submit) or the Chief decided on it (brief.decide); niche and channel are what the
+  // brief declared, `estimates` how many checkable figures it gave.
+  'scout.brief': payload(['briefId', 'change'], {
+    briefId: nonEmpty,
+    change: { type: 'string', enum: ['recorded', 'decided'] },
+    agentId: str,
+    title: str,
+    recommendation: { type: 'string', enum: ['go', 'no_go', 'needs_more_evidence'] },
+    decision: { type: 'string', enum: ['go', 'no_go', 'needs_more_evidence'] },
+    ventureId: str,
+    niche: str,
+    channel: str,
+    estimates: int0,
+    by: str,
+  }),
   // Added v1 (phase 4 step 9): the results engine rolled a day up from real ledgers and
   // connector syncs. Every money figure is a number only when a source proved it and null
   // when no source has it ("no data", never zero). `proposals` are the Chief rules'

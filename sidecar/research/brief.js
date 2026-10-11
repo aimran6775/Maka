@@ -43,6 +43,15 @@ export const VENTURE_BRIEF_SCHEMA = Object.freeze({
     recommendation: { type: 'string', enum: [...GO_NO_GO] },
     confidence: { type: 'number', minimum: 0, maximum: 1 },
     firstSteps: { type: 'array', maxItems: 10, items: str(300) },
+    // Phase 4 step 10: what the Scout's memory scores later. All optional, all checkable.
+    niche: { type: 'string', maxLength: 120, description: 'The niche in a few words (scored history is kept per niche)' },
+    channel: { type: 'string', enum: ['etsy', 'shopify', 'stripe', 'meta_ads', 'google_ads', 'email', 'organic', 'other'], description: 'The main sales or acquisition channel' },
+    estimates: {
+      type: 'object',
+      additionalProperties: false,
+      description: 'First-month estimates the results engine will score against the venture\'s recorded figures',
+      properties: { monthlyRevenueUsd: { type: 'number', minimum: 0 }, ordersPerMonth: { type: 'number', minimum: 0 }, monthlyAdSpendUsd: { type: 'number', minimum: 0 }, contributionPerOrderUsd: { type: 'number', minimum: 0 } },
+    },
   },
 });
 
@@ -58,6 +67,8 @@ export function renderBrief(brief, { id, agentId, submittedAt, judge } = {}) {
   if (id) lines.push(`Brief ${id} · by ${agentId || 'a Scout'} · ${new Date(submittedAt || Date.now()).toISOString()}${brief.ventureId ? ` · venture ${brief.ventureId}` : ''}`, '');
   lines.push(`**Recommendation: ${brief.recommendation.replace(/_/g, ' ')}** (confidence ${(brief.confidence * 100).toFixed(0)} %)`, '');
   if (judge) lines.push(`Judge: ${judge.verdict}${judge.notes ? ` — ${judge.notes}` : judge.reason ? ` (${judge.reason})` : ''}`, '');
+  if (brief.niche || brief.channel) lines.push(`Niche: ${brief.niche || '—'} · channel: ${brief.channel || '—'}`, '');
+  if (brief.estimates && Object.keys(brief.estimates).length) lines.push('Estimates (first month, scored against the venture\'s results later): ' + Object.entries(brief.estimates).map(([k, v]) => `${k} ${v}`).join(', '), '');
   lines.push('## Opportunity', '', brief.opportunity, '');
   if (brief.customer) lines.push('## Customer', '', brief.customer, '');
   lines.push('## Evidence', '', ...brief.evidence.map((e) => `- ${e.claim} — ${e.source}${e.date ? ` (${e.date})` : ''}${e.quote ? `\n  > ${e.quote}` : ''}`), '');
@@ -68,10 +79,10 @@ export function renderBrief(brief, { id, agentId, submittedAt, judge } = {}) {
   return lines.join('\n');
 }
 
-export function briefSubmitTool({ judge = null } = {}) {
+export function briefSubmitTool({ judge = null, memory = null } = {}) {
   return {
     name: 'brief.submit',
-    description: 'Submit a venture brief: evidence with source URLs (from web.search / web.read / web.trends), real costs with their basis, a revenue model, risks and a go / no-go recommendation with confidence. The judge reviews it and the Chief decides within budget. Written to outbox/briefs/ in your workspace as the deliverable.',
+    description: 'Submit a venture brief: evidence with source URLs (from web.search / web.read / web.trends), real costs with their basis, a revenue model, risks and a go / no-go recommendation with confidence; name the niche and channel and give first-month estimates (monthlyRevenueUsd, ordersPerMonth, monthlyAdSpendUsd, contributionPerOrderUsd), which are scored against the venture\'s recorded results later. The judge reviews it and the Chief decides within budget. Written to outbox/briefs/ in your workspace as the deliverable.',
     inputSchema: VENTURE_BRIEF_SCHEMA,
     confirm: false,
     summarize: (input) => `submit the venture brief "${input.title.slice(0, 60)}" (${input.recommendation.replace(/_/g, ' ')})`,
@@ -85,7 +96,9 @@ export function briefSubmitTool({ judge = null } = {}) {
       const j = ctx.judge || judge;
       if (j && typeof j.reviewDocument === 'function') {
         try {
-          review = await j.reviewDocument({ runId: ctx.runId || 'none', agentId: ctx.agentId || 'none', turn: ctx.turn || 0, tool: 'brief.submit', title: 'venture brief', text: renderBrief(input, { id, agentId: ctx.agentId, submittedAt }), brief: ctx.brief || '' });
+          // Phase 4 step 10: the judge reads the Scout's scored history for this niche / channel too.
+          const scope = memory && typeof memory.judgeScope === 'function' ? memory.judgeScope(input) : null;
+          review = await j.reviewDocument({ runId: ctx.runId || 'none', agentId: ctx.agentId || 'none', turn: ctx.turn || 0, tool: 'brief.submit', title: 'venture brief', text: renderBrief(input, { id, agentId: ctx.agentId, submittedAt }), brief: ctx.brief || '', ...(scope ? { scope } : {}) });
         } catch (err) {
           review = { verdict: 'skipped', reason: `judge failed: ${err.message}` };
         }
@@ -95,6 +108,7 @@ export function briefSubmitTool({ judge = null } = {}) {
       const record = { id, agentId: ctx.agentId || null, runId: ctx.runId || null, submittedAt, judge: review, brief: input, totals: totalCosts(input) };
       await writeJsonAtomic(path.join(dir, `${id}.json`), record);
       await fsp.writeFile(path.join(dir, `${id}.md`), renderBrief(input, { id, agentId: ctx.agentId, submittedAt, judge: review }));
+      if (memory && typeof memory.record === 'function') await memory.record(record).catch((err) => console.error('scout memory record failed:', err));
       const rel = path.join(BRIEFS_DIR, `${id}.md`);
       const verdictLine = review.verdict === 'skipped' ? `The judge did not review it (${review.reason}); the Chief will read it as is.` : `The judge says ${review.verdict}${review.notes ? `: ${review.notes}` : ''}.${review.verdict === 'revise' ? ' Fix what the judge named and submit again.' : review.verdict === 'reject' ? ' Do not resubmit without new evidence.' : ''}`;
       return { ok: true, output: JSON.stringify({ id, path: rel, recommendation: input.recommendation, confidence: input.confidence, totals: record.totals, judge: review }) + `\n${verdictLine}` };
@@ -124,7 +138,7 @@ export async function listBriefs(workspaceRoot, { limit = 50 } = {}) {
       if (!f.endsWith('.json')) continue;
       try {
         const rec = JSON.parse(await fsp.readFile(path.join(dir, f), 'utf8'));
-        out.push({ id: rec.id, agentId: rec.agentId || a.name, runId: rec.runId, submittedAt: rec.submittedAt, title: rec.brief.title, ventureId: rec.brief.ventureId || null, recommendation: rec.brief.recommendation, confidence: rec.brief.confidence, judge: rec.judge, totals: rec.totals, evidence: rec.brief.evidence.length, path: path.join(a.name, BRIEFS_DIR, f.replace(/\.json$/, '.md')) });
+        out.push({ id: rec.id, agentId: rec.agentId || a.name, runId: rec.runId, submittedAt: rec.submittedAt, title: rec.brief.title, ventureId: rec.brief.ventureId || null, niche: rec.brief.niche || null, channel: rec.brief.channel || null, estimates: rec.brief.estimates || null, recommendation: rec.brief.recommendation, confidence: rec.brief.confidence, judge: rec.judge, totals: rec.totals, evidence: rec.brief.evidence.length, path: path.join(a.name, BRIEFS_DIR, f.replace(/\.json$/, '.md')) });
       } catch {
         /* a torn or foreign file is not a brief */
       }

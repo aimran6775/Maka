@@ -216,6 +216,22 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   budget), `work.handoff` items titled `KILL venture <id>` reach its Ads / Storefront
   Rangers and their pauses wait at the Gate as $0 money_out / publishing items.
 
+## 15e. The Scout's memory (phase 4)
+
+- Brief the Scout (step 13) and ask for the niche, the channel and first-month estimates
+  in the brief. `scout.brief { change: 'recorded' }` follows `brief.submit`; the Research
+  camp card's "what we learned" lists the brief as undecided; the judge's `judge.verdict`
+  for `brief.submit` was asked with the history (the judge transcript shows "What we
+  learned").
+- The Chief's follow-up run calls `brief.decide` (`agent.tool_call` on the Peak);
+  `scout.brief { change: 'decided' }` carries the go and the venture; `$MAKA_HOME/scout-memory.json`
+  holds both.
+- Once the venture has results (step 15d), `GET /api/scout-memory` shows each estimate's
+  expected (scaled to the days observed) and actual figure with its precision, and the
+  outcome "too early" until day 14, then "held" or "missed". Brief the Scout again: its
+  system prompt (the run transcript's first lines) opens with "What we learned from 1
+  venture brief(s)".
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

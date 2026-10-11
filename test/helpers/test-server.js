@@ -23,6 +23,7 @@ import { createConnectors } from '../../sidecar/connectors/registry.js';
 import { createResearch } from '../../sidecar/research/index.js';
 import { createCreative } from '../../sidecar/creative/index.js';
 import { createResults } from '../../sidecar/results.js';
+import { createScoutMemory } from '../../sidecar/scout-memory.js';
 import { createChannels } from '../../sidecar/channels/registry.js';
 import { createMcpManager } from '../../sidecar/mcp/manager.js';
 import { createOllama } from '../../sidecar/ollama.js';
@@ -73,7 +74,8 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   }
   const toolContext = { netGuard };
   const registry = { ...TOOLS, ...CREW_TOOLS };
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent, fetch: localFetch, workspaceOnline: () => workspace.state().online });
+  let scoutMemory = null;
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent, fetch: localFetch, workspaceOnline: () => workspace.state().online, systemExtras: (agent) => (agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []) });
   runsRef = runs;
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, clock, workspaceRoot }).init();
   toolContext.trails = trails;
@@ -107,7 +109,10 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   await workspace.check();
   // `research`: endpoints for the fakes ({ braveBaseUrl, duckBaseUrl, wikiApi, wikiRest, hnApi });
   // absent → no research kit is wired.
-  const research = researchEndpoints ? createResearch({ env, keystorePath, judge, workspaceRoot, endpoints: researchEndpoints, clock }) : null;
+  // Phase 4 step 10: the Scout's memory, always wired; brief.submit records into it.
+  scoutMemory = await createScoutMemory({ store, bus, getResults: () => results, clock, log: { error() {} } }).init();
+  Object.assign(registry, scoutMemory.tools);
+  const research = researchEndpoints ? createResearch({ env, keystorePath, judge, memory: scoutMemory, workspaceRoot, endpoints: researchEndpoints, clock }) : null;
   if (research) {
     Object.assign(registry, research.tools);
     toolContext.judge = judge;
@@ -160,6 +165,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     research,
     creative,
     results,
+    scoutMemory,
     setup,
     ollama,
     backup,
@@ -201,6 +207,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     mcp,
     research,
     results,
+    scoutMemory,
     setup,
     ollama,
     backup,
