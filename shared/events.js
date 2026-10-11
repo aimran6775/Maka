@@ -540,6 +540,19 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
   // done (the success check passed), failed (a step failed, a delegation was refused, the
   // check failed, a restart) or refused before it began (not granted, no Ranger of the
   // specialty, a missing fixture, a leash at Observe, a missing parameter).
+  // Added v1 (phase 4 step 19): another agent's home (OpenClaw, Hermes) imported as a
+  // Ranger: what came over, as counts; never the text, never a key.
+  'import.home': payload(['kind', 'agentId'], {
+    kind: { type: 'string', enum: ['openclaw', 'hermes', 'unknown'] },
+    agentId: nonEmpty,
+    persona: bool,
+    instructions: bool,
+    memoriesStored: int0,
+    memoriesSkipped: int0,
+    model: str,
+    redactions: int0,
+    skipped: int0,
+  }),
   // Added v1 (phase 4 step 18): one action on this Mac through the shell, as it went: done,
   // failed, refused (the shell or the policy said no), handed off (a sensitive app), halted
   // (the hotkey); plus the session's start and end (the banner). Screenshot paths, never

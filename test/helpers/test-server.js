@@ -26,6 +26,7 @@ import { createResults } from '../../sidecar/results.js';
 import { createLedgerDesk } from '../../sidecar/ledger-desk.js';
 import { createPurchases } from '../../sidecar/purchases.js';
 import { createComputerControl } from '../../sidecar/computer/control.js';
+import { createImporter } from '../../sidecar/import/homes.js';
 import { createScoutMemory } from '../../sidecar/scout-memory.js';
 import { createMemory } from '../../sidecar/memory/index.js';
 import { createRecipes } from '../../sidecar/recipes/index.js';
@@ -54,7 +55,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 // `netGuard`: the outbound URL guard the tools and the browser use (sidecar/netguard.js).
 // The fakes every suite talks to listen on 127.0.0.1, so the default here turns the guard
 // off; a test of the guard itself passes a strict one. The sidecar never turns it off.
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, recipes: recipeOpts = null, keys = null, voice: voiceOpts = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, recipes: recipeOpts = null, keys = null, voice: voiceOpts = null, importHome = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -128,6 +129,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   Object.assign(registry, purchases.tools);
   const computer = await createComputerControl({ bus, env, workspaceRoot, clock, log: { error() {} } }).init();
   Object.assign(registry, computer.tools);
+  const importer = createImporter({ agents, memory, getLayout: layoutState.get, workspaceRoot, bus, clock, home: importHome || os.homedir(), log: { error() {} } });
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, getConnectors: () => connectors, getMail: () => mailSystem, getResults: () => results, log: { error() {} } }).init();
   await workspace.check();
   // `research`: endpoints for the fakes ({ braveBaseUrl, duckBaseUrl, wikiApi, wikiRest, hnApi });
@@ -192,6 +194,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     results,
     purchases,
     computer,
+    importer,
     scoutMemory,
     memory,
     recipes,
@@ -227,6 +230,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     trails,
     purchases,
     computer,
+    importer,
     chief,
     scheduler,
     reflect,

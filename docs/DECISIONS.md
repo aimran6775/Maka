@@ -1558,3 +1558,25 @@ judge's reading. The Control desk is refused at the Peak like the connector fixt
 the Chief is unjudged and never drives the Mac. What this environment cannot run (the
 frameworks, the permission dialogs, the banner, the hotkey) is type-checked for Apple
 Silicon from here and listed for the Mac in the runbook, as the voice is.
+
+## D150. An import moves words, never keys, and nothing into memory that the judge did not accept
+
+The brief asks for an import from OpenClaw and Hermes homes mapping persona, instructions,
+memory and model to a Ranger, keys never transferred. The homes' own documentation names
+the files: OpenClaw keeps config, credentials and sessions in `~/.openclaw/openclaw.json`
+and a workspace with SOUL.md, AGENTS.md, IDENTITY.md, USER.md, TOOLS.md, HEARTBEAT.md and
+daily logs under memory/ (docs.openclaw.ai, "agent workspace"); Hermes keeps config.yaml,
+`.env` for secrets, `auth.json` for OAuth, SOUL.md and memories/MEMORY.md and USER.md
+(hermes-agent.nousresearch.com, "configuration"). "Keys never transferred" is read as
+never opened: the files that hold them are on a never-read list whatever the home, the
+config is parsed for its model alone with nothing under a key-shaped name looked at, and
+every text that is kept passes the memory redactor first; a memory line that carried a key
+or a token is dropped whole, because no sentence about a secret is worth a Ranger
+remembering. The owner's profile is personal data and stays out of memory (D142), so
+USER.md is listed as skipped rather than imported. The model maps only to a provider the
+park has, else the Ranger takes the park's default worker and the report says so; a Hermes
+model id under an explicit provider is kept whole, because OpenRouter's carry a vendor
+prefix. Memory items enter through `memory.write` and so through the judge; a park without
+a judge gets them as a file in the Ranger's import folder, never in memory. The import is
+the Superintendent's action at the Peak, so it needs no Gate, and `import.home` records it
+as counts, never text.

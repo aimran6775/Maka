@@ -5,6 +5,7 @@ import { workerLines } from './worker.js';
 import { sparkline } from './sparkline.js';
 import { parsePurchaseItems, purchaseRowText, purchaseExecutors } from './purchases.js';
 import { grantedTools, toolUses, lastModel, pendingGate, pendingHandoffs, pendingComputerHandoffs, recentGate, judgeVerdicts, workInTransit, workFor } from '../state.js';
+import { SPECIALTIES } from '../../shared/world.js';
 import { LEASH_LEVEL_LABELS, LEASH_LEVELS, DOMAINS, resolveAllLeash, resolveLeash } from '../../shared/leash.js';
 
 export function createInspect({ parent, getState, api, x, y, w }) {
@@ -797,6 +798,29 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     ];
   }
 
+  // Phase 4 step 19: import a Ranger from an OpenClaw or Hermes home. The preview shows what
+  // would come over and what is skipped; keys never move.
+  const importForm = { path: el('input', { class: 'prompt', placeholder: 'path of the home (~/.openclaw or ~/.hermes)' }), name: el('input', { class: 'prompt', placeholder: 'Ranger name (optional)' }), specialty: el('select', { class: 'prompt' }, el('option', { value: '', text: 'no specialty' }), ...Object.entries(SPECIALTIES).map(([k, v]) => el('option', { value: k, text: v.label }))), notice: el('div', { class: 'notice' }), preview: el('div', { class: 'small' }), candidates: el('div', { class: 'small muted', text: '' }) };
+  let importCandidatesLoaded = false;
+  function importSection() {
+    if (!importCandidatesLoaded) {
+      importCandidatesLoaded = true;
+      api.get('/api/import/candidates').then((r) => { if (r.ok) importForm.candidates.textContent = r.body.length ? `found on this machine: ${r.body.map((c) => `${c.label} at ${c.path}`).join('; ')}` : 'no OpenClaw or Hermes home found in the home directory; give a path'; });
+    }
+    return [
+      el('div', { class: 'k', text: 'import a Ranger from another home (OpenClaw, Hermes)' }),
+      el('div', { class: 'small muted', text: 'The persona (SOUL.md), the operating instructions, the memory and the model become one Ranger; the owner\'s profile stays out, every text is redacted first, and keys are never transferred (their files are never opened). Memory items go through the judge or to the Ranger\'s import folder.' }),
+      importForm.candidates,
+      el('div', { class: 'row' }, importForm.path, importForm.name, importForm.specialty),
+      el('div', { class: 'row' },
+        el('button', { class: 'btn', text: 'Preview', onclick: async () => { const r = await api.post('/api/import/preview', { path: importForm.path.value.trim() }); if (!r.ok) { importForm.notice.textContent = `${r.body.code || r.status}: ${r.body.error || 'failed'}`; return; } const p = r.body; importForm.preview.textContent = `${p.kind} home at ${p.root}: persona ${p.personaChars} chars, instructions ${p.instructionsChars} chars, ${p.memoryCount} memory item(s), model ${p.model ? `${p.model.provider || '?'}/${p.model.model}` : 'none'}${p.policy ? ` → ${p.policy.worker.provider} ${p.policy.worker.model}` : ''} · redacted: ${p.redactions.length ? p.redactions.map((x) => `${x.count} ${x.kind}`).join(', ') : 'nothing'} · skipped: ${p.skipped.join('; ') || 'nothing'}${p.warnings.length ? ` · ${p.warnings.join('; ')}` : ''}`; importForm.notice.textContent = ''; } }),
+        el('button', { class: 'btn primary', text: 'Import as a Ranger', onclick: async () => { const r = await api.post('/api/import', { path: importForm.path.value.trim(), name: importForm.name.value.trim() || undefined, specialty: importForm.specialty.value || undefined }); importForm.notice.textContent = r.ok ? `${r.body.agent.name} (${r.body.agent.id}) created from the ${r.body.kind} home: ${r.body.memoriesStored.length} memory item(s) stored, ${r.body.memoriesSkipped} not; report at ${r.body.report}.` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } }),
+      ),
+      importForm.preview,
+      importForm.notice,
+    ];
+  }
+
   function renderPeak(s) {
     setTitle('INSPECT · Mountain Peak');
     const runs = s.runOrder.map((id) => s.runs[id]).reverse();
@@ -831,6 +855,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       row('gate queue', `${pendingGate(s).length} waiting`),
       ...resultsSection(s),
       ...purchasesSection(s),
+      ...importSection(),
       ...recipesSection(s),
       ...connectorsSection(s),
       ...mcpSection(s),

@@ -301,6 +301,20 @@ never research) and the day's action cap holds (D149). Linux tests cover the pro
 the policy over a fake shell on the socket; the frameworks, the permissions dialogs, the
 banner and the hotkey are on the Mac's list in the runbook.
 
+Part E step 19 done: import from OpenClaw and Hermes homes. At the Peak the Superintendent
+points at a home (the known ones on this machine are listed), previews what would come over
+and imports it as one Ranger: SOUL.md becomes the persona, AGENTS.md and TOOLS.md the
+imported operating instructions, IDENTITY.md the name, MEMORY.md and the last daily logs
+the memory, and the model named in `openclaw.json` or `config.yaml` the Ranger's worker when
+it maps to a provider the park has (anthropic, openrouter, ollama; anything else is a
+warning, not a guess). Keys are never transferred: `.env`, `auth.json`, credentials,
+sessions and databases are never opened and the config is read for its model only; every
+text is redacted first and a memory line that carried a key or a token is dropped whole.
+The owner's profile (USER.md) stays out of a Ranger's memory. Memory items are written
+through the judge like any other (D142); without a judge they go to the Ranger's import
+folder as a file, and the import's README says what was read, skipped, redacted and stored
+(D150).
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

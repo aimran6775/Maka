@@ -43,6 +43,7 @@ const SAMPLES = {
   'channel.connect': { channel: 'telegram', status: 'up', message: 'long polling as @maka_bot', by: 'env' },
   'channel.delivery': { channel: 'telegram', chatId: '12345', kind: 'gate_card', status: 'sent', itemId: 'gate-1', messageId: '43' },
   'voice.transcript': { via: 'huggingface', chars: 34, accepted: false, bytes: 48000, ms: 820, model: 'openai/whisper-large-v3' },
+  'import.home': { kind: 'openclaw', agentId: 'pip', persona: true, instructions: true, memoriesStored: 4, memoriesSkipped: 0, model: 'anthropic/claude-sonnet-5-5', redactions: 1, skipped: 5 },
   'computer.action': { agentId: 'ranger', action: 'click', status: 'done', runId: 'run-1', app: 'Safari (com.apple.Safari)', before: 'ranger/computer-trace/1-click-before.png', after: 'ranger/computer-trace/2-click-after.png', ms: 120 },
   'computer.handoff': { handoffId: 'chand-1', agentId: 'ranger', status: 'waiting', kind: 'sensitive_app', runId: 'run-1', app: 'Terminal (com.apple.Terminal)', action: 'type', reason: 'Terminal is on the list of apps a Ranger never drives' },
   'purchase.update': { purchaseId: 'buy-1', status: 'paid', venture: 'lantern-co', amountUsd: 42, currency: 'USD', supplierHost: 'supplier.example', workItemId: 'work-1', agentId: 'driver', runId: 'run-2', by: 'superintendent', paidUsd: 42.5, receiptPath: 'outbox/purchases/buy-1.json', reconciliation: 'no_source' },
@@ -139,6 +140,8 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('recipe.run', { recipeRunId: 'r', recipeId: 'x', version: 1, status: 'paused', by: 'me' });
   bad('purchase.update', { purchaseId: 'b', status: 'shipped', venture: 'v', amountUsd: 1 });
   bad('computer.action', { agentId: 'r', action: 'format', status: 'done' });
+  bad('import.home', { kind: 'cursor', agentId: 'x' });
+  bad('import.home', { kind: 'hermes', agentId: 'x', persona: 'yes' });
   bad('computer.action', { agentId: 'r', action: 'click', status: 'maybe' });
   bad('computer.handoff', { handoffId: 'h', agentId: 'r', status: 'waiting', kind: 'login' });
   bad('purchase.update', { purchaseId: 'b', status: 'paid', venture: 'v', amountUsd: -1 });

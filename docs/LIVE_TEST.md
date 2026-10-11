@@ -345,6 +345,16 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 - Press ⌃⌥⌘H while a Ranger drives: the banner goes, the row says HALTED by the hotkey,
   every action is refused until Resume at the Peak.
 
+## 15n. Import from OpenClaw and Hermes homes (phase 4)
+
+- At the Peak's import section the homes found on this machine are listed. Point at one,
+  Preview: the kind, the persona and instruction sizes, the memory item count, the model
+  and what it maps to, what was redacted and what is skipped (`.env`, `auth.json`, USER.md).
+- Import as a Ranger: a `crew.agent created` with the persona, the worker policy when the
+  model mapped, `memory.write stored` events through the judge (or the items in
+  `<agent>/import/memory.md` without one), an `import.home` event with the counts, and
+  `<agent>/import/README.md` saying keys were never transferred.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

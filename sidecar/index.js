@@ -44,6 +44,7 @@ import { createResults } from './results.js';
 import { createLedgerDesk } from './ledger-desk.js';
 import { createPurchases } from './purchases.js';
 import { createComputerControl } from './computer/control.js';
+import { createImporter } from './import/homes.js';
 import { createScoutMemory } from './scout-memory.js';
 import { createMemory } from './memory/index.js';
 import { createRecipes } from './recipes/index.js';
@@ -155,6 +156,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   // Phase 4 step 18: this Mac through the shell's socket; not wired without the app.
   const computer = await createComputerControl({ bus, env, workspaceRoot, log }).init();
   Object.assign(registry, computer.tools);
+  // Phase 4 step 19: another agent's home (OpenClaw, Hermes) imported as a Ranger.
+  const importer = createImporter({ agents, memory, getLayout: layoutState.get, workspaceRoot, bus, log });
   // A finished connector sync or work item rolls the day up (debounced), so the Peak's
   // results follow the syncs without a reflection.
   let rollupTimer = null;
@@ -226,6 +229,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     results,
     purchases,
     computer,
+    importer,
     scoutMemory,
     memory,
     recipes,

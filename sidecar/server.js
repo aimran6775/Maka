@@ -342,7 +342,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, computer = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, computer = null, importer = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -906,6 +906,21 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     }
     // Phase 4 step 18: computer control. Status, the handoffs a sensitive app raised, the
     // Superintendent's hand-back, the halt (the hotkey posts it too) and the resume.
+    // Phase 4 step 19: import a Ranger from an OpenClaw or Hermes home (keys never move).
+    if (p === '/api/import/candidates' && method === 'GET') {
+      if (!importer) throw new HttpError(404, 'no importer');
+      return sendJson(res, 200, await importer.candidates());
+    }
+    if (p === '/api/import/preview' && method === 'POST') {
+      if (!importer) throw new HttpError(404, 'no importer');
+      const body = await readJsonBody(req);
+      return sendJson(res, 200, await rethrow(() => importer.preview(body)));
+    }
+    if (p === '/api/import' && method === 'POST') {
+      if (!importer) throw new HttpError(404, 'no importer');
+      const body = await readJsonBody(req);
+      return sendJson(res, 201, await rethrow(() => importer.run(body)));
+    }
     if (p === '/api/computer' && method === 'GET') {
       if (!computer) throw new HttpError(404, 'no computer control');
       return sendJson(res, 200, { ...(await computer.status()), handoffs: computer.handoffs({ pendingOnly: true }) });
