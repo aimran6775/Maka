@@ -22,10 +22,10 @@ test('the Telegram adapter: getMe verifies the token, long polling hands message
     assert.equal(fake.state.calls[0].method, 'getMe');
     fake.message({ chatId: 42, text: 'hello' });
     await waitUntil(() => inbound.length === 1);
-    assert.deepEqual(inbound[0], { updateId: '1', chatId: '42', userId: '42', text: 'hello', messageId: '1' });
+    assert.deepEqual(inbound[0], { updateId: '1', chatId: '42', userId: '42', chatType: 'private', text: 'hello', messageId: '1' });
     fake.press({ chatId: 42, userId: 7, data: gateButtonData('gate-1', 'approve'), messageId: '501' });
     await waitUntil(() => inbound.length === 2);
-    assert.deepEqual(inbound[1], { updateId: '2', chatId: '42', userId: '7', callback: { id: 'cb-2', data: 'gate:gate-1:approve', messageId: '501' } });
+    assert.deepEqual(inbound[1], { updateId: '2', chatId: '42', userId: '7', chatType: 'private', callback: { id: 'cb-2', data: 'gate:gate-1:approve', messageId: '501' } });
     await waitUntil(() => fake.state.answered.includes('cb-2'));
     assert.ok(tg.offset() >= 3, 'the offset moves past handled updates');
     const polls = fake.state.calls.filter((c) => c.method === 'getUpdates');

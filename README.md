@@ -290,7 +290,8 @@ the owner's Mac.
 
 Step 1, the owner channels: `sidecar/channels/` holds the adapter contract and the
 registry. Click the Peak for "owner channels": make a pairing code (single use, ten
-minutes) and send it to the bot from your chat; from then on that chat gets every
+minutes) and send it to the bot from your own private chat with it (a group cannot pair,
+and only you, the user who paired, can act in that chat afterwards); from then on that chat gets every
 Entrance Gate item as a card with Approve / Revise / Reject (Revise asks for your notes
 as the next message), hears reflections and away digests, can `/gate`, `/status`,
 `/away`, `/back`, and anything else you write is a question the Chief Ranger answers from

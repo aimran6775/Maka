@@ -8,7 +8,9 @@
 // chat.postMessage), the app-level token (xapp) opens the Socket Mode connection
 // (apps.connections.open). Every envelope is acknowledged by envelope_id before it is
 // handed in; `message` events from humans are inbound text (the bot's own and other bots'
-// are skipped), `block_actions` presses are callbacks with the button's value; a
+// are skipped) carrying `chatType` from Slack's channel_type (only an `im`, the owner's DM
+// with the bot, is private and may pair: safety 2026-10-11 H1), `block_actions` presses
+// are callbacks with the button's value; a
 // `disconnect` from Slack or a closed socket reconnects with backoff until stop(). Cards
 // are plain_text blocks with one actions row; text is posted with mrkdwn off, so nothing
 // a Ranger wrote is formatting. Socket Mode needs no public endpoint.
@@ -73,10 +75,13 @@ export function createSlackAdapter({ fetch: fetchImpl = globalThis.fetch, netGua
     if (msg.type === 'events_api' && p.event && p.event.type === 'message') {
       const ev = p.event;
       if (ev.bot_id || ev.subtype || !ev.channel || !ev.user) return;
-      deliver({ updateId: String(ev.client_msg_id || `${ev.channel}:${ev.ts}`), chatId: String(ev.channel), userId: String(ev.user), text: typeof ev.text === 'string' ? ev.text : '', messageId: String(ev.ts || '') });
+      deliver({ updateId: String(ev.client_msg_id || `${ev.channel}:${ev.ts}`), chatId: String(ev.channel), userId: String(ev.user), chatType: ev.channel_type === 'im' ? 'private' : typeof ev.channel_type === 'string' && ev.channel_type ? ev.channel_type : 'unknown', text: typeof ev.text === 'string' ? ev.text : '', messageId: String(ev.ts || '') });
     } else if (msg.type === 'interactive' && p.type === 'block_actions' && p.channel && p.user && Array.isArray(p.actions) && p.actions.length) {
       const a = p.actions[0];
-      deliver({ updateId: String(msg.envelope_id), chatId: String(p.channel.id), userId: String(p.user.id), callback: { id: String(msg.envelope_id), data: String(a.value || a.action_id || ''), messageId: p.message ? String(p.message.ts || '') : '' } });
+      // block_actions name the channel but not its type; the registry pairs on text
+      // messages only (those carry channel_type) and checks the sender on presses (H1).
+      const chatType = p.channel.name === 'directmessage' ? 'private' : typeof p.channel.name === 'string' && p.channel.name ? 'channel' : undefined;
+      deliver({ updateId: String(msg.envelope_id), chatId: String(p.channel.id), userId: String(p.user.id), ...(chatType ? { chatType } : {}), callback: { id: String(msg.envelope_id), data: String(a.value || a.action_id || ''), messageId: p.message ? String(p.message.ts || '') : '' } });
     }
   }
 

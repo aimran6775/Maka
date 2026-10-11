@@ -368,6 +368,12 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   notes; `gate.item { revised }` carries them and the Ranger's next turn sees them.
 - From another chat, send the bot anything: it answers "not paired" once and
   `channel.inbound { paired: false }` is logged; a button press from it is refused.
+- Add the bot to a group and send a fresh pairing code there: the bot answers that pairing
+  works only from a private chat, the Peak's code is gone (`channel.inbound { action:
+  'pair', outcome: 'refused: not a private chat (supergroup); the code was exposed here
+  and is revoked' }`). Forward a Gate card to a friend's chat with the bot, or have a
+  second account press a button on your card: refused, `channel.inbound { paired: false,
+  outcome: 'refused: not the paired user' }` names their user id (safety 2026-10-11 H1).
 - Write a question: a Chief run with no tools (`agent.run.start` lists `tools: []`),
   the answer in the chat with `Evidence: run <id>`, counted in the judge's day.
 

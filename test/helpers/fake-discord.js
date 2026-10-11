@@ -64,17 +64,17 @@ export async function startFakeDiscord({ token = 'MTIz.fake.discord-token', user
     username,
     state,
     restUrl: `${server.httpUrl}/api/v10`,
-    message({ chatId, userId = chatId, text, id }) {
+    message({ chatId, userId = chatId, text, id, guildId = null }) {
       const mid = id || `m-${++n}`;
-      dispatch('MESSAGE_CREATE', { id: mid, channel_id: String(chatId), author: { id: String(userId), username: 'owner', bot: false }, content: text });
+      dispatch('MESSAGE_CREATE', { id: mid, channel_id: String(chatId), ...(guildId ? { guild_id: String(guildId) } : {}), author: { id: String(userId), username: 'owner', bot: false }, content: text });
       return mid;
     },
     botMessage({ chatId, text }) {
       dispatch('MESSAGE_CREATE', { id: `b-${++n}`, channel_id: String(chatId), author: { id: '1', username, bot: true }, content: text });
     },
-    press({ chatId, userId = chatId, data, messageId = '9000', id }) {
+    press({ chatId, userId = chatId, data, messageId = '9000', id, guildId = null }) {
       const iid = id || `i-${++n}`;
-      dispatch('INTERACTION_CREATE', { id: iid, token: `itoken-${iid}`, type: 3, channel_id: String(chatId), user: { id: String(userId), username: 'owner' }, message: { id: String(messageId) }, data: { custom_id: data, component_type: 2 } });
+      dispatch('INTERACTION_CREATE', { id: iid, token: `itoken-${iid}`, type: 3, channel_id: String(chatId), ...(guildId ? { guild_id: String(guildId), member: { user: { id: String(userId), username: 'owner' } } } : { user: { id: String(userId), username: 'owner' } }), message: { id: String(messageId) }, data: { custom_id: data, component_type: 2 } });
       return iid;
     },
     reconnectAll() { dispatch('RECONNECT', null); for (const c of state.sockets) c.send({ op: 7, d: null }); },

@@ -45,10 +45,13 @@ Phase 4 (`docs/PHASE4_BRIEF.md`, "beyond StarNet") is under way. Step 1 done: th
 channels' contract and registry (`sidecar/channels/`). An adapter is transport only
 (start / stop, send a card or a text, hand every inbound message to the registry); the
 registry decides everything: a chat is trusted only after it sent the single-use
-8-character pairing code shown at the Peak (ten minutes, five wrong attempts revoke it),
-only a paired chat may approve, revise or reject a Gate item (a button or a slash
+8-character pairing code shown at the Peak (ten minutes, five wrong attempts revoke it)
+from a private one-to-one chat with the bot (the adapter reports the chat type; a group,
+channel or guild cannot pair, and a right code seen in one is revoked), and from then on
+only the user who paired it may approve, revise or reject a Gate item (a button or a slash
 command; Revise takes the notes from the next message), re-list the Gate, toggle away
-mode or ask the Peak a question, which is one tool-less run of the Chief on its planning
+mode or ask the Peak a question (another member of the chat is refused and logged with
+the real sender id: safety 2026-10-11 H1), which is one tool-less run of the Chief on its planning
 model over the recorded data, answered with the run id as evidence. Every pending Gate
 item goes to every paired chat as a card, decided items tell the other chats who decided,
 reflections and away digests go as text, and every send and every inbound message is an
@@ -370,6 +373,14 @@ it, and one in a hand-edited layout grants the Chief nothing), so the unjudged C
 never holds a money tool. Every row of the review is fixed, and the flaky test it saw
 is gone with it: syncs of one connector now queue instead of one answering "skipped"
 (D124).
+
+Second safety review (`docs/SECURITY_REVIEW_2026-10-11.md`, the phase 4 surfaces, before
+the first Mac build): the findings are being fixed in order, each with a regression test in
+`test/safety-phase4.test.js` and its row's Status updated. H1 done: pairing binds the chat
+and the user, only from a private chat (Telegram `chat.type`, Slack `channel_type`,
+Discord's `guild_id` absent), and every Gate decision, note, command and question from a
+paired chat must come from the user who paired it; anyone else is refused and the event
+names the real sender (D152).
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

@@ -18,10 +18,16 @@
 //
 // Owner pairing: a chat is trusted only after the 8-character code shown at the Peak was
 // sent from it while the code was valid (ten minutes, single use; a new code replaces the
-// old one; five wrong codes revoke it). Only paired chats act: a Gate decision, revise
-// notes, a question for the Peak, a command. An unpaired chat is told how to pair once an
-// hour at most, and every attempt is a channel.inbound { paired: false } event. Pairing
-// state is persisted atomically; unpairing is a click at the Peak.
+// old one; five wrong codes revoke it). Pairing binds the chat AND the sender (safety
+// 2026-10-11 H1): the chat must be a private one-to-one chat with the bot (the adapter
+// reports `chatType: 'private'`; a group, channel or guild chat, or one of unknown type,
+// cannot pair, and a right code sent from one is revoked because it was exposed), and from
+// then on only that user id may act in it: a Gate decision, revise notes, a question for
+// the Peak, a command. Another member of the chat, or a later message from a chat that is
+// no longer private, is refused and logged with the real sender id. An unpaired chat is
+// told how to pair once an hour at most, and every attempt is a channel.inbound
+// { paired: false } event. Pairing state is persisted atomically; unpairing is a click at
+// the Peak.
 //
 // Deliveries: every pending Gate item goes to every paired chat as a card with Approve /
 // Revise / Reject (Revise asks for notes as the next message); when an item is decided, the
@@ -233,9 +239,11 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
     ].filter(Boolean).join('\n');
   }
 
-  async function decide(name, chatId, { itemId, decision, notes = '', messageId }) {
+  // `userId` is the real sender, checked against the paired user by inbound() before this
+  // is reached; every event names the sender, never the chat's owner by assumption.
+  async function decide(name, chatId, userId, { itemId, decision, notes = '', messageId }) {
     const key = chatKey(name, chatId);
-    const base = { channel: name, chatId, userId: state.chats[key] ? state.chats[key].userId : '', action: 'gate', paired: true, itemId, decision };
+    const base = { channel: name, chatId, userId, action: 'gate', paired: true, itemId, decision };
     if (messageId) base.messageId = String(messageId);
     if (!gateQueue) {
       emit('channel.inbound', { ...base, outcome: 'refused: no Gate queue' });
@@ -271,9 +279,8 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
     }
   }
 
-  async function ask(name, chatId, question, messageId) {
-    const key = chatKey(name, chatId);
-    const base = { channel: name, chatId, userId: state.chats[key].userId, action: 'ask', paired: true, text: clip(question, 200) };
+  async function ask(name, chatId, userId, question, messageId) {
+    const base = { channel: name, chatId, userId, action: 'ask', paired: true, text: clip(question, 200) };
     if (messageId) base.messageId = String(messageId);
     if (!chief || typeof chief.ask !== 'function') {
       emit('channel.inbound', { ...base, outcome: 'refused: no Chief' });
@@ -360,12 +367,28 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
       const paired = isPaired(name, chatId);
       const messageId = message.messageId !== undefined ? String(message.messageId) : (message.callback && message.callback.messageId !== undefined ? String(message.callback.messageId) : undefined);
       const text = typeof message.text === 'string' ? message.text.trim() : '';
-      const base = { channel: name, chatId, userId };
+      const chatType = typeof message.chatType === 'string' ? message.chatType : '';
+      const isPrivate = chatType === 'private';
+      const base = { channel: name, chatId, userId: userId || 'unknown' };
       if (messageId) base.messageId = messageId;
 
       if (!paired) {
-        // The one thing an unpaired chat can do is send the pairing code.
+        // The one thing an unpaired chat can do is send the pairing code, and only a
+        // private chat with a sender id can (H1): a group that sees the right code has
+        // exposed it, so the code is revoked rather than spent on the group.
         const button = message.callback ? parseButtonData(message.callback.data) : null;
+        if (text && looksLikePairingCode(text) && pairingValid() && (!isPrivate || !userId)) {
+          const matched = normalizePairingCode(text) === state.code.code;
+          if (matched) {
+            state = { ...state, code: null };
+            await save();
+          }
+          const why = !userId ? 'no sender id' : `not a private chat (${chatType || 'type unknown'})`;
+          log.warn && log.warn(`channel ${name}: chat ${chatId} (user ${userId || 'unknown'}) sent a pairing code from a chat that cannot pair (${why})${matched ? '; the code is revoked' : ''}`);
+          emit('channel.inbound', { ...base, action: 'pair', paired: false, outcome: matched ? `refused: ${why}; the code was exposed here and is revoked` : `refused: ${why}` });
+          await send(name, chatId, { kind: 'pairing', text: matched ? 'Pairing works only from a private chat with this bot. That code was shown here, so it is revoked; make a new one at the Peak and send it from a private chat.' : 'Pairing works only from a private chat with this bot.' });
+          return { paired: false };
+        }
         if (text && looksLikePairingCode(text) && pairingValid()) {
           if (normalizePairingCode(text) === state.code.code) {
             const chats = { ...state.chats, [key]: { channel: name, chatId, userId, pairedAt: clock.now() } };
@@ -398,14 +421,31 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
         return { paired: false };
       }
 
-      // A paired owner chat.
+      // A paired chat: only the user who paired it acts, and only while it is private (H1).
+      const owner = state.chats[key];
+      const senderOk = Boolean(userId) && Boolean(owner.userId) && userId === owner.userId;
+      if (!senderOk || (chatType && !isPrivate)) {
+        const button = message.callback ? parseButtonData(message.callback.data) : null;
+        const action = button ? 'gate' : text.startsWith('/') ? 'command' : text ? 'ask' : 'ignored';
+        const why = !senderOk ? 'not the paired user' : `not a private chat (${chatType})`;
+        const payload = { ...base, action, paired: false, outcome: `refused: ${why}` };
+        if (button) {
+          payload.itemId = button.itemId;
+          payload.decision = button.decision;
+        }
+        if (text && !button) payload.text = clip(text, 200);
+        log.warn && log.warn(`channel ${name}: ${why} in paired chat ${chatId}: user ${userId || 'unknown'} (paired user ${owner.userId || 'unknown'}) tried to ${button ? `${button.decision} ${button.itemId}` : action === 'ignored' ? 'send nothing' : action}; refused`);
+        emit('channel.inbound', payload);
+        if (button || text.startsWith('/')) await send(name, chatId, { kind: 'notice', text: !senderOk ? 'Only the user who paired this chat with the Mountain Peak can act here.' : 'This chat is no longer a private chat with the bot; unpair it at the Peak and pair again from a private chat.' });
+        return { paired: false };
+      }
       if (message.callback) {
         const button = parseButtonData(message.callback.data);
         if (!button) {
           emit('channel.inbound', { ...base, action: 'ignored', paired: true, outcome: 'ignored: unknown button' });
           return null;
         }
-        return decide(name, chatId, { itemId: button.itemId, decision: button.decision, messageId });
+        return decide(name, chatId, userId, { itemId: button.itemId, decision: button.decision, messageId });
       }
       if (!text) {
         emit('channel.inbound', { ...base, action: 'ignored', paired: true, outcome: 'ignored: no text' });
@@ -419,7 +459,7 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
           return send(name, chatId, { kind: 'notice', text: `The revise notes for ${waiting.itemId} came too late; press Revise again.`, itemId: waiting.itemId });
         }
         emit('channel.inbound', { ...base, action: 'notes', paired: true, outcome: 'accepted', itemId: waiting.itemId, decision: 'revise', text: clip(text, 200) });
-        return decide(name, chatId, { itemId: waiting.itemId, decision: 'revise', notes: text, messageId });
+        return decide(name, chatId, userId, { itemId: waiting.itemId, decision: 'revise', notes: text, messageId });
       }
       if (text.startsWith('/')) {
         const [cmd, ...rest] = text.slice(1).split(/\s+/);
@@ -431,7 +471,7 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
             outcomeOf('refused: no item id');
             return send(name, chatId, { kind: 'notice', text: `Usage: /${command} <item id>${command === 'revise' ? ' <notes>' : ' [notes]'}` });
           }
-          return decide(name, chatId, { itemId, decision: command, notes: rest.slice(1).join(' '), messageId });
+          return decide(name, chatId, userId, { itemId, decision: command, notes: rest.slice(1).join(' '), messageId });
         }
         if (command === 'gate') {
           const pending = gateQueue ? gateQueue.pending() : [];
@@ -463,7 +503,7 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
         outcomeOf('refused: unknown command');
         return send(name, chatId, { kind: 'notice', text: `Unknown command /${command}. ${helpText(name)}` });
       }
-      return ask(name, chatId, text, messageId);
+      return ask(name, chatId, userId, text, messageId);
     },
     notify: (text) => broadcast({ kind: 'notice', text }),
     // The bot token through the Gate (account_settings), like a connector key (D75).

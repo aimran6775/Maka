@@ -1596,3 +1596,22 @@ approved from the Peak so the chain moves, but the ad set's money out is left fo
 phone, because that is the approval the brief names; and the results checks assert the
 known zeros as known zeros (Etsy and Meta synced, no order, the set paused) and the hold
 verdict's reason, never a figure the engine did not compute.
+
+## D152. A channel pairs a user in a private chat, never a chat
+
+The second safety review (`docs/SECURITY_REVIEW_2026-10-11.md`, H1) found pairing trusted
+the chat: in a paired Telegram group or Slack channel any member could press Approve on a
+money_out card, and the event named the owner. The brief says the code is sent "from the
+owner's chat", which is read strictly as the owner's private chat with the bot and the
+owner's own id. So pairing needs the adapter to say the chat is private (Telegram
+`chat.type === 'private'`, Slack `channel_type === 'im'`, Discord a message with no
+`guild_id`), a chat of unknown type cannot pair either (the adapter must say, not the
+registry assume), and a right code seen anywhere else is revoked rather than spent,
+because a code shown to a group is exposed. From then on the registry compares the sender
+to the user who paired on every path (a press, a slash command, revise notes, a question):
+anyone else is refused, the bot says only the paired user may act, and `channel.inbound`
+carries the real sender with `paired: false`, since the sender is not paired even if the
+chat is. A paired chat that later reports a non-private type is refused the same way.
+Revise notes are bound to the chat and now, by the same check, to the user, so a bystander
+cannot supply them. No event field was added: the existing `userId` was already meant to
+be the sender and now always is. The Peak's unpair stays the only way to drop a pairing.

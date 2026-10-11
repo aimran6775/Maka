@@ -38,10 +38,12 @@ export function fakeChannel({ name = 'fakechat', label = 'Fake Chat', keys = ['t
       state.sent.push({ chatId, kind: 'text', text, messageId });
       return { messageId };
     },
-    // What the platform would deliver: a text message or a button press.
+    // What the platform would deliver: a text message or a button press. A private chat
+    // unless the test says otherwise (`chatType: 'group'`, or null for no type at all).
     receive(message) {
       if (!state.inbound) throw new Error(`${name} is not started`);
-      return state.inbound(message);
+      const { chatType = 'private', ...rest } = message;
+      return state.inbound(chatType === null ? rest : { ...rest, chatType });
     },
     sentTo: (chatId) => state.sent.filter((m) => m.chatId === String(chatId)),
   };

@@ -55,14 +55,14 @@ export async function startFakeSlack({ botToken = 'xoxb-fake-bot', appToken = 'x
     appToken,
     state,
     apiUrl: `${server.httpUrl}/api`,
-    message({ chatId, userId = 'U1', text, ts }) {
-      return envelope('events_api', { type: 'event_callback', team_id: 'T1', event: { type: 'message', channel: String(chatId), user: String(userId), text, ts: ts || (state.nextTs += 0.0001).toFixed(4), client_msg_id: `cm-${n + 1}` } });
+    message({ chatId, userId = 'U1', text, ts, channelType = 'im' }) {
+      return envelope('events_api', { type: 'event_callback', team_id: 'T1', event: { type: 'message', channel: String(chatId), channel_type: channelType, user: String(userId), text, ts: ts || (state.nextTs += 0.0001).toFixed(4), client_msg_id: `cm-${n + 1}` } });
     },
     botMessage({ chatId, text }) {
       return envelope('events_api', { type: 'event_callback', event: { type: 'message', channel: String(chatId), user: 'UBOT', bot_id: 'B1', text, ts: (state.nextTs += 0.0001).toFixed(4) } });
     },
-    press({ chatId, userId = 'U1', data, messageTs = '1700000000.0001' }) {
-      return envelope('interactive', { type: 'block_actions', user: { id: String(userId), name: 'owner' }, channel: { id: String(chatId) }, message: { ts: messageTs }, actions: [{ type: 'button', action_id: data, value: data, block_id: 'b1', action_ts: '1700000001.0001' }] });
+    press({ chatId, userId = 'U1', data, messageTs = '1700000000.0001', channelName = 'directmessage' }) {
+      return envelope('interactive', { type: 'block_actions', user: { id: String(userId), name: 'owner' }, channel: { id: String(chatId), name: channelName }, message: { ts: messageTs }, actions: [{ type: 'button', action_id: data, value: data, block_id: 'b1', action_ts: '1700000001.0001' }] });
     },
     disconnectAll(reason = 'refresh_requested') { for (const c of state.sockets) c.send({ type: 'disconnect', reason }); },
     sentTo: (chatId) => state.sent.filter((s) => s.chatId === String(chatId)),

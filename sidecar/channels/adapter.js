@@ -16,9 +16,12 @@
 //   }
 //
 // Inbound messages reach the registry through `onInbound(message)`:
-//   { chatId, userId, text?, messageId?, callback?: { data, messageId }, updateId? }
+//   { chatId, userId, chatType?, text?, messageId?, callback?: { data, messageId }, updateId? }
 // A `callback` is a button press carrying the button's `data`; `updateId` lets the registry
-// drop a replayed update. Every field is a string.
+// drop a replayed update. `chatType` is 'private' only when the platform says the chat is
+// the one-to-one chat between a user and the bot; anything else (group, channel, guild,
+// unknown, or missing) cannot pair, and a paired chat that reports a non-private type is
+// refused (safety 2026-10-11 H1). Every field is a string.
 //
 // A card is channel-neutral: { kind, title, lines, buttons: [{ label, data }], itemId? }.
 // `cardText(card)` renders it as plain text with the slash commands that do what the

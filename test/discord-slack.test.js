@@ -51,11 +51,11 @@ test('Discord: token verified, gateway through the guard, DM intent only, heartb
     await waitUntil(() => fake.state.heartbeats >= 1, { timeoutMs: 3000 });
     fake.message({ chatId: '700', userId: '42', text: 'hi there' });
     await waitUntil(() => inbound.length === 1);
-    assert.deepEqual(inbound[0], { updateId: 'm-1', chatId: '700', userId: '42', text: 'hi there', messageId: 'm-1' });
+    assert.deepEqual(inbound[0], { updateId: 'm-1', chatId: '700', userId: '42', chatType: 'private', text: 'hi there', messageId: 'm-1' });
     fake.botMessage({ chatId: '700', text: 'echo' });
     const iid = fake.press({ chatId: '700', userId: '42', data: gateButtonData('gate-1', 'reject'), messageId: '9000' });
     await waitUntil(() => inbound.length === 2);
-    assert.deepEqual(inbound[1], { updateId: iid, chatId: '700', userId: '42', callback: { id: iid, data: 'gate:gate-1:reject', messageId: '9000' } });
+    assert.deepEqual(inbound[1], { updateId: iid, chatId: '700', userId: '42', chatType: 'private', callback: { id: iid, data: 'gate:gate-1:reject', messageId: '9000' } });
     await waitUntil(() => fake.state.acks.some((a) => a.id === iid && a.type === 6));
     // A card and a text.
     const card = await dc.sendCard('700', gateCard({ itemId: 'gate-1', agentId: 'books', kind: 'action', domain: 'money_out', tool: 'stripe.refund', summary: 'refund $5', level: 'draft', amountUsd: 5 }));
@@ -105,7 +105,7 @@ test('Slack: the bot token signs the Web API and the app token opens Socket Mode
     assert.equal(inbound.length, 1, 'the bot\'s own message is skipped');
     const envPress = fake.press({ chatId: 'D123', userId: 'U77', data: gateButtonData('gate-2', 'approve'), messageTs: '1700000000.0005' });
     await waitUntil(() => inbound.length === 2);
-    assert.deepEqual(inbound[1], { updateId: envPress, chatId: 'D123', userId: 'U77', callback: { id: envPress, data: 'gate:gate-2:approve', messageId: '1700000000.0005' } });
+    assert.deepEqual(inbound[1], { updateId: envPress, chatId: 'D123', userId: 'U77', chatType: 'private', callback: { id: envPress, data: 'gate:gate-2:approve', messageId: '1700000000.0005' } });
     // A card and a text.
     const card = await sl.sendCard('D123', gateCard({ itemId: 'gate-2', agentId: 'books', kind: 'action', domain: 'money_out', tool: 'stripe.refund', summary: 'refund $5', level: 'draft', amountUsd: 5 }));
     assert.match(card.messageId, /^\d+\.\d{4}$/);

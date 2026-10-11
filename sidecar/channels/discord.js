@@ -7,7 +7,9 @@
 // start() verifies the token (GET /users/@me), asks for the gateway URL (GET
 // /gateway/bot), opens the socket through the outbound guard, identifies with the
 // DIRECT_MESSAGES intent only (the owner's chat with the bot is a DM; no guild content is
-// read) and heartbeats as told. MESSAGE_CREATE from a human becomes an inbound text;
+// read) and heartbeats as told. MESSAGE_CREATE from a human becomes an inbound text, with
+// `chatType: 'private'` only when no guild_id is on it (a guild message or interaction,
+// should one arrive, is 'guild' and cannot pair: safety 2026-10-11 H1);
 // INTERACTION_CREATE for a button press is acknowledged at once (a deferred update, so
 // Discord stops the spinner) and handed in as a callback with the button's custom_id. A
 // closed socket, a RECONNECT or an invalid session reconnect with backoff until stop().
@@ -102,11 +104,11 @@ export function createDiscordAdapter({ fetch: fetchImpl = globalThis.fetch, netG
     }
     if (msg.op !== OP.DISPATCH) return;
     if (msg.t === 'MESSAGE_CREATE' && msg.d && msg.d.author && !msg.d.author.bot && msg.d.channel_id) {
-      deliver({ updateId: String(msg.d.id), chatId: String(msg.d.channel_id), userId: String(msg.d.author.id), text: typeof msg.d.content === 'string' ? msg.d.content : '', messageId: String(msg.d.id) });
+      deliver({ updateId: String(msg.d.id), chatId: String(msg.d.channel_id), userId: String(msg.d.author.id), chatType: msg.d.guild_id ? 'guild' : 'private', text: typeof msg.d.content === 'string' ? msg.d.content : '', messageId: String(msg.d.id) });
     } else if (msg.t === 'INTERACTION_CREATE' && msg.d && msg.d.type === 3 && msg.d.data && msg.d.channel_id) {
       const user = msg.d.user || (msg.d.member && msg.d.member.user) || {};
       rest('POST', `/interactions/${msg.d.id}/${msg.d.token}/callback`, { type: 6 }, { auth: false }).catch((err) => log.warn && log.warn(`discord interaction ack: ${err.message}`));
-      deliver({ updateId: String(msg.d.id), chatId: String(msg.d.channel_id), userId: String(user.id || ''), callback: { id: String(msg.d.id), data: String(msg.d.data.custom_id || ''), messageId: msg.d.message ? String(msg.d.message.id) : '' } });
+      deliver({ updateId: String(msg.d.id), chatId: String(msg.d.channel_id), userId: String(user.id || ''), chatType: msg.d.guild_id ? 'guild' : 'private', callback: { id: String(msg.d.id), data: String(msg.d.data.custom_id || ''), messageId: msg.d.message ? String(msg.d.message.id) : '' } });
     }
   }
 

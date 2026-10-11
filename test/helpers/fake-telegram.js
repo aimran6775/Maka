@@ -65,12 +65,12 @@ export async function startFakeTelegram({ token = '123456:ABC-DEF', username = '
     state,
     push,
     // A text message from a chat.
-    message({ chatId, userId = chatId, text, updateId }) {
-      return push({ ...(updateId !== undefined ? { update_id: updateId } : {}), message: { message_id: msgId++, from: { id: Number(userId), is_bot: false, first_name: 'Owner' }, chat: { id: Number(chatId), type: 'private' }, date: 1700000000, text } });
+    message({ chatId, userId = chatId, text, updateId, chatType = 'private' }) {
+      return push({ ...(updateId !== undefined ? { update_id: updateId } : {}), message: { message_id: msgId++, from: { id: Number(userId), is_bot: false, first_name: 'Owner' }, chat: { id: Number(chatId), type: chatType }, date: 1700000000, text } });
     },
     // A button press on one of the bot's messages.
-    press({ chatId, userId = chatId, data, messageId = '500', updateId }) {
-      return push({ ...(updateId !== undefined ? { update_id: updateId } : {}), callback_query: { id: `cb-${msgId++}`, from: { id: Number(userId), is_bot: false, first_name: 'Owner' }, message: { message_id: Number(messageId), chat: { id: Number(chatId), type: 'private' } }, data } });
+    press({ chatId, userId = chatId, data, messageId = '500', updateId, chatType = 'private' }) {
+      return push({ ...(updateId !== undefined ? { update_id: updateId } : {}), callback_query: { id: `cb-${msgId++}`, from: { id: Number(userId), is_bot: false, first_name: 'Owner' }, message: { message_id: Number(messageId), chat: { id: Number(chatId), type: chatType } }, data } });
     },
     sentTo: (chatId) => state.sent.filter((s) => s.chatId === String(chatId)),
     async close() {

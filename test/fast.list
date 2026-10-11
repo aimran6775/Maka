@@ -55,3 +55,4 @@ test/ledger-desk.test.js
 test/purchases.test.js
 test/computer.test.js
 test/import.test.js
+test/safety-phase4.test.js

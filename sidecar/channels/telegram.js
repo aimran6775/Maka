@@ -9,7 +9,9 @@
 // an inline button is answered (answerCallbackQuery) before it is handed in, so the
 // phone's spinner stops whatever the registry decides. Cards are sendMessage with an
 // inline keyboard; text is plain (no parse mode, so a Ranger's words cannot break a
-// message). Every request goes through the outbound guard (safety H1): the Bot API host
+// message). Every inbound carries `chatType` from Telegram's chat.type, so the registry
+// pairs private chats only (safety 2026-10-11 H1). Every request goes through the
+// outbound guard (safety H1): the Bot API host
 // must be public, and the sidecar never sets `allowLocal`. The token is part of the Bot
 // API's URL; it is never put in an error, an event or a log line.
 
@@ -58,17 +60,22 @@ export function createTelegramAdapter({ fetch: fetchImpl = globalThis.fetch, net
     return data.result;
   }
 
+  // Telegram's chat.type: 'private' is the one-to-one chat with the bot; group,
+  // supergroup and channel are not, and only a private chat may pair (safety 2026-10-11 H1).
+  // A chat without a type is reported as unknown, which cannot pair either.
+  const chatTypeOf = (chat) => (chat && chat.type === 'private' ? 'private' : chat && typeof chat.type === 'string' && chat.type ? chat.type : 'unknown');
+
   function inboundOf(update) {
     const updateId = String(update.update_id);
     if (update.message && update.message.chat && update.message.from) {
       const m = update.message;
-      return { updateId, chatId: String(m.chat.id), userId: String(m.from.id), text: typeof m.text === 'string' ? m.text : '', messageId: String(m.message_id) };
+      return { updateId, chatId: String(m.chat.id), userId: String(m.from.id), chatType: chatTypeOf(m.chat), text: typeof m.text === 'string' ? m.text : '', messageId: String(m.message_id) };
     }
     if (update.callback_query && update.callback_query.from) {
       const cb = update.callback_query;
       const chatId = cb.message && cb.message.chat ? String(cb.message.chat.id) : null;
       if (!chatId) return null;
-      return { updateId, chatId, userId: String(cb.from.id), callback: { id: cb.id, data: String(cb.data || ''), messageId: cb.message ? String(cb.message.message_id) : '' } };
+      return { updateId, chatId, userId: String(cb.from.id), chatType: chatTypeOf(cb.message.chat), callback: { id: cb.id, data: String(cb.data || ''), messageId: cb.message ? String(cb.message.message_id) : '' } };
     }
     return null;
   }
