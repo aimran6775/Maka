@@ -85,7 +85,7 @@ test('runs: an unreachable local worker falls back to the hosted worker only whe
     await runs.waitForIdle();
     const cost = events.find((e) => e.type === 'cost.estimate').payload;
     assert.deepEqual([cost.tier, cost.usd, cost.reconciled], ['hosted_worker', null, false], 'metered by calls, not priced');
-    assert.deepEqual(ledger.hostedToday(), { calls: 1, tokens: 45 });
+    assert.deepEqual(ledger.hostedToday(), { calls: 1, tokens: 45, reserved: 0 }); // `reserved`: safety 2026-10-11 L4
     assert.equal((await store.loadRun(r.runId)).tier, 'hosted_worker');
     await assert.rejects(runs.start({ prompt: 'again' }), (e) => e.code === 'HOSTED_CAP' && /daily cap of 1/.test(e.message));
     await assert.rejects(runs.start({ prompt: 'again', provider: 'huggingface' }), (e) => e.code === 'HOSTED_CAP', 'an explicit hosted request respects the cap too');

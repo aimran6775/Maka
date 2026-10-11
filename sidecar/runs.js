@@ -230,7 +230,7 @@ export function createRunManager({
       let tier = providerName ? null : routed.tier;
       const wantProvider = providerName || (own && own.provider) || routed.provider;
       const wantModel = model || (providerName ? undefined : (own && own.model) || routed.model || undefined);
-      const hostedCapReached = () => ledger && ledger.hostedToday().calls >= router.caps().hostedWorkerCallsPerDay;
+      const hostedCapReached = () => { const h = ledger && ledger.hostedToday(); return Boolean(h) && h.calls + (h.reserved || 0) >= router.caps().hostedWorkerCallsPerDay; }; // in-flight reservations count (safety 2026-10-11 L4)
       if ((tier === 'hosted_worker' || wantProvider === 'huggingface') && hostedCapReached()) throw fail('HOSTED_CAP', `the hosted worker reached its daily cap of ${router.caps().hostedWorkerCallsPerDay} call(s)`);
       let made;
       try {

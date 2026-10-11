@@ -51,6 +51,8 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
   let saving = Promise.resolve();
   const reserved = new Map(); // domain -> { usd, actions } in flight today (dayKey tracked per entry)
   let reservedDay = null;
+  let hostedReserved = 0; // hosted calls reserved and not yet counted (L4)
+  let hostedReservedDay = null;
   const reservedRow = (domain, agentId = null) => {
     const key = localDayKey(clock.now());
     if (reservedDay !== key) {
@@ -255,9 +257,36 @@ export function createLeashLedger({ store, clock = { now: () => Date.now() }, ea
       await save();
       return { ...d.hosted };
     },
+    // Today's hosted calls, with the ones reserved and not yet counted (safety 2026-10-11 L4).
     hostedToday() {
       const d = data.days[localDayKey(clock.now())];
-      return d && d.hosted ? { ...d.hosted } : { calls: 0, tokens: 0 };
+      const base = d && d.hosted ? { ...d.hosted } : { calls: 0, tokens: 0 };
+      return { ...base, reserved: hostedReservedDay === localDayKey(clock.now()) ? hostedReserved : 0 };
+    },
+    // Safety 2026-10-11 L4: a hosted call is reserved against the day's cap in one
+    // synchronous step before it is made (reserve → call → the cost.estimate counts it →
+    // release), so N concurrent calls at cap−1 cannot all pass the check. Reservations live
+    // in memory only; `release()` is called once the call has been counted or has failed.
+    reserveHosted({ cap = null } = {}) {
+      const today = localDayKey(clock.now());
+      if (hostedReservedDay !== today) {
+        hostedReservedDay = today;
+        hostedReserved = 0;
+      }
+      const d = data.days[today];
+      const calls = d && d.hosted ? d.hosted.calls : 0;
+      if (typeof cap === 'number' && Number.isFinite(cap) && calls + hostedReserved >= cap) return { ok: false, reason: `the hosted worker reached its daily cap of ${cap} call(s)${hostedReserved ? ` (${hostedReserved} in flight)` : ''}`, release: () => false };
+      hostedReserved += 1;
+      let open = true;
+      return {
+        ok: true,
+        release: () => {
+          if (!open) return false;
+          open = false;
+          if (hostedReservedDay === today) hostedReserved = Math.max(0, hostedReserved - 1);
+          return true;
+        },
+      };
     },
     summary() {
       const key = localDayKey(clock.now());

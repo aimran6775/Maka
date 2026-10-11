@@ -1772,3 +1772,15 @@ Python, Perl and Ruby load paths, BASH_ENV, HOME and a few more) is refused as a
 name and as a secret name, because a value shown on a card is not the whole truth when
 it rewrites the loader: the sidecar passes its own PATH and HOME to the child and nothing
 else of its environment, as D134 already had it.
+
+## D162. The hosted cap is a reservation, like the money cap
+
+The second safety review (L4) found the hosted-worker cap checked synchronously and
+counted later, when the `cost.estimate` arrived, so N concurrent image or voice calls at
+cap−1 all passed. The money cap had the same shape and the same fix in the earlier review
+(M1, D-numbered there as reserve → execute → commit), so the ledger now reserves a hosted
+call in one synchronous step (`reserveHosted`), the image tool and the voice relay take the
+reservation before anything else and release it once the call has been counted or has
+failed, and the run manager's check counts what is in flight. The count itself still comes
+from the `cost.estimate` event, as before, so nothing is counted twice and a call that
+failed before the event counts nothing; reservations live in memory, as the money ones do.

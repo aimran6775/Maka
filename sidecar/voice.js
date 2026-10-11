@@ -52,7 +52,17 @@ export function createVoice({ env = process.env, keystorePath, fetch: fetchImpl 
     if (!AUDIO_TYPES.includes(type)) throw fail('BAD_TYPE', `audio must be one of ${AUDIO_TYPES.join(', ')}, got ${type || 'nothing'}`, 415);
     const key = await keyFor();
     if (!key) throw fail('NOT_WIRED', 'speech recognition outside the app needs HF_TOKEN (Hugging Face); in the app, macOS Speech recognises on the device', 503);
-    if (ledger && caps && typeof caps.hostedWorkerCallsPerDay === 'number' && ledger.hostedToday().calls >= caps.hostedWorkerCallsPerDay) throw fail('HOSTED_CAP', `the hosted worker reached its daily cap of ${caps.hostedWorkerCallsPerDay} call(s); recognition waits for tomorrow`, 429);
+    // Safety 2026-10-11 L4: reserved against the cap in one step, released once counted.
+    const reservation = ledger && caps && typeof caps.hostedWorkerCallsPerDay === 'number' ? ledger.reserveHosted({ cap: caps.hostedWorkerCallsPerDay }) : { ok: true, release: () => false };
+    if (!reservation.ok) throw fail('HOSTED_CAP', `the hosted worker reached its daily cap of ${caps.hostedWorkerCallsPerDay} call(s); recognition waits for tomorrow`, 429);
+    try {
+      return await transcribeReserved({ bytes, type, key });
+    } finally {
+      reservation.release();
+    }
+  }
+
+  async function transcribeReserved({ bytes, type, key }) {
     const started = clock.now();
     let res;
     try {

@@ -134,7 +134,21 @@ export function imageTool({ images, judge = null, ledger = null, caps = null, bu
     async run(input, ctx) {
       if (!ctx.workspaceDir) return { ok: false, error: 'no workspace for this run' };
       if (!(await images.wired())) return { ok: false, code: 'NOT_WIRED', error: 'image generation is not wired: set HF_TOKEN or add the Hugging Face key at the Peak' };
-      if (ledger && caps && ledger.hostedToday().calls >= caps.hostedWorkerCallsPerDay) return { ok: false, code: 'HOSTED_CAP', error: `the hosted worker reached its daily cap of ${caps.hostedWorkerCallsPerDay} call(s); image generation counts against it, so no image today` };
+      // Safety 2026-10-11 L4: the call is reserved against the cap before anything else, so
+      // concurrent calls at cap−1 cannot all pass; the reservation is released once the
+      // cost.estimate has counted the call, or when nothing was generated.
+      const reservation = ledger && caps ? ledger.reserveHosted({ cap: caps.hostedWorkerCallsPerDay }) : { ok: true, release: () => false };
+      if (!reservation.ok) return { ok: false, code: 'HOSTED_CAP', error: `the hosted worker reached its daily cap of ${caps.hostedWorkerCallsPerDay} call(s); image generation counts against it, so no image today` };
+      try {
+        return await generateReserved(input, ctx);
+      } finally {
+        reservation.release();
+      }
+    },
+  };
+
+  async function generateReserved(input, ctx) {
+    {
       const prompt = fullPrompt(input);
       const j = 'judge' in ctx ? ctx.judge : judge; // the run's context wins, even when it says none
       if (!j || typeof j.reviewDocument !== 'function') return { ok: false, code: 'POLICY_UNCHECKED', error: 'no judge is wired to check the prompt against the no-faces / no-logos policy, so no image is generated' };
@@ -164,6 +178,6 @@ export function imageTool({ images, judge = null, ledger = null, caps = null, bu
       const meta = { id, kind: 'image', venture: input.venture || null, agentId: ctx.agentId || null, runId: ctx.runId || null, createdAt, name: input.name, prompt: input.prompt, fullPrompt: prompt, negativePrompt: NEGATIVE_PROMPT, provider: 'huggingface', model: made.model, size: input.size || 'square', width, height, bytes: made.bytes.length, sha256: createHash('sha256').update(made.bytes).digest('hex'), contentType: made.contentType, policy: { verdict: 'approve', notes: review.notes || '', checkedBy: 'judge', scope: 'prompt', usd: review.usd ?? null }, judge: { verdict: 'approve', notes: review.notes || '' }, path: rel, files: [file] };
       await writeJsonAtomic(path.join(dir, 'meta.json'), meta);
       return { ok: true, output: JSON.stringify({ id, path: rel, bytes: meta.bytes, width, height, model: made.model, policy: meta.policy }) + `\nWritten to ${rel}. The judge approved the prompt under the no-faces / no-logos policy; the image itself was not inspected. Upload it only through meta_ads.upload_image or google_ads.upload_image_asset, which wait at the Gate under publishing.` };
-    },
-  };
+    }
+  }
 }

@@ -44,6 +44,8 @@ import { fakeProvider, text, end } from './helpers/fake-provider.js';
 import { createAgents } from '../sidecar/agents.js';
 import { createResults } from '../sidecar/results.js';
 import { readHome, insideDir } from '../sidecar/import/homes.js';
+import { imageTool } from '../sidecar/creative/images.js';
+import { createVoice } from '../sidecar/voice.js';
 
 const local = createNetGuard({ allowLocal: true });
 const quiet = { warn() {}, error() {} };
@@ -1005,5 +1007,65 @@ test('L3: PATH, NODE_OPTIONS, NODE_PATH, DYLD_* and LD_* are refused in a stdio 
     await waitUntil(() => h.ofType('mcp.server').some((p) => p.status === 'refused'));
   } finally {
     await h.cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------------------
+// L4: the hosted cap is reserved, not checked-then-counted.
+// ---------------------------------------------------------------------------------------
+
+test('L4: the ledger reserves a hosted call in one step; N concurrent image or voice calls at cap−1 let exactly one through', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-safety4-hosted-'));
+  const store = createStore({ root: path.join(dir, 'home') });
+  await store.init();
+  const clock = fakeClock(Date.UTC(2026, 9, 11, 12));
+  const ledger = await createLeashLedger({ store, clock }).init();
+  try {
+    await ledger.recordHosted({ tokens: 1 }); // one hosted turn earlier today: cap 2 leaves room for one
+    const a = ledger.reserveHosted({ cap: 2 });
+    const b = ledger.reserveHosted({ cap: 2 });
+    assert.equal(a.ok, true);
+    assert.equal(b.ok, false);
+    assert.match(b.reason, /daily cap of 2 call\(s\) \(1 in flight\)/);
+    assert.deepEqual(ledger.hostedToday(), { calls: 1, tokens: 1, reserved: 1 });
+    assert.equal(a.release(), true);
+    assert.equal(a.release(), false, 'released once');
+    assert.equal(ledger.hostedToday().reserved, 0);
+    assert.equal(ledger.reserveHosted({ cap: null }).ok, true, 'no cap, no limit');
+    // The image tool: two calls at once with one call of room; the slow generator makes the race real.
+    const fresh = await createLeashLedger({ store: createStore({ root: path.join(dir, 'home2') }), clock }).init();
+    await fresh.recordHosted({ tokens: 0 });
+    const bus = createEventBus();
+    bus.listen((e) => { if (e.type === 'cost.estimate' && e.payload.tier === 'hosted_worker') fresh.recordHosted({ tokens: 0 }); }); // what the run manager's listener does
+    let generating = 0;
+    const images = { model: 'fake/model', wired: async () => true, generate: async () => { generating += 1; await new Promise((r) => setTimeout(r, 30)); return { model: 'fake/model', bytes: Buffer.from('png'), contentType: 'image/png' }; } };
+    const judge = { reviewDocument: async () => ({ verdict: 'approve', notes: 'fine' }) };
+    const tool = imageTool({ images, judge, ledger: fresh, caps: { hostedWorkerCallsPerDay: 2 }, bus, clock });
+    const ws = path.join(dir, 'ws');
+    await fsp.mkdir(ws, { recursive: true });
+    const input = { venture: 'v', name: 'hero', prompt: 'a lantern on a table at dusk' };
+    const results = await Promise.all([1, 2, 3].map((n) => tool.run(input, { workspaceDir: ws, runId: `run-${n}`, turn: 1, agentId: 'ads' })));
+    assert.deepEqual(results.map((r) => r.ok), [true, false, false], JSON.stringify(results.map((r) => r.code)));
+    assert.ok(results.slice(1).every((r) => r.code === 'HOSTED_CAP'));
+    assert.equal(generating, 1, 'one image was generated, not three');
+    assert.equal(fresh.hostedToday().calls, 2);
+    assert.equal(fresh.hostedToday().reserved, 0, 'the reservation is released once counted');
+    assert.equal((await tool.run(input, { workspaceDir: ws, runId: 'run-4', turn: 1, agentId: 'ads' })).code, 'HOSTED_CAP', 'and the cap holds after');
+    // The voice relay: the same race, the same answer.
+    const vLedger = await createLeashLedger({ store: createStore({ root: path.join(dir, 'home3') }), clock }).init();
+    await vLedger.recordHosted({ tokens: 0 });
+    const vbus = createEventBus();
+    vbus.listen((e) => { if (e.type === 'cost.estimate' && e.payload.tier === 'hosted_worker') vLedger.recordHosted({ tokens: 0 }); });
+    let recognised = 0;
+    const fetchImpl = async () => { recognised += 1; await new Promise((r) => setTimeout(r, 30)); return new Response(JSON.stringify({ text: 'hello park' }), { status: 200, headers: { 'content-type': 'application/json' } }); };
+    const voice = createVoice({ env: { HF_TOKEN: 'hf_x' }, keystorePath: path.join(dir, 'ks.json'), fetch: fetchImpl, netGuard: createNetGuard({ allowLocal: false, lookup: async () => [{ address: '93.184.216.34', family: 4 }] }), ledger: vLedger, caps: { hostedWorkerCallsPerDay: 2 }, bus: vbus, clock, baseUrl: 'https://hf.example/models', log: quiet });
+    const bytes = Buffer.alloc(100, 1);
+    const outs = await Promise.allSettled([1, 2, 3].map(() => voice.transcribe({ bytes, contentType: 'audio/webm' })));
+    assert.deepEqual(outs.map((o) => o.status), ['fulfilled', 'rejected', 'rejected']);
+    assert.ok(outs.slice(1).every((o) => o.reason.code === 'HOSTED_CAP'));
+    assert.equal(recognised, 1);
+    assert.equal(vLedger.hostedToday().reserved, 0);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
   }
 });
