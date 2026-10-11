@@ -107,8 +107,9 @@ test('purchases, pure: the supplier host, the executor choice, the brief that fo
   const brief = purchaseBrief({ id: 'buy-1', venture: 'lantern-co', supplierUrl: `${SUPPLIER}/`, items: REQUEST.items, amountUsd: 42, currency: 'USD', note: 'ship to the station' });
   assert.match(brief, /PURCHASE buy-1 for venture lantern-co/);
   assert.match(brief, /2 × Rice paper roll at \$15\.00/);
-  assert.match(brief, /The payment page is NOT yours/);
-  assert.match(brief, /refuses every click, type or upload on it/);
+  assert.match(brief, /The cart, checkout and payment pages are NOT yours/);
+  assert.match(brief, /refuses any click that reads like Buy now, Confirm, Submit, Place order, Pay or Checkout/);
+  assert.match(brief, /refuses every click, type or upload on them/);
   assert.match(brief, /never try another way to pay/);
   assert.match(brief, /Note from the requester: ship to the station/);
   const paid = { receipt: { paidAt: '2026-10-11T10:00:00Z' }, paidUsd: 42.5, currency: 'USD', updatedAt: Date.UTC(2026, 9, 11, 10) };
@@ -250,11 +251,12 @@ test('the payment page is the Superintendent\'s: on a purchase run the browser h
     const early = await gate.execute({ id: 'r0', name: 'purchase.receipt', input: { purchaseId: p.id, orderId: 'LS-1001', totalUsd: 42.5 } }, ctx);
     assert.equal(early.code, 'NOT_PAID_BY_SUPERINTENDENT');
     assert.equal((await gate.execute({ id: 'b1', name: 'browser.open', input: { url: `${SUPPLIER}/` } }, ctx)).ok, true);
-    assert.equal((await gate.execute({ id: 'b2', name: 'browser.click', input: { text: 'Add to cart' } }, ctx)).ok, true);
-    // Checkout: the click lands on the payment page and the after-check hands it off.
-    const clicking = gate.execute({ id: 'b3', name: 'browser.click', input: { text: 'Checkout' } }, ctx);
+    // The cart URL alone hands off (safety 2026-10-11 H3): the Ranger's part ends at "Add to
+    // cart"; the Superintendent checks out and pays in the window.
+    const clicking = gate.execute({ id: 'b2', name: 'browser.click', input: { text: 'Add to cart' } }, ctx);
     const waiting = await waitUntil(() => h.browser.handoffs({ pendingOnly: true })[0]);
     assert.equal(waiting.kind, 'payment');
+    assert.match(waiting.reason, /checkout, cart, order or payment page/);
     await waitUntil(() => h.purchases.get(p.id).status === 'handoff');
     assert.equal(h.ofType('purchase.update').at(-1).status, 'handoff');
     // The Superintendent pays in the window and hands the page back with notes.
@@ -263,8 +265,8 @@ test('the payment page is the Superintendent\'s: on a purchase run the browser h
     const clicked = await clicking;
     assert.equal(clicked.ok, true, 'the click that led there succeeded; the hand-back came after');
     await waitUntil(() => h.purchases.get(p.id).status === 'driving');
-    // Back on a payment page (the fake lets us) every write is refused, a read is not.
-    h.driver.state.lastPage._p.url = `${SUPPLIER}/checkout`;
+    // Back on the handed-back cart (the fake lets us) every write is refused, a read is not.
+    h.driver.state.lastPage._p.url = `${SUPPLIER}/cart`;
     const typed = await gate.execute({ id: 'b4', name: 'browser.type', input: { selector: 'input[name=cardnumber]', value: '4242' } }, ctx);
     assert.equal(typed.ok, false);
     assert.equal(typed.code, 'PAYMENT_PAGE');
@@ -369,7 +371,7 @@ test('reconciliation: a connector that exposes outgoing charges matches a paid p
     await waitUntil(() => h.purchases.get(p.id).status === 'driving');
     const { gate, ctx } = h.gateFor('driver', { runId: 'run-2' });
     await gate.execute({ id: 'b1', name: 'browser.open', input: { url: `${SUPPLIER}/` } }, ctx);
-    const clicking = gate.execute({ id: 'b3', name: 'browser.click', input: { text: 'Checkout' } }, ctx);
+    const clicking = gate.execute({ id: 'b3', name: 'browser.click', input: { text: 'Add to cart' } }, ctx);
     const waiting = await waitUntil(() => h.browser.handoffs({ pendingOnly: true })[0]);
     h.driver.state.pay();
     h.browser.returnHandoff(waiting.handoffId, { notes: 'paid' });

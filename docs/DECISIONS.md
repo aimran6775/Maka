@@ -1637,3 +1637,27 @@ refusal, so the Superintendent sees the attempt the same way as any sensitive ap
 fake desktop in the tests moved from Safari to Notes as its ordinary app, and a test with
 a shell that does not know Maka proves the sidecar's list alone stops it, as the shell's
 own list alone would (host-tested in Rust).
+
+## D154. A purchase run's browser stops at the cart, and a buy-shaped click never happens
+
+The second safety review (H3) showed the payment handoff keyed on card fields and "pay
+now / place order" words: a logged-in supplier with a saved card places the order on "Buy
+now", "Confirm order" or "Buy with Shop Pay" with no card field shown, and a Ranger on a
+purchase run could click it. Three rules were added, each stricter than the review asked
+where there was a choice. A page offering a one-click or saved-payment order is a payment
+page by its words alone (no "card" word needed), and so is any URL whose path has a
+checkout, cart, basket, order, payment, purchase, billing or buy segment, whatever the page
+says: a cart page is where a one-click order can be placed, so the Ranger's part of a
+purchase now ends at "Add to cart" and the Superintendent takes the cart, the checkout and
+the payment (the brief's "up to the payment page" is read as up to the first page where
+money can move). The password-first rule from the earlier review is kept: a checkout page
+asking for a password is a login handoff first, re-checked as a checkout before the next
+action. On a purchase run a click is read before it happens, by its target text and, when
+the page can locate it, by the element's own text, and refused when it reads like buy /
+confirm / submit / complete / place order / pay / checkout / purchase or an express wallet,
+wherever the page is; "confirm" and "submit" alone are refused too, a false refusal on a
+purchase run costing a Ranger nothing the Superintendent cannot do in the window. Runs
+that are not purchases keep their clicks (their own leash and judge apply) but still hand
+off at every checkout URL, so no checkout proceeds unseen anywhere. The page-side card
+check learned express-checkout markup, and the purchase brief tells the Ranger plainly
+what the browser will refuse.

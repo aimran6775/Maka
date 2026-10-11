@@ -14,7 +14,11 @@ export function fakeBrowserDriver({ host = SUPPLIER } = {}) {
     [`${host}/checkout`]: { title: 'Checkout', text: 'Shipping address. Card number CVC Expiry Place order', payment: true },
     [`${host}/confirmation`]: { title: 'Thank you', text: 'Order #LS-1001 confirmed. Total $42.50 paid. A receipt was emailed.' },
   };
-  const links = { 'Add to cart': `${host}/cart`, Checkout: `${host}/checkout`, 'Place order': `${host}/confirmation` };
+  // One-click controls (safety 2026-10-11 H3): on a logged-in supplier with a saved card,
+  // "Buy now" on the shop page and "#express" (which reads "Buy with Shop Pay") place the
+  // order with no card field in sight.
+  const links = { 'Add to cart': `${host}/cart`, Checkout: `${host}/checkout`, 'Place order': `${host}/confirmation`, 'Buy now': `${host}/confirmation`, '#express': `${host}/confirmation` };
+  const elements = { '#express': { tag: 'button', text: 'Buy with Shop Pay' }, '#qty': { tag: 'input', text: '', editable: true } };
   const state = { launched: 0, killed: 0, pagesOpened: 0, clicked: [], typed: [], lastPage: null, pay() { if (state.lastPage) { state.lastPage._p.url = `${host}/confirmation`; } } };
   return {
     state,
@@ -32,7 +36,8 @@ export function fakeBrowserDriver({ host = SUPPLIER } = {}) {
         async facts() { const pg = at(); return { url: p.url, title: pg.title, text: pg.text, payment: Boolean(pg.payment) }; },
         async text(limit = 4000) { return at().text.slice(0, limit); },
         async tree() { return [`RootWebArea "${at().title}"`]; },
-        async click(t) { state.clicked.push({ url: p.url, target: t }); const to = links[t.text]; if (to) p.url = to; return { tag: 'a', text: t.text || t.selector || '' }; },
+        async locate(t) { return elements[t.selector] || { tag: 'a', text: t.text || '' }; },
+        async click(t) { state.clicked.push({ url: p.url, target: t }); const to = links[t.text] || links[t.selector]; if (to) p.url = to; return { tag: 'a', text: t.text || t.selector || '' }; },
         async type(t, value, opts) { state.typed.push({ url: p.url, t, value, opts }); return { tag: 'input', text: '' }; },
         async upload(sel, files) { return { count: files.length }; },
         async download(input, dir) { const f = path.join(dir, 'file.bin'); await fsp.writeFile(f, 'x'); return { path: f, bytes: 1, url: input.url || p.url }; },

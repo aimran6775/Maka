@@ -27,6 +27,9 @@ import { startFakeDiscord } from './helpers/fake-discord.js';
 import { createComputerControl } from '../sidecar/computer/control.js';
 import { MAKA_BUNDLE_ID, BROWSER_BUNDLE_IDS, SENSITIVE_APPS, isSensitiveApp, namesLoopback } from '../sidecar/computer/policy.js';
 import { startFakeShell } from './helpers/fake-shell.js';
+import { createBrowserControl } from '../sidecar/browser/control.js';
+import { detectHandoff, isCheckoutUrl, purchaseClickRefusal, PURCHASE_CLICK_RX } from '../sidecar/browser/detect.js';
+import { fakeBrowserDriver, SUPPLIER } from './helpers/fake-browser-driver.js';
 
 const local = createNetGuard({ allowLocal: true });
 const quiet = { warn() {}, error() {} };
@@ -289,5 +292,103 @@ test('H2: with Maka in front the Ranger\'s click hands off and the shell never c
   } finally {
     await h.cleanup();
     await shell.close();
+  }
+});
+
+// ---------------------------------------------------------------------------------------
+// H3: one-click and saved-payment checkouts never bypass the payment handoff.
+// ---------------------------------------------------------------------------------------
+
+test('H3: a page offering a one-click or saved-card order is a payment page by its words alone, a checkout / cart / order URL by itself too; the click-target rule', () => {
+  const product = 'https://supplier.example/products/lantern';
+  for (const text of ['Paper lantern $12. Buy now. Ships tomorrow', 'Review your order. Confirm order', 'Submit order', 'Complete order', 'Buy with Shop Pay', 'Pay with Apple Pay', 'Visa ending in 4242 · Place order', 'Payment method: card on file', 'Saved card · Pay now']) {
+    const hit = detectHandoff({ url: product, title: 'Lantern', text });
+    assert.ok(hit && hit.kind === 'payment', `"${text}" is a payment page (got ${JSON.stringify(hit)})`);
+  }
+  assert.equal(detectHandoff({ url: product, title: 'Lantern', text: 'Paper lantern $12. Add to cart. Ships tomorrow' }), null, 'a product page without a one-click order is not');
+  for (const url of ['https://s.example/cart', 'https://s.example/checkout', 'https://s.example/checkouts/c1/information', 'https://s.example/order', 'https://s.example/account/orders', 'https://s.example/payment', 'https://s.example/pay?step=2', 'https://s.example/purchase', 'https://s.example/checkout-step1', 'https://s.example/basket', 'https://s.example/billing']) {
+    assert.equal(isCheckoutUrl(url), true, url);
+    const hit = detectHandoff({ url, title: 'Page', text: 'nothing of note' });
+    assert.ok(hit && hit.kind === 'payment' && /checkout, cart, order or payment page/.test(hit.reason), `${url} hands off on its URL alone`);
+  }
+  for (const url of ['https://s.example/', 'https://s.example/category/paper', 'https://s.example/payouts', 'https://s.example/carton', 'https://s.example/preorder-info', 'https://s.example/?q=cart']) assert.equal(isCheckoutUrl(url), false, url);
+  assert.equal(detectHandoff({ url: 'https://x/checkout', text: 'Card number CVC', password: true }).kind, 'login', 'a password field on a checkout page is still a login first (the earlier rule kept)');
+  assert.equal(detectHandoff({ url: 'https://x/checkout', payment: true, password: true }).kind, 'payment', 'card fields win over a password field as before');
+  for (const text of ['Buy now', 'Buy it now', 'Buy with Shop Pay', 'Confirm', 'Confirm order', 'Submit', 'Submit order', 'Complete purchase', 'Place order', 'Place your order', 'Pay', 'Pay now', 'Checkout', 'Check out', 'Proceed to checkout', 'Continue to payment', 'Purchase', 'Order now', 'Apple Pay', 'PayPal', 'One-click buy']) {
+    assert.ok(purchaseClickRefusal({ text }), `"${text}" is refused on a purchase run`);
+  }
+  for (const text of ['Add to cart', 'Rice paper roll', 'Shipping details', 'Next', 'Search', 'Account']) assert.equal(purchaseClickRefusal({ text }), null, `"${text}" may be clicked`);
+  assert.match(purchaseClickRefusal({ text: '#express', element: 'Buy with Shop Pay' }).reason, /element "Buy with Shop Pay"/, 'a selector is judged by what it resolves to');
+  assert.equal(purchaseClickRefusal({}), null);
+  assert.ok(PURCHASE_CLICK_RX.test('Buy now'));
+  // The page-side facts: the card-field selector list now names express-checkout markup too.
+  const cdp = readFileSync(new URL('../sidecar/browser/cdp.js', import.meta.url), 'utf8');
+  for (const sel of ['shopify-payment-button', 'apple-pay-button', 'iframe[src*=checkout.shopify]', 'iframe[src*=pay.google]', 'iframe[src*=klarna]', 'button[name*=placeorder i]', 'button[id*=buy-now i]', 'input[type=submit][value*="order" i]']) assert.ok(cdp.includes(sel), `facts() looks for ${sel}`);
+  assert.match(cdp, /\n\s+locate,\n/, 'the page exposes locate() so a click target can be read before the click');
+});
+
+async function purchaseBrowserHarness() {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-safety4-browser-'));
+  const bus = createEventBus();
+  const events = [];
+  bus.listen((e) => events.push(e));
+  const clock = fakeClock(Date.UTC(2026, 9, 11, 10));
+  const workspaceRoot = path.join(dir, 'ws');
+  for (const a of ['driver', 'other']) await fsp.mkdir(path.join(workspaceRoot, a), { recursive: true });
+  const netGuard = createNetGuard({ allowLocal: true });
+  const driver = fakeBrowserDriver();
+  const browser = await createBrowserControl({ bus, workspaceRoot, env: {}, config: { headless: true }, clock, driver, netGuard, log: { error() {} } }).init();
+  browser.setPurchaseCheck((runId) => runId === 'purchase-run');
+  const ctx = (runId, agentId) => ({ browser, netGuard, agentId, runId, workspaceDir: path.join(workspaceRoot, agentId) });
+  const tool = (name, input, runId = 'purchase-run', agentId = 'driver') => browser.tools[name].run(input, ctx(runId, agentId));
+  return { browser, driver, events, tool, cleanup: async () => { await browser.close(); await fsp.rm(dir, { recursive: true, force: true }); } };
+}
+
+test('H3: on a purchase run "Buy now" on the product page is refused before the click, a selector that reads "Buy with Shop Pay" too, the cart URL hands off on its own, and an ordinary click still runs; a run that is not a purchase keeps its clicks but still hands off at the cart', async () => {
+  const h = await purchaseBrowserHarness();
+  try {
+    assert.equal((await h.tool('browser.open', { url: `${SUPPLIER}/` })).ok, true);
+    // The review's scenario: a logged-in supplier with a saved card places the order on "Buy now".
+    const buy = await h.tool('browser.click', { text: 'Buy now' });
+    assert.equal(buy.ok, false);
+    assert.equal(buy.code, 'PURCHASE_CLICK');
+    assert.match(buy.error, /"Buy now" reads like an order or payment control/);
+    assert.equal(h.driver.state.clicked.length, 0, 'the click never reached the page');
+    assert.equal(h.driver.state.lastPage.url(), `${SUPPLIER}/`, 'no order was placed');
+    const express = await h.tool('browser.click', { selector: '#express' });
+    assert.equal(express.code, 'PURCHASE_CLICK');
+    assert.match(express.error, /element "Buy with Shop Pay"/);
+    for (const text of ['Confirm order', 'Submit order', 'Place order', 'Checkout', 'Pay now']) assert.equal((await h.tool('browser.click', { text })).code, 'PURCHASE_CLICK', text);
+    assert.equal(h.driver.state.clicked.length, 0);
+    const trace = await h.browser.trace('driver');
+    assert.ok(trace.some((e) => e.code === 'PURCHASE_CLICK' && e.action === 'click' && e.input.text === 'Buy now'), 'the refusal is in the trace');
+    // An ordinary click runs, and the cart URL it lands on hands off on its own.
+    const adding = h.tool('browser.click', { text: 'Add to cart' });
+    const waiting = await waitUntil(() => h.browser.handoffs({ pendingOnly: true })[0]);
+    assert.equal(waiting.kind, 'payment');
+    assert.match(waiting.reason, /checkout, cart, order or payment page/);
+    assert.equal(waiting.url, `${SUPPLIER}/cart`);
+    assert.equal(h.driver.state.clicked.length, 1);
+    h.browser.returnHandoff(waiting.handoffId, { notes: 'looked, not paid yet' });
+    assert.equal((await adding).ok, true);
+    // Back from the hand-back on the cart: every write is refused as a payment page, a submit too.
+    const qty = await h.tool('browser.type', { selector: '#qty', value: '3', submit: true });
+    assert.equal(qty.code, 'PAYMENT_PAGE');
+    assert.match(qty.error, /checkout, cart, order or payment page/);
+    assert.equal(h.driver.state.typed.length, 0);
+    assert.equal((await h.tool('browser.click', { text: 'Rice paper roll' })).code, 'PAYMENT_PAGE', 'any click on the cart is refused, buy-like or not');
+    assert.equal((await h.tool('browser.read', {})).ok, true, 'reading is allowed');
+    // Another Ranger on a run that is not a purchase: its clicks are not read as purchase
+    // clicks (its own leash and judge apply), but the cart URL still hands off, so no
+    // checkout proceeds unseen.
+    assert.equal((await h.tool('browser.open', { url: `${SUPPLIER}/` }, 'research-run', 'other')).ok, true);
+    const other = h.tool('browser.click', { text: 'Add to cart' }, 'research-run', 'other');
+    const w2 = await waitUntil(() => h.browser.handoffs({ pendingOnly: true })[0]);
+    assert.equal(w2.kind, 'payment');
+    assert.equal(w2.agentId, 'other');
+    h.browser.returnHandoff(w2.handoffId, { notes: 'fine' });
+    assert.equal((await other).ok, true);
+  } finally {
+    await h.cleanup();
   }
 });

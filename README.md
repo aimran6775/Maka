@@ -391,9 +391,11 @@ active listings for the keywords sorted by Etsy's own score; Google Trends stays
 Step 17, supplier purchasing: at the Peak (or through `purchase.request` from a Field office
 Ranger) name the venture, the supplier URL, the items and the amount. The amount is money out:
 the leash and the Gate decide, then it is held against the daily cap. A Field office Ranger
-drives the supplier's site up to the payment page, which is always yours: the browser hands
-it to you and refuses every click or keystroke on it. Pay in the window, hand the page back
-with a note, and the Ranger files the receipt; the hold becomes spend at what you paid.
+drives the supplier's site up to the cart; the cart, checkout and payment pages are always
+yours: the browser hands them to you (a checkout URL, a "Buy now" or saved-card order, or
+card fields) and refuses every click or keystroke on them, and refuses a Buy now / Confirm /
+Place order / Pay click wherever it is. Pay in the window, hand the page back with a note,
+and the Ranger files the receipt; the hold becomes spend at what you paid.
 Cancel an open purchase from the Peak to release the hold.
 
 Step 18, computer control (macOS only): place a Control desk and raise the `computer_control`

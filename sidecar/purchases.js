@@ -77,14 +77,14 @@ export function pickExecutor(layout, { venture, requesterId = null, toAgentId = 
 // The work item's brief: what to do and, above all, what never to do.
 export function purchaseBrief(p) {
   const lines = [
-    `PURCHASE ${p.id} for venture ${p.venture}: buy from the supplier through your browser, up to the payment page.`,
+    `PURCHASE ${p.id} for venture ${p.venture}: buy from the supplier through your browser, up to the cart; the cart, checkout and payment pages hand off to the Superintendent.`,
     '',
     `Supplier: ${p.supplierUrl}`,
     'Items:',
     ...p.items.map((it) => `- ${it.qty} × ${it.name}${typeof it.unitUsd === 'number' ? ` at $${it.unitUsd.toFixed(2)}` : ''}`),
     `Declared amount: $${p.amountUsd.toFixed(2)} ${p.currency}. If the cart total comes out higher than this, stop and say so in your summary; do not proceed to checkout.`,
     '',
-    'Steps: browser.open the supplier, add exactly these items to the cart, check the quantities and the total, proceed to checkout and fill the shipping details you have been given. The payment page is NOT yours: the browser hands it to the Superintendent on its own and refuses every click, type or upload on it. Wait for the hand-back. If the notes say the order was paid, browser.read the confirmation page, browser.screenshot it, then call purchase.receipt with the order id, the total and the currency exactly as the page shows them. If the notes say to stop, end your run and say so; never try another way to pay.',
+    'Steps: browser.open the supplier and add exactly these items to the cart. The cart, checkout and payment pages are NOT yours: the browser hands them to the Superintendent on its own (a cart or checkout URL, a page offering a one-click or saved-card order, or card fields) and refuses every click, type or upload on them; it also refuses any click that reads like Buy now, Confirm, Submit, Place order, Pay or Checkout wherever it is. Never click such a control. Wait for the hand-back. If the notes say the order was paid, browser.read the confirmation page, browser.screenshot it, then call purchase.receipt with the order id, the total and the currency exactly as the page shows them. If the notes say to stop, end your run and say so; never try another way to pay.',
     `Deliverable: the receipt (purchase.receipt writes outbox/purchases/${p.id}.json and .md).`,
   ];
   if (p.note) lines.push('', `Note from the requester: ${p.note}`);
@@ -344,7 +344,7 @@ export function createPurchases({ bus, store, trails, ledger, browser = null, ge
   const tools = Object.freeze({
     'purchase.request': {
       name: 'purchase.request',
-      description: 'Request a supplier purchase through a Field office Ranger\'s browser: the venture, the supplier URL, the items (name, qty, unitUsd) and the amount in USD. The amount is money out: the leash and the Entrance Gate decide, then it is held against the money_out cap until the receipt. The purchase becomes a work item for a Ranger in a Field office (toAgentId, or chosen by venture) who drives the site up to the payment page; the payment page always hands off to the Superintendent and the browser never submits a payment.',
+      description: 'Request a supplier purchase through a Field office Ranger\'s browser: the venture, the supplier URL, the items (name, qty, unitUsd) and the amount in USD. The amount is money out: the leash and the Entrance Gate decide, then it is held against the money_out cap until the receipt. The purchase becomes a work item for a Ranger in a Field office (toAgentId, or chosen by venture) who drives the site up to the cart; the cart, checkout and payment pages always hand off to the Superintendent, a Buy now / Confirm / Place order click is refused, and the browser never submits a payment.',
       inputSchema: {
         type: 'object',
         required: ['venture', 'supplierUrl', 'items', 'amountUsd'],

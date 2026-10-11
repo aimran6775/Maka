@@ -269,10 +269,14 @@ amount on the card, and once allowed the amount is held in the leash ledger: a h
 against the money_out cap until the receipt or a cancel, across restarts and days
 (`sidecar/leash-ledger.js`). The purchase becomes a work item for a Ranger in a Field office
 (never the requester, never the Chief) whose browser drives the supplier's site up to the
-payment page. The payment page is the Superintendent's: it hands off as before, and on a
-purchase run the browser refuses every click, type or upload on it, after the hand-back and
-whatever the notes say (`PAYMENT_PAGE` in the trace), so no payment is ever submitted by a
-Ranger. When the Superintendent has paid in the window and handed the page back with notes,
+cart. The cart, checkout and payment pages are the Superintendent's: a payment page is one
+with card fields, one offering a one-click or saved-card order ("Buy now", "Confirm order",
+"Buy with Shop Pay", "ending in 4242"), or any checkout / cart / order / payment URL by
+itself (safety 2026-10-11 H3); it hands off as before, and on a purchase run the browser
+refuses every click, type or upload on it, after the hand-back and whatever the notes say
+(`PAYMENT_PAGE` in the trace), and refuses a click whose target or located element reads
+like buy / confirm / submit / place order / pay / checkout wherever the page is
+(`PURCHASE_CLICK`), so no order is ever placed by a Ranger, saved card or not. When the Superintendent has paid in the window and handed the page back with notes,
 the Ranger reads the confirmation and files `purchase.receipt` with the order id and the
 total as the page shows them; the receipt and the trace's screenshot go to the outbox, the
 hold becomes money_out spend at the paid amount on that day, and a difference from the
@@ -387,7 +391,11 @@ names the real sender (D152). H2 done: computer control never drives Maka's own 
 (`com.makapark.maka` and the name are first on both sensitive lists), never a browser, and
 never a window whose title or URL names 127.0.0.1, localhost or the sidecar's host:port;
 the shell reads the front window through Accessibility and applies the same rule as its
-own lock (D153).
+own lock (D153). H3 done: a one-click or saved-payment checkout is a payment page by its
+words alone, a checkout / cart / order / payment URL is one by itself, the page-side card
+check knows express-checkout markup, and on a purchase run a click that reads like buy /
+confirm / submit / pay / checkout is refused before it happens, by its target text or by
+what the selector resolves to (D154).
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

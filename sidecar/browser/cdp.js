@@ -320,7 +320,7 @@ const FACTS_JS = `(function () {
     password: q('input[type=password]'),
     otp: q('input[autocomplete=one-time-code], input[name*=otp i], input[id*=otp i], input[name*=totp i], input[name*=verification i], input[name*=mfa i]'),
     captcha: q('iframe[src*=recaptcha], iframe[src*=hcaptcha], iframe[src*=turnstile], .g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey], #captcha, input[name*=captcha i]'),
-    payment: q('input[autocomplete=cc-number], input[autocomplete=cc-csc], input[name*=cardnumber i], input[name*=card_number i], input[id*=cardnumber i], iframe[src*=stripe], iframe[name*=braintree], iframe[src*=paypal], iframe[src*=adyen]'),
+    payment: q('input[autocomplete=cc-number], input[autocomplete=cc-csc], input[name*=cardnumber i], input[name*=card_number i], input[id*=cardnumber i], iframe[src*=stripe], iframe[name*=braintree], iframe[src*=paypal], iframe[src*=adyen], iframe[src*=checkout.shopify], iframe[src*=shop.app], iframe[src*=pay.google], iframe[src*=applepay], iframe[src*=klarna], iframe[src*=afterpay], iframe[src*=squareup], apple-pay-button, shopify-payment-button, .shopify-payment-button, [data-shopify-buttoncontainer], button[name*=checkout i], button[id*=checkout i], button[name*=placeorder i], button[id*=placeorder i], button[name*=buynow i], button[id*=buy-now i], button[id*=buynow i], input[type=submit][value*="order" i], input[type=submit][value*="buy" i], input[type=submit][value*="pay" i]'),
     text: ((document.body && document.body.innerText) || '').slice(0, 4000),
     readyState: document.readyState,
   };
@@ -406,6 +406,9 @@ export async function openPage(client, { url = 'about:blank', navigateTimeoutMs 
       return s;
     },
     facts: () => evaluate(FACTS_JS),
+    // What a target resolves to, without acting on it (safety 2026-10-11 H3: the control
+    // reads a purchase run's click target before the click).
+    locate,
     async text(limit = TEXT_LIMIT) {
       const t = (await evaluate('(document.body && document.body.innerText) || ""')) || '';
       return t.length > limit ? `${t.slice(0, limit)}\n…[${t.length - limit} more characters]` : t;

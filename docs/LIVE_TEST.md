@@ -317,10 +317,13 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   purchase (a venture from the plan, a public supplier URL, two items, an amount). The
   answer names the Ranger and the work item; the leash ledger shows the amount under holds
   (`/api/state` → `ledger.holds`), not under today's spend.
-- The Ranger's browser opens the supplier, fills the cart and reaches checkout: a
-  `browser.handoff` of kind `payment` waits and the purchase row says `handoff`. Hand the
-  page back WITHOUT paying and with a note: the Ranger's next click or type on it is
-  refused (`PAYMENT_PAGE` in the trace); nothing was typed into the card field.
+- The Ranger's browser opens the supplier and adds the items: the cart URL alone raises a
+  `browser.handoff` of kind `payment` (the reason names the URL) and the purchase row says
+  `handoff`. Hand the page back WITHOUT paying and with a note: the Ranger's next click or
+  type on it is refused (`PAYMENT_PAGE` in the trace); nothing was typed into the card
+  field. On a supplier that shows "Buy now" or "Buy with Shop Pay" on the product page
+  with a saved card, the Ranger's click on it is refused before it happens
+  (`PURCHASE_CLICK` in the trace) and no order is placed (safety 2026-10-11 H3).
 - Pay in the window, hand the page back with a note: the Ranger reads the confirmation and
   files the receipt; `outbox/purchases/<id>.json` and `.md` exist with the screenshot path,
   today's money_out spend shows the paid amount, the hold is gone, the row says `paid` and

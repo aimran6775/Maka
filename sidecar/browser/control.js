@@ -20,14 +20,18 @@
 // Phase 4 step 17: on a purchase run (`setPurchaseCheck(runId => bool)`, set by the
 // purchases module) a write (click, type, upload) on a page the handoff check calls a
 // payment page is refused with PAYMENT_PAGE, after a hand-back too: the browser never
-// submits a payment, whatever the notes say; the Superintendent pays in the window.
+// submits a payment, whatever the notes say; the Superintendent pays in the window. Safety
+// 2026-10-11 H3: a payment page is also a checkout / cart / order URL or a page offering a
+// one-click order (detect.js), and on a purchase run a click whose target or located
+// element reads like buy / confirm / submit / pay / checkout is refused PURCHASE_CLICK
+// wherever the page is, because a saved card places the order with no card field shown.
 
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { makeEvent } from '../../shared/events.js';
 import { findChromium, launchChromium, connectCdp, openPage } from './cdp.js';
-import { detectHandoff } from './detect.js';
+import { detectHandoff, purchaseClickRefusal } from './detect.js';
 import { BROWSER_TOOLS } from './tools.js';
 import { defaultNetGuard } from '../netguard.js';
 
@@ -151,9 +155,26 @@ export function createBrowserControl({
       }
       const hit = facts ? detectHandoff(facts) : null;
       if (hit && hit.kind === 'payment') {
-        const refused = { ts: clock.now(), agentId, runId, action, input, ok: false, code: 'PAYMENT_PAGE', error: `the payment page is the Superintendent's: a purchase run never clicks, types or uploads on it (${facts.url}); the Superintendent pays in the window and hands the page back, then read the confirmation and file the receipt`, url: facts.url, title: facts.title || '' };
+        const refused = { ts: clock.now(), agentId, runId, action, input, ok: false, code: 'PAYMENT_PAGE', error: `the payment page is the Superintendent's: a purchase run never clicks, types or uploads on it (${facts.url}; ${hit.reason}); the Superintendent pays in the window and hands the page back, then read the confirmation and file the receipt`, url: facts.url, title: facts.title || '' };
         await record(agentId, refused);
         throw Object.assign(new Error(refused.error), { code: 'PAYMENT_PAGE' });
+      }
+      if (action === 'click') {
+        let element = '';
+        if (typeof session.page.locate === 'function') {
+          try {
+            const el = await session.page.locate(input);
+            element = [el && el.text, el && el.value, el && el.ariaLabel].filter((x) => typeof x === 'string' && x).join(' ');
+          } catch {
+            /* nothing located: the click itself will say */
+          }
+        }
+        const no = purchaseClickRefusal({ text: input && input.text, element });
+        if (no) {
+          const refused = { ts: clock.now(), agentId, runId, action, input, ok: false, code: 'PURCHASE_CLICK', error: `${no.reason} (${facts ? facts.url : session.page.url()})`, url: facts ? facts.url : session.page.url(), title: facts ? facts.title || '' : '' };
+          await record(agentId, refused);
+          throw Object.assign(new Error(refused.error), { code: 'PURCHASE_CLICK' });
+        }
       }
     }
     const started = clock.now();
