@@ -431,6 +431,8 @@ persona (D158).
 L1 done: the guarded fetch sends credential headers (the bearer, the cookie, the MCP
 session id, api keys) to the host the request was made to and to no redirect hop on
 another host.
+L2 done: an HTTP MCP server's header values are keystore secrets by name, never plaintext in
+`mcp-servers.json`.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

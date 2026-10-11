@@ -1748,3 +1748,14 @@ the runtime: a fixed list of credential headers is dropped for any hop whose hos
 the one the request was made to, and comes back for a hop that returns there. The list
 rather than "drop everything but content negotiation" keeps a server's own non-secret
 headers working across its redirects; the list is exported so a reviewer can read it.
+
+## D160. An MCP header value is a secret until proven otherwise
+
+The second safety review (L2) found `validateServerSpec` refusing only Authorization and
+Cookie, so an `x-api-key` header sat in plaintext in `mcp-servers.json`, against D134. A
+header on an MCP server is an API key in nearly every real case, and a rule that lists the
+secret-looking names would always be one name short, so every header value must now be a
+`$SECRET:NAME` naming a declared `secretEnv` entry, as a `$SECRET:` arg already does; the
+value goes to the keystore on the add's approval and is filled in when the server
+connects, and the Gate card shows the header name and the secret's name only. A plain
+non-secret header, should one exist, costs the owner a keystore entry; the file stays clean.

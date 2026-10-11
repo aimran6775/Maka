@@ -33,7 +33,8 @@ import { fakeBrowserDriver, SUPPLIER } from './helpers/fake-browser-driver.js';
 import { fileURLToPath } from 'node:url';
 import { createLayoutState } from '../sidecar/server.js';
 import { createToolGate } from '../sidecar/capability/gate.js';
-import { createMcpManager, domainFor, toolFingerprint, classifyTools } from '../sidecar/mcp/manager.js';
+import { createMcpManager, domainFor, toolFingerprint, classifyTools, validateServerSpec } from '../sidecar/mcp/manager.js';
+import { startFakeMcpHttp } from './helpers/fake-mcp-http.js';
 import { grantsForRun } from '../sidecar/runs.js';
 import { createPurchases } from '../sidecar/purchases.js';
 import { allGrantsFor } from '../shared/world.js';
@@ -946,4 +947,36 @@ test('L1: guardedFetch drops Authorization, Cookie, mcp-session-id and api-key h
   assert.deepEqual(calls[1].headers, { accept: 'text/plain' });
   assert.deepEqual(Object.keys(initWithoutCredentials({ headers: [['Cookie', 'c'], ['X-Api-Key', 'k'], ['Accept', 'a']] }).headers), ['accept']);
   assert.deepEqual(CREDENTIAL_HEADERS.slice(0, 4), ['authorization', 'proxy-authorization', 'cookie', 'mcp-session-id']);
+});
+
+// ---------------------------------------------------------------------------------------
+// L2: every MCP header value names a keystore secret; nothing plaintext in mcp-servers.json.
+// ---------------------------------------------------------------------------------------
+
+test('L2: an HTTP MCP server\'s header values must be $SECRET: names declared in secretEnv; the value lives in the keystore and reaches the server at connect, never the config file', async () => {
+  assert.throws(() => validateServerSpec({ id: 'n', label: 'N', transport: 'http', url: 'https://mcp.example/mcp', headers: { 'x-api-key': 'plain-key-123' } }), (e) => e.code === 'BAD_REQUEST' && /must name a secret as \$SECRET:NAME/.test(e.message));
+  assert.throws(() => validateServerSpec({ id: 'n', label: 'N', transport: 'http', url: 'https://mcp.example/mcp', headers: { 'x-api-key': '$SECRET:API_KEY' } }), (e) => e.code === 'BAD_REQUEST' && /not declared in secretEnv/.test(e.message));
+  assert.throws(() => validateServerSpec({ id: 'n', label: 'N', transport: 'http', url: 'https://mcp.example/mcp', headers: { authorization: '$SECRET:T' }, secretEnv: ['T'] }), (e) => /not allowed/.test(e.message));
+  const ok = validateServerSpec({ id: 'n', label: 'N', transport: 'http', url: 'https://mcp.example/mcp', headers: { 'x-api-key': '$SECRET:API_KEY' }, secretEnv: ['API_KEY'] });
+  assert.deepEqual(ok.headers, { 'x-api-key': '$SECRET:API_KEY' });
+  const fake = await startFakeMcpHttp();
+  const h = await mcpHarness();
+  try {
+    await h.mcp.add({ id: 'notes', label: 'Notes', transport: 'http', url: fake.mcpUrl, headers: { 'x-api-key': '$SECRET:API_KEY' }, secrets: { API_KEY: 'k-123-secret' } });
+    const item = await h.nextItem('mcp.add');
+    assert.ok(item.evidence.some((e) => /headers x-api-key: \$SECRET:API_KEY \(values from the keystore\)/.test(e.text)), 'the card names the header and the secret, not the value');
+    assert.ok(!JSON.stringify(item.evidence).includes('k-123-secret'));
+    await h.gateQueue.resolve(item.itemId, { decision: 'approve' });
+    await waitUntil(() => h.mcp.status('notes') && h.mcp.status('notes').status === 'connected');
+    const saved = await fsp.readFile(path.join(h.home, 'mcp-servers.json'), 'utf8');
+    assert.ok(!saved.includes('k-123-secret'), 'the config file never holds the value');
+    assert.ok(saved.includes('$SECRET:API_KEY'));
+    const seen = fake.state.calls.filter((c) => c.path === '/mcp').map((c) => c.headers['x-api-key']);
+    assert.ok(seen.length && seen.every((v) => v === 'k-123-secret'), `the server got the value from the keystore: ${JSON.stringify(seen)}`);
+    assert.deepEqual(h.mcp.status('notes').headers, ['x-api-key']);
+    assert.ok(!JSON.stringify(h.mcp.list()).includes('k-123-secret'));
+  } finally {
+    await h.cleanup();
+    await fake.close();
+  }
 });

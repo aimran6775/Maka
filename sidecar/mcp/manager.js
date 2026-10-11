@@ -169,7 +169,14 @@ export function validateServerSpec(spec) {
   const r = validate(SERVER_SCHEMA, spec);
   if (!r.ok) throw fail('BAD_REQUEST', `MCP server invalid: ${r.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`);
   for (const k of Object.keys(spec.env || {})) if (!new RegExp(ENV_NAME_RE).test(k)) throw fail('BAD_REQUEST', `MCP server invalid: env name "${k}" is not an environment variable name`);
-  for (const k of Object.keys(spec.headers || {})) if (!/^[A-Za-z0-9-]{1,80}$/.test(k) || /^(authorization|cookie)$/i.test(k)) throw fail('BAD_REQUEST', `MCP server invalid: header "${k}" is not allowed (tokens go through the sign-in)`);
+  for (const [k, v] of Object.entries(spec.headers || {})) {
+    if (!/^[A-Za-z0-9-]{1,80}$/.test(k) || /^(authorization|cookie)$/i.test(k)) throw fail('BAD_REQUEST', `MCP server invalid: header "${k}" is not allowed (tokens go through the sign-in)`);
+    // Safety 2026-10-11 L2: a header value is a secret by default (an API key most of the
+    // time), so it is never stored in the config: it names a keystore secret (`$SECRET:NAME`,
+    // declared in secretEnv) and is filled in when the server connects (D134).
+    if (typeof v !== 'string' || !v.startsWith(SECRET_ARG_PREFIX)) throw fail('BAD_REQUEST', `MCP server invalid: header "${k}" must name a secret as ${SECRET_ARG_PREFIX}NAME (its value goes to the keystore, never to the config file)`);
+    if (!(spec.secretEnv || []).includes(v.slice(SECRET_ARG_PREFIX.length))) throw fail('BAD_REQUEST', `MCP server invalid: header ${k} names a secret (${v.slice(SECRET_ARG_PREFIX.length)}) that is not declared in secretEnv`);
+  }
   if (spec.transport === 'stdio' && !spec.command) throw fail('BAD_REQUEST', 'a stdio MCP server needs a command');
   for (const a of spec.args || []) if (a.startsWith(SECRET_ARG_PREFIX) && !(spec.secretEnv || []).includes(a.slice(SECRET_ARG_PREFIX.length))) throw fail('BAD_REQUEST', `MCP server invalid: arg ${a} names a secret that is not declared in secretEnv`);
   if (spec.transport === 'http') {
@@ -278,6 +285,19 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
         if (!v) throw fail('SECRET_MISSING', `${server.label} needs the secret ${name} in the keystore`);
         out.push(v);
       } else out.push(a);
+    }
+    return out;
+  }
+
+  // Header values come from the keystore at connect time (L2); a missing one is a plain
+  // failure, never an empty header sent along.
+  async function childHeaders(server) {
+    const out = {};
+    for (const [k, v] of Object.entries(server.headers || {})) {
+      const name = String(v).slice(SECRET_ARG_PREFIX.length);
+      const value = await resolveKey(keyName(server.id, name), { env: {}, keystorePath, warn: (p) => log.warn && log.warn(p) });
+      if (!value) throw fail('SECRET_MISSING', `${server.label} needs the secret ${name} (header ${k}) in the keystore`);
+      out[k] = value;
     }
     return out;
   }
@@ -411,7 +431,7 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
       if (server.transport === 'stdio') transport = createStdioTransport({ command: server.command, args: await childArgs(server), env: await childEnv(server), spawn, log });
       else {
         const token = await tokenFor(server);
-        transport = createHttpTransport({ url: server.url, headers: server.headers, token: token ? token.accessToken : null, fetch: fetchImpl, netGuard, log });
+        transport = createHttpTransport({ url: server.url, headers: await childHeaders(server), token: token ? token.accessToken : null, fetch: fetchImpl, netGuard, log });
       }
       const client = createMcpClient({ transport, clock, log });
       r.transport = transport;
@@ -560,6 +580,7 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
           env: Object.keys(s.env || {}),
           secretEnv: s.secretEnv || [],
           url: s.url || null,
+          headers: Object.keys(s.headers || {}),
           source: s.source || null,
           addedAt: s.addedAt || null,
           status: r.status,
@@ -609,7 +630,7 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
       for (const k of Object.keys(secrets)) if (!new RegExp(ENV_NAME_RE).test(k) || typeof secrets[k] !== 'string' || !secrets[k]) throw fail('BAD_REQUEST', `secret "${k}" needs an environment variable name and a value`);
       if (spec.transport === 'http') await netGuard.assert(spec.url);
       const evidence = [
-        { kind: 'input', text: spec.transport === 'stdio' ? `stdio: ${spec.command} ${spec.args.join(' ')}`.trim() : `http: ${spec.url}` },
+        { kind: 'input', text: spec.transport === 'stdio' ? `stdio: ${spec.command} ${spec.args.join(' ')}`.trim() : `http: ${spec.url}${Object.keys(spec.headers).length ? `; headers ${Object.entries(spec.headers).map(([k, v]) => `${k}: ${v}`).join(', ')} (values from the keystore)` : ''}` },
         { kind: 'input', text: `env: ${Object.keys(spec.env).join(', ') || 'none'}; secrets: ${spec.secretEnv.join(', ') || 'none'}${spec.source ? `; ${spec.source.startsWith('catalog:') ? `from the catalog (${spec.source.slice(8)})` : spec.source}` : ''}` },
         { kind: 'input', text: `leash: read-only tools → ${READ_ONLY_DOMAIN}, others → ${DEFAULT_DOMAIN}${Object.keys(spec.leash).length ? `; overrides ${Object.entries(spec.leash).map(([t, d]) => `${t}=${d}`).join(', ')}` : ''}` },
         { kind: 'input', text: 'the tools it lists on this first connect become the accepted set (shown at the Peak); a tool that is new or changed on a later connect waits at the Gate until you accept it' },
