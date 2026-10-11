@@ -32,6 +32,7 @@ export function initialState() {
     connectorEvents: [], // connector.sync / connector.error payloads this session, oldest first (bounded)
     research: null, // { search, searchKey, trends, judge } from the snapshot
     creative: null, // { images, imageKey, model, judge, hostedToday, hostedCap } from the snapshot (phase 4 step 8)
+    recipes: null, // the recipe library's counts and recent runs from the snapshot (phase 4 step 12); `stale` after recipe.run
     memory: null, // Ranger memory counts from the snapshot (phase 4 step 11); `stale` after a memory.* event
     scoutMemory: null, // the Scout's memory summary from the snapshot (phase 4 step 10); `stale` after scout.brief
     results: null, // the results engine's summary from the snapshot (phase 4 step 9); `latest` patched by results.rollup
@@ -118,6 +119,7 @@ export function applySnapshot(state, snap) {
   next.results = snap.results || null;
   next.scoutMemory = snap.scoutMemory || null;
   next.memory = snap.memory || null;
+  next.recipes = snap.recipes || null;
   next.channels = snap.channels || null;
   next.mcp = Array.isArray(snap.mcp) ? snap.mcp : null;
   next.setup = snap.setup || null;
@@ -367,6 +369,10 @@ export function applyEvent(state, event) {
       if (p.change === 'submitted') m.plan = { ...(m.plan || {}), id: p.planId, missionId: p.missionId, version: p.version, summary: p.summary || '', ventures: p.ventures || [], by: p.by, runId: p.runId, submittedAt: event.ts };
       next.mission = m;
       break;
+    }
+    case 'recipe.run': {
+      next.recipes = { ...(next.recipes || { recipes: 0, skills: 0, grants: 0, runs: { running: 0, done: 0, failed: 0 }, recent: [] }), latest: { recipeRunId: p.recipeRunId, recipeId: p.recipeId, status: p.status, stepId: p.stepId || null, reason: p.reason || null, at: event.ts }, stale: true };
+      return next;
     }
     case 'memory.recall':
     case 'memory.write':

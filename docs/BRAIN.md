@@ -181,6 +181,22 @@ event naming the items. The Superintendent votes 👍 / 👎 on the Ranger card 
 mutes an item: listed, never recalled) and forgets items for good; Juniors recall and do
 not write.
 
+Step 12 done: recipes and skills (`sidecar/recipes/`). A recipe is a versioned playbook
+document under `_peak/recipes/<id>/v<N>.json` (a goal, steps that are task briefs for a
+specialty with a budget, the evidence to leave, the fixtures its Ranger's zone needs and
+what it depends on, the leash levels it needs, a success check over the deliverables),
+granted to a role or a Ranger, and run as work items along the trails in dependency order:
+the plan first names what is missing (a parameter, a Ranger of the specialty, a fixture in
+the receiver's zone, a leash at Observe) and notes where a step will wait at the Gate;
+each `work.done` delegates what it unblocked; a failed step or a failed check fails the
+run. The Superintendent runs recipes from the Peak as itself; a Ranger or the Chief runs a
+granted one with `recipe.run`, and its steps are the Chief's delegations under the mission
+budget (D143). The starter library (`recipes/starter/`: the Etsy listing pipeline, a weekly
+ad review, a support inbox sweep, a supplier reorder check, a monthly books close) is
+copied in once. Skills are instruction packs in `_peak/skills/` attached to a Ranger by id;
+their text and the recipes a Ranger may run open its system prompt, and both show on its
+card.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

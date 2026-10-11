@@ -245,6 +245,20 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 - Remove the judge key and brief a Ranger to remember something: `memory.write` is refused
   with "no judge is wired" and nothing is stored.
 
+## 15g. Recipes and skills (phase 4)
+
+- Click the Peak: "recipes" lists the five starter recipes from `workspace/_peak/recipes/`.
+  Type a venture id and `venture=<id>` in the params, click Plan on "Weekly ad review":
+  without a Notice board in the Ads Ranger's camp it says "needs a Notice board in …";
+  place one in BUILD, Plan again: "Plan ok: review → <ranger>".
+- Run it: `recipe.run { status: 'started' }` then `{ status: 'step' }` with the work item;
+  the Ranger walks the trail; its reads run as research; `outbox/ads/review-<venture>.md`
+  lands and `recipe.run { status: 'done', deliverables: 1 }` closes the run; the Peak's
+  runs list shows 1/1 steps.
+- Click a Ranger, attach the "Gate etiquette" skill: its next run's system prompt (the
+  transcript's first lines) opens with `Skill "Gate etiquette"`. Grant a recipe to Rangers at
+  the Peak: the same prompt names "Recipes you may run with recipe.run".
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

@@ -48,3 +48,4 @@ test/creative.test.js
 test/results.test.js
 test/scout-memory.test.js
 test/memory.test.js
+test/recipes.test.js

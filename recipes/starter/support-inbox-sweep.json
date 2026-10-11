@@ -1,0 +1,47 @@
+{
+  "id": "support-inbox-sweep",
+  "version": 1,
+  "source": "starter",
+  "title": "Support inbox sweep",
+  "goal": "Answer every unanswered customer mail in the station inbox for venture {venture}, politely and truthfully, and report what was answered and what needs the Superintendent.",
+  "params": [
+    {
+      "name": "venture",
+      "description": "The venture id (its mail threads)",
+      "required": true
+    }
+  ],
+  "steps": [
+    {
+      "id": "sweep",
+      "title": "Read and reply",
+      "specialty": "support",
+      "budgetUsd": 0.8,
+      "fixtures": [
+        "supply_cache",
+        "radio_tower"
+      ],
+      "brief": "With mail.search and mail.read, list the inbox threads for venture {venture} whose last message is inbound and unanswered. For each: if it is a plain question you can answer from what you know, draft a reply with mail.draft and send it with mail.send (each send waits at the Gate under outbound messages unless the leash allows it); if it asks for a refund, a return, a legal matter or anything irreversible, do not reply: list it for the Superintendent. Never promise a refund or a date you cannot see in the data. Write outbox/support/sweep-{venture}.md: threads answered (subject, one line), threads escalated and why, threads skipped (spam / platform notices).",
+      "evidence": [
+        "outbox/support/sweep-{venture}.md"
+      ]
+    }
+  ],
+  "requiredFixtures": [
+    "supply_cache",
+    "radio_tower"
+  ],
+  "leashNeeds": [
+    {
+      "domain": "outbound_messages",
+      "level": "draft",
+      "why": "the replies"
+    }
+  ],
+  "successCheck": {
+    "kind": "files",
+    "patterns": [
+      "outbox/support/sweep-*.md"
+    ]
+  }
+}

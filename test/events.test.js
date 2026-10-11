@@ -42,6 +42,7 @@ const SAMPLES = {
   'channel.inbound': { channel: 'telegram', chatId: '12345', userId: '777', action: 'gate', paired: true, outcome: 'accepted', itemId: 'gate-1', decision: 'approve', messageId: '42' },
   'channel.connect': { channel: 'telegram', status: 'up', message: 'long polling as @maka_bot', by: 'env' },
   'channel.delivery': { channel: 'telegram', chatId: '12345', kind: 'gate_card', status: 'sent', itemId: 'gate-1', messageId: '43' },
+  'recipe.run': { recipeRunId: 'recipe-run-1', recipeId: 'launch-etsy-listing', version: 1, status: 'step', by: 'superintendent', ventureId: 'lantern-co', stepId: 'copy', workItemId: 'work-1', agentId: 'sam', steps: 6, done: 1 },
   'memory.recall': { agentId: 'a1', runId: 'r1', query: 'etsy fees', count: 1, itemIds: ['mem-1'], automatic: true, turn: 0 },
   'memory.write': { memoryId: 'mem-1', agentId: 'a1', scope: 'venture', owner: 'lantern-co', kind: 'fact', status: 'stored', redactions: 1, runId: 'r1', verdict: 'approve', text: 'Etsy charges $0.20 per listing' },
   'memory.forget': { memoryId: 'mem-1', agentId: 'a1', scope: 'venture', owner: 'lantern-co', by: 'superintendent' },
@@ -131,6 +132,7 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('results.rollup', { day: '2026-10-11', reason: 'sync', park: { revenue: 'none' }, ventures: [] });
   bad('scout.brief', { briefId: 'b', change: 'scored' });
   bad('memory.write', { agentId: 'a1', scope: 'global', owner: 'x', kind: 'fact', status: 'stored' });
+  bad('recipe.run', { recipeRunId: 'r', recipeId: 'x', version: 1, status: 'paused', by: 'me' });
   bad('memory.feedback', { memoryId: 'm', vote: 'meh', by: 'x', up: 0, down: 0 });
   bad('results.rollup', { day: '2026-10-11', reason: 'sync', park: {}, ventures: [], proposals: [{ venture: 'v', verdict: 'maybe', because: [] }] });
   bad('judge.verdict', { ...SAMPLES['judge.verdict'], verdict: 'shrug' });

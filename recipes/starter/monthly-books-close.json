@@ -1,0 +1,52 @@
+{
+  "id": "monthly-books-close",
+  "version": 1,
+  "source": "starter",
+  "title": "Monthly books close",
+  "goal": "Close the month {month} for venture {venture} from connector data only: revenue, refunds, fees, payouts, ad spend, model spend; nothing estimated.",
+  "params": [
+    {
+      "name": "venture",
+      "description": "The venture id",
+      "required": true
+    },
+    {
+      "name": "month",
+      "description": "The month as YYYY-MM",
+      "required": true
+    }
+  ],
+  "steps": [
+    {
+      "id": "close",
+      "title": "Gather the figures and write the close",
+      "specialty": "books",
+      "budgetUsd": 0.8,
+      "fixtures": [
+        "supply_cache",
+        "fee_booth"
+      ],
+      "brief": "For {month}: read stripe.charges, stripe.refunds, stripe.payouts (sinceDays covering the month) and, if a Park Store or Notice board is in your zone, shopify.orders / etsy.receipts and meta_ads.insights / google_ads.metrics. Write outbox/books/close-{month}-{venture}.md: revenue (paid charges or paid orders, say which source), refunds, Stripe fees (only if the charges carry them), payouts, ad spend, and a line \"model spend: see the Peak's results table\" (you cannot read it here). Every figure cites its source and its count of rows; a figure no connector holds is written as \"no data\", never 0 and never estimated. End with the three largest items of the month.",
+      "evidence": [
+        "outbox/books/close-{month}-{venture}.md"
+      ]
+    }
+  ],
+  "requiredFixtures": [
+    "supply_cache",
+    "fee_booth"
+  ],
+  "leashNeeds": [
+    {
+      "domain": "research",
+      "level": "act_free",
+      "why": "the reads"
+    }
+  ],
+  "successCheck": {
+    "kind": "files",
+    "patterns": [
+      "outbox/books/close-*.md"
+    ]
+  }
+}

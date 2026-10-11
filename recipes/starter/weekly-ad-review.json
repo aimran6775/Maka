@@ -1,0 +1,47 @@
+{
+  "id": "weekly-ad-review",
+  "version": 1,
+  "source": "starter",
+  "title": "Weekly ad review",
+  "goal": "Read the last seven days of the ad accounts for venture {venture} and write a review with recommendations; change nothing.",
+  "params": [
+    {
+      "name": "venture",
+      "description": "The venture id",
+      "required": true
+    }
+  ],
+  "steps": [
+    {
+      "id": "review",
+      "title": "Read the accounts and write the review",
+      "specialty": "ads",
+      "budgetUsd": 0.5,
+      "fixtures": [
+        "supply_cache",
+        "notice_board"
+      ],
+      "brief": "Read every campaign, ad set / ad group and the last seven days of results with meta_ads.campaigns, meta_ads.insights, google_ads.campaigns and google_ads.metrics (whichever are connected; say which are not). Write outbox/ads/review-{venture}.md: a table of spend, clicks, impressions and results per campaign, then three recommendations each tied to a number in the table (pause, raise or lower a budget, a new creative). Do not change any budget or status: recommendations only. Figures come only from the connector reads; where a connector is not connected write \"no data\".",
+      "evidence": [
+        "outbox/ads/review-{venture}.md"
+      ]
+    }
+  ],
+  "requiredFixtures": [
+    "supply_cache",
+    "notice_board"
+  ],
+  "leashNeeds": [
+    {
+      "domain": "research",
+      "level": "act_free",
+      "why": "the reads"
+    }
+  ],
+  "successCheck": {
+    "kind": "files",
+    "patterns": [
+      "outbox/ads/review-*.md"
+    ]
+  }
+}

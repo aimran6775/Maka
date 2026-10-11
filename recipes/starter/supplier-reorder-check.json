@@ -1,0 +1,53 @@
+{
+  "id": "supplier-reorder-check",
+  "version": 1,
+  "source": "starter",
+  "title": "Supplier reorder check",
+  "goal": "Find what is low in stock for venture {venture} and write the reorder list with quantities and supplier links; buy nothing.",
+  "params": [
+    {
+      "name": "venture",
+      "description": "The venture id",
+      "required": true
+    },
+    {
+      "name": "threshold",
+      "description": "Stock at or below this number is low",
+      "required": false,
+      "default": "3"
+    }
+  ],
+  "steps": [
+    {
+      "id": "stock",
+      "title": "Read stock and write the reorder list",
+      "specialty": "storefront",
+      "budgetUsd": 0.5,
+      "fixtures": [
+        "supply_cache",
+        "park_store"
+      ],
+      "brief": "Read stock with shopify.inventory and/or etsy.inventory (whichever is connected; say which is not). Every item with quantity at or below {threshold} is low. Write outbox/supply/reorder-{venture}.md: a table of low items (title, sku or listing id, quantity now, suggested reorder quantity = the last 30 days of orders for it from shopify.orders / etsy.receipts, or \"no order data\"), and the supplier URL for each if one is in your memory or the product notes, else \"supplier unknown\". Do not place any order: purchasing is a separate request the Superintendent approves.",
+      "evidence": [
+        "outbox/supply/reorder-{venture}.md"
+      ]
+    }
+  ],
+  "requiredFixtures": [
+    "supply_cache",
+    "park_store"
+  ],
+  "leashNeeds": [
+    {
+      "domain": "research",
+      "level": "act_free",
+      "why": "the reads"
+    }
+  ],
+  "successCheck": {
+    "kind": "files",
+    "patterns": [
+      "outbox/supply/reorder-*.md"
+    ]
+  }
+}

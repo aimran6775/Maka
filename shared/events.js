@@ -523,6 +523,25 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     error: str,
     ref: str,
   }),
+  // Added v1 (phase 4 step 12): a recipe run: started, a step delegated as a work item,
+  // done (the success check passed), failed (a step failed, a delegation was refused, the
+  // check failed, a restart) or refused before it began (not granted, no Ranger of the
+  // specialty, a missing fixture, a leash at Observe, a missing parameter).
+  'recipe.run': payload(['recipeRunId', 'recipeId', 'version', 'status', 'by'], {
+    recipeRunId: nonEmpty,
+    recipeId: nonEmpty,
+    version: int1,
+    status: { type: 'string', enum: ['started', 'step', 'done', 'failed', 'refused'] },
+    by: nonEmpty,
+    ventureId: str,
+    stepId: str,
+    workItemId: str,
+    agentId: str,
+    reason: str,
+    steps: int0,
+    done: int0,
+    deliverables: int0,
+  }),
   // Added v1 (phase 4 step 11): Ranger memory. `memory.recall` is a lookup (a tool call, or
   // the automatic recall into a run's context); `memory.write` a proposed item stored after
   // the judge accepted it or refused with the reason (secrets and personal data are counted

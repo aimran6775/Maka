@@ -43,6 +43,7 @@ import { createCreative } from './creative/index.js';
 import { createResults } from './results.js';
 import { createScoutMemory } from './scout-memory.js';
 import { createMemory } from './memory/index.js';
+import { createRecipes } from './recipes/index.js';
 import { createChannels } from './channels/registry.js';
 import { createTelegramAdapter } from './channels/telegram.js';
 import { createDiscordAdapter } from './channels/discord.js';
@@ -108,13 +109,18 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const registry = { ...TOOLS, ...CREW_TOOLS }; // chief tools join below; the gate reads it at call time
   const router = createRouter(policy);
   let scoutMemory = null;
+  let recipes = null;
   // Phase 4 step 11: Ranger memory. Items are redacted and judge-accepted before storage;
   // the top matches for a run's brief go into its system prompt; 👍 / 👎 on the Ranger card.
   const memory = await createMemory({ store, bus, agents, getLayout: layoutState.get, judge, log }).init();
   Object.assign(registry, memory.tools);
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...memory.promptLines(agent, info || {})] });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(recipes ? recipes.skillLines(agent) : []), ...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...(recipes ? recipes.recipeLines(agent) : []), ...memory.promptLines(agent, info || {})] });
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, workspaceRoot }).init();
   toolContext.trails = trails;
+  // Phase 4 step 12: recipes (versioned playbooks run as work items along the trails, the
+  // starter library seeded from recipes/starter/) and skills on Rangers' personas.
+  recipes = await createRecipes({ store, bus, trails, agents, getLayout: layoutState.get, leashState, workspaceRoot, starterDir: path.join(REPO_ROOT, 'recipes', 'starter'), log }).init();
+  Object.assign(registry, recipes.tools);
   const chief = await createChief({ bus, store, runs, agents, trails, ledger, router, getLayout: layoutState.get, workspaceRoot, log }).init();
   Object.assign(registry, chief.tools);
   const scheduler = await createScheduler({ store, log }).init();
@@ -205,6 +211,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     results,
     scoutMemory,
     memory,
+    recipes,
     setup,
     ollama,
     backup,
@@ -256,6 +263,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   log.info(`  mail: ${mailStatus.domain} · resend ${mailStatus.keys.resend ? 'key configured' : 'not wired (RESEND_API_KEY)'} · cloudflare ${mailStatus.keys.cloudflare ? 'token configured' : 'not wired (CLOUDFLARE_API_TOKEN)'} · webhook ${mailSys.keys.webhook ? 'secret configured' : 'not wired (RESEND_WEBHOOK_SECRET)'} · ${mailSys.addresses} address(es), ${mailSys.counts.messages} message(s), poll every ${mailSys.sync.pollMs / 1000}s`);
   const resultsNow = results.summary();
   log.info(`  results: ${resultsNow.lastRollup ? `last rollup ${new Date(resultsNow.lastRollup.at).toISOString()} (${resultsNow.lastRollup.reason})` : 'no rollup yet'} · sources: ${Object.entries(resultsNow.sources).filter(([, v]) => v).map(([k]) => k).join(', ') || 'ledgers only (no connector synced)'}`);
+  const rec = recipes.summary();
+  log.info(`  recipes: ${rec.recipes} recipe(s), ${rec.skills} skill(s), ${rec.grants} grant(s) · runs: ${rec.runs.running} running, ${rec.runs.done} done, ${rec.runs.failed} failed`);
   const mem = memory.summary();
   log.info(`  memory: ${mem.items} item(s) (${mem.byScope.agent} agent, ${mem.byScope.venture} venture, ${mem.byScope.station} station; ${mem.muted} muted) · writes ${mem.judge ? 'accepted by the judge' : 'refused: no judge wired'}`);
   const sm = scoutMemory.summary();
@@ -284,7 +293,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const setupState = await setup.state();
   log.info(`  first run: ${setupState.firstRun ? 'yes (the park shows the first-run card)' : `done ${new Date(setupState.completedAt).toISOString()}${setupState.skipped ? ' (skipped)' : ''}`} · worker ${ollama.summary().worker}`);
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, results, scoutMemory, memory, setup, ollama, backup, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, results, scoutMemory, memory, recipes, setup, ollama, backup, close };
 }
 
 function validateConfig(data) {

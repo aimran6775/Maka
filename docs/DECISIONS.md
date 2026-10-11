@@ -1392,3 +1392,20 @@ explainable (the matched terms are returned), and the Superintendent's votes are
 only learning signal: a net thumbs-down mutes an item from every recall while leaving it
 on the card, forget removes it. Juniors read their crew's memory and cannot write, since
 a Junior's bounded subtask is not where durable knowledge should be minted.
+
+## D143. A recipe plans before it runs, and its steps are the Superintendent's or the Chief's delegations
+
+The brief asks for playbooks "granted to a role or a Ranger; run as a sequence of work
+items along trails". Two things follow. First, a recipe is checked against the park before
+anything moves: every step needs a Ranger of its specialty (the venture's own crew first),
+the fixtures the step names in that Ranger's zone (layout is permission, so a recipe cannot
+grant what the Superintendent did not place) and no needed leash at Observe; a missing
+piece refuses the run and says what to place, hire or raise, and a leash stricter than the
+recipe asks is a note, because waiting at the Gate is the leash doing its job. Second, who
+delegates: the Superintendent's own runs are its delegations, unbounded as ever; a run a
+Ranger or the Chief asked for through `recipe.run` is delegated by the Chief under the
+mission budget, because a Ranger's budget lives in its active run (safety L4) and the
+later steps run after that run has ended. A recipe therefore cannot multiply a Ranger's
+budget, cannot reach past a camp's fixtures, and leaves every money or publishing action to
+the tools' own leashes at the Gate; the recipe is sequence and briefs, not permission.
+Juniors neither run recipes nor receive grants: their work is bounded by their Ranger.

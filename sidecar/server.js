@@ -61,6 +61,13 @@
 //   GET  /api/research         the Scout kit: search provider, trend sources, judge wired
 //   GET  /api/briefs           venture briefs from every Ranger's outbox, newest first
 //   GET  /api/creative         the creative kit: image model wired, judge, hosted calls today (phase 4 step 8)
+//   GET  /api/recipes          the recipe library (latest versions, grants); /api/recipes/:id the document (phase 4 step 12)
+//   POST /api/recipes          { ...recipe } saves a new recipe or the next version of one
+//   POST /api/recipes/:id/plan   { ventureId, params } what a run would do: receivers, problems, notes (nothing runs)
+//   POST /api/recipes/:id/run    { ventureId, params } runs it as the Superintendent (202 with the run)
+//   POST /api/recipes/:id/grant  { role } or { agentId }; /revoke the same
+//   GET  /api/recipe-runs      recent runs; /api/recipe-runs/:id one run
+//   GET  /api/skills           the skills; POST /api/skills saves one
 //   GET  /api/memory?agentId=  Ranger memory items an agent can see (all with no agentId); phase 4 step 11
 //   POST /api/memory/:id/feedback  { vote: up | down } the Superintendent's 👍 / 👎 (a net −1 mutes the item)
 //   DELETE /api/memory/:id     forget an item for good
@@ -307,7 +314,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, scoutMemory = null, memory = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, scoutMemory = null, memory = null, recipes = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -389,6 +396,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         results: results ? results.summary() : null,
         scoutMemory: scoutMemory ? scoutMemory.summary() : null,
         memory: memory ? memory.summary() : null,
+        recipes: recipes ? recipes.summary() : null,
         setup: setup ? await setup.state() : null,
         ollama: ollama ? ollama.summary() : null,
         backup: backup ? await backup.status() : null,
@@ -657,6 +665,50 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/briefs' && method === 'GET') {
       if (!research) throw new HttpError(404, 'no research kit');
       return sendJson(res, 200, await research.listBriefs({ limit: Number(url.searchParams.get('limit')) || 50 }));
+    }
+    if (p === '/api/recipes' && method === 'GET') {
+      if (!recipes) throw new HttpError(404, 'no recipes');
+      return sendJson(res, 200, recipes.list());
+    }
+    if (p === '/api/recipes' && method === 'POST') {
+      if (!recipes) throw new HttpError(404, 'no recipes');
+      return sendJson(res, 201, await rethrow(async () => recipes.save(await readJsonBody(req), { by: 'superintendent' })));
+    }
+    if (p === '/api/recipe-runs' && method === 'GET') {
+      if (!recipes) throw new HttpError(404, 'no recipes');
+      return sendJson(res, 200, recipes.runs({ limit: Number(url.searchParams.get('limit')) || 50 }));
+    }
+    if (p.startsWith('/api/recipe-runs/') && method === 'GET') {
+      if (!recipes) throw new HttpError(404, 'no recipes');
+      const run = recipes.getRun(decodeURIComponent(p.slice('/api/recipe-runs/'.length)));
+      if (!run) throw new HttpError(404, 'no such recipe run');
+      return sendJson(res, 200, run);
+    }
+    if (p === '/api/skills' && method === 'GET') {
+      if (!recipes) throw new HttpError(404, 'no recipes');
+      return sendJson(res, 200, recipes.skills());
+    }
+    if (p === '/api/skills' && method === 'POST') {
+      if (!recipes) throw new HttpError(404, 'no recipes');
+      return sendJson(res, 201, await rethrow(async () => recipes.saveSkill(await readJsonBody(req), { by: 'superintendent' })));
+    }
+    if (p.startsWith('/api/recipes/')) {
+      if (!recipes) throw new HttpError(404, 'no recipes');
+      const parts = p.slice('/api/recipes/'.length).split('/');
+      const id = decodeURIComponent(parts[0]);
+      const action = parts[1] || null;
+      if (!action && method === 'GET') {
+        const doc = recipes.get(id, Number(url.searchParams.get('version')) || null);
+        if (!doc) throw new HttpError(404, 'no such recipe');
+        return sendJson(res, 200, doc);
+      }
+      if (method === 'POST' && ['plan', 'run', 'grant', 'revoke'].includes(action)) {
+        const body = await readJsonBody(req);
+        if (action === 'plan') return sendJson(res, 200, await rethrow(() => recipes.plan(id, { ventureId: body.ventureId || null, params: body.params || {} })));
+        if (action === 'run') return sendJson(res, 202, await rethrow(() => recipes.run({ recipeId: id, ventureId: body.ventureId || null, params: body.params || {}, by: 'superintendent' })));
+        if (action === 'grant') return sendJson(res, 200, await rethrow(() => recipes.grant({ recipeId: id, role: body.role || null, agentId: body.agentId || null, by: 'superintendent' })));
+        return sendJson(res, 200, await rethrow(() => recipes.revoke({ recipeId: id, role: body.role || null, agentId: body.agentId || null })));
+      }
     }
     if (p === '/api/memory' && method === 'GET') {
       if (!memory) throw new HttpError(404, 'no memory');

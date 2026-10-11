@@ -1,0 +1,164 @@
+{
+  "id": "launch-etsy-listing",
+  "version": 1,
+  "source": "starter",
+  "title": "Launch an Etsy listing",
+  "goal": "Take one product from facts to a live Etsy listing for venture {venture}: product data, original copy, an original image, a price proposal, a draft listing, the judge's review and the Gate, then publish.",
+  "summary": "The listing pipeline (phase 4 step 13): every step is a Ranger's work item; publishing and the price pass the Gate; nothing goes live before the Superintendent approves the activation.",
+  "params": [
+    {
+      "name": "venture",
+      "description": "The venture id in the plan",
+      "required": true
+    },
+    {
+      "name": "product",
+      "description": "The product in a few words (what it is, materials, size, who it is for)",
+      "required": true
+    },
+    {
+      "name": "facts",
+      "description": "Product facts the copy may rely on: materials, dimensions, shipping time, care; nothing else may be claimed",
+      "required": true
+    },
+    {
+      "name": "price",
+      "description": "The price to propose in the shop currency (a number)",
+      "required": true
+    },
+    {
+      "name": "quantity",
+      "description": "Stock quantity for the listing",
+      "required": false,
+      "default": "5"
+    }
+  ],
+  "steps": [
+    {
+      "id": "product-data",
+      "title": "Product data file",
+      "specialty": "storefront",
+      "budgetUsd": 0.3,
+      "fixtures": [
+        "supply_cache"
+      ],
+      "brief": "Write outbox/listings/{venture}/product.json with exactly these fields from the parameters and nothing invented: product (\"{product}\"), facts (\"{facts}\"), price ({price}), quantity ({quantity}), venture (\"{venture}\"). Then write outbox/listings/{venture}/product.md as a readable one-page product sheet from the same facts. Do not add claims that are not in the facts.",
+      "evidence": [
+        "outbox/listings/{venture}/product.json",
+        "outbox/listings/{venture}/product.md"
+      ]
+    },
+    {
+      "id": "copy",
+      "title": "Listing copy",
+      "specialty": "storefront",
+      "budgetUsd": 0.5,
+      "dependsOn": [
+        "product-data"
+      ],
+      "fixtures": [
+        "supply_cache",
+        "notice_board"
+      ],
+      "brief": "Read outbox/listings/{venture}/product.json. Write original listing copy for Etsy: a title of at most 140 characters, a description, and up to 13 tags, using only the facts in the file. Submit it with creative.copy (platform generic, name \"{venture}-listing\", the facts as productFacts, 2 variants). Then write outbox/listings/{venture}/copy.md with the variant you recommend and why.",
+      "evidence": [
+        "outbox/listings/{venture}/copy.md",
+        "the creative.copy verdict"
+      ]
+    },
+    {
+      "id": "image",
+      "title": "Listing image",
+      "specialty": "ads",
+      "budgetUsd": 0.5,
+      "dependsOn": [
+        "product-data"
+      ],
+      "fixtures": [
+        "supply_cache",
+        "notice_board"
+      ],
+      "brief": "Read outbox/listings/{venture}/product.json (it is in the Storefront Ranger's workspace; if you cannot read it, use the product description in this brief: {product}). Generate one square product image with creative.image (name \"{venture}-listing\", style photo): the product alone on a plain surface, no people, no faces, no text, no logos. If the judge refuses the prompt, rewrite it once without the refused element. Report the image path.",
+      "evidence": [
+        "the creative.image result with the image path and the policy verdict"
+      ]
+    },
+    {
+      "id": "draft-listing",
+      "title": "Draft listing on Etsy",
+      "specialty": "storefront",
+      "budgetUsd": 0.6,
+      "dependsOn": [
+        "copy"
+      ],
+      "fixtures": [
+        "supply_cache",
+        "park_store"
+      ],
+      "brief": "Create the Etsy listing as a DRAFT with etsy.create_listing from outbox/listings/{venture}/copy.md (the recommended variant) and product.json: title, description, tags, quantity {quantity}, price {price}. Write outbox/listings/{venture}/listing.json with the listingId Etsy returned and the fields you sent. Do not activate it.",
+      "evidence": [
+        "outbox/listings/{venture}/listing.json with the listingId"
+      ]
+    },
+    {
+      "id": "price",
+      "title": "Price proposal",
+      "specialty": "storefront",
+      "budgetUsd": 0.3,
+      "dependsOn": [
+        "draft-listing"
+      ],
+      "fixtures": [
+        "park_store"
+      ],
+      "brief": "Read outbox/listings/{venture}/listing.json. Set the listing's price to {price} with etsy.set_price (money in: it waits at the Gate unless the leash allows it) and report the tool's answer. Do not change anything else.",
+      "evidence": [
+        "the etsy.set_price result"
+      ]
+    },
+    {
+      "id": "publish",
+      "title": "Publish",
+      "specialty": "storefront",
+      "budgetUsd": 0.3,
+      "dependsOn": [
+        "price",
+        "image"
+      ],
+      "fixtures": [
+        "park_store"
+      ],
+      "brief": "Read outbox/listings/{venture}/listing.json. Activate the listing with etsy.update_listing (state active); this is publishing and waits at the Gate for the Superintendent. Report the tool's answer and the listing URL if Etsy gave one. If the Gate rejected it, say so and stop.",
+      "evidence": [
+        "the etsy.update_listing result"
+      ]
+    }
+  ],
+  "requiredFixtures": [
+    "supply_cache",
+    "park_store",
+    "notice_board"
+  ],
+  "leashNeeds": [
+    {
+      "domain": "publishing",
+      "level": "draft",
+      "why": "the draft listing, the copy upload and the activation"
+    },
+    {
+      "domain": "money_in",
+      "level": "draft",
+      "why": "the price proposal"
+    }
+  ],
+  "successCheck": {
+    "kind": "files",
+    "patterns": [
+      "outbox/listings/*/product.json",
+      "outbox/listings/*/copy.md",
+      "outbox/listings/*/listing.json"
+    ],
+    "note": "The image is a deliverable of the Ads Ranger's outbox (creative/), checked by its step's evidence."
+  },
+  "notes": "Nothing is published without the Gate: the listing is created as a draft, the price change is money in, the activation is publishing."
+}

@@ -348,6 +348,14 @@ run's brief are recalled into its context automatically (lexical, no embeddings)
 `memory.recall` finds the rest. Click a Ranger to see its memory, vote 👍 / 👎 (a net −1
 mutes an item) or forget it.
 
+Step 12, recipes and skills: the Peak lists versioned playbooks (`_peak/recipes/`; five
+to start: the Etsy listing pipeline, a weekly ad review, a support inbox sweep, a supplier
+reorder check, a monthly books close). Plan shows what a run would do and what is missing
+(a Ranger, a fixture, a leash at Observe); Run turns the steps into work items along the
+trails in order, and every tool still passes its leash at the Gate. Grant a recipe to
+Rangers or the Chief and they run it with `recipe.run`. Skills (`_peak/skills/`) are
+instruction packs you attach to a Ranger on its card; they open its prompt.
+
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),
 so the camp card and a Ranger's mail.search show it.

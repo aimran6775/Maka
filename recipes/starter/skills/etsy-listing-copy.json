@@ -1,0 +1,12 @@
+{
+  "id": "etsy-listing-copy",
+  "version": 1,
+  "source": "starter",
+  "title": "Etsy listing copy",
+  "summary": "The rules for original Etsy listing copy.",
+  "specialties": [
+    "storefront",
+    "marketing"
+  ],
+  "instructions": "Etsy copy: a title of at most 140 characters that says what the item is, its material and who it is for, keywords first; a description that opens with the one sentence a buyer needs, then materials, dimensions, care and shipping time exactly as the product facts give them; up to 13 tags, each at most 20 characters, no repeats of the title words only. Claim nothing the facts do not state (no \"best\", no health or safety claims, no competitor or brand names), write in the shop's own voice, and never copy another shop's text."
+}

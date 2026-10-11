@@ -37,6 +37,61 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     );
   }
 
+  // Phase 4 step 12: recipes and skills. The library and the runs come from the routes;
+  // the Peak runs and grants recipes, the Ranger card shows its skills and its recipes.
+  const recipeCache = { key: null, recipes: [], runs: [], skills: [], loading: false };
+  function loadRecipes(key) {
+    if (recipeCache.key === key || recipeCache.loading) return;
+    recipeCache.loading = true;
+    Promise.all([api.get('/api/recipes'), api.get('/api/recipe-runs?limit=8'), api.get('/api/skills')]).then(([r, runs, sk]) => {
+      recipeCache.recipes = r.ok ? r.body : [];
+      recipeCache.runs = runs.ok ? runs.body : [];
+      recipeCache.skills = sk.ok ? sk.body : [];
+      recipeCache.key = key;
+    }).finally(() => {
+      recipeCache.loading = false;
+      if (selectionRefresh) selectionRefresh();
+    });
+  }
+  const recipeNotice = el('div', { class: 'notice' });
+  const recipeVenture = el('input', { class: 'inp', placeholder: 'venture id' });
+  const recipeParams = el('textarea', { class: 'prompt', rows: 2, placeholder: 'params, one per line: name=value' });
+  const parseParams = () => Object.fromEntries(recipeParams.value.split('\n').map((l) => l.trim()).filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]));
+  function recipesSection(s) {
+    if (!s.recipes) return [];
+    loadRecipes(`${s.recipes.latest ? s.recipes.latest.at : 0}`);
+    const say = (r, ok) => { recipeNotice.textContent = r.ok ? ok(r.body) : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; };
+    return [
+      el('div', { class: 'k', text: `recipes (${s.recipes.recipes} in _peak/recipes, ${s.recipes.skills} skill(s), ${s.recipes.grants} grant(s); runs: ${s.recipes.runs.running} running, ${s.recipes.runs.done} done, ${s.recipes.runs.failed} failed)` }),
+      el('div', { class: 'row' }, el('label', { text: 'run for' }), recipeVenture),
+      recipeParams,
+      ...recipeCache.recipes.map((r) => el('div', { class: 'use', title: r.goal },
+        `${r.id} v${r.version} · ${r.title} · ${r.steps} step(s) for ${r.specialties.join(', ')} · needs ${r.requiredFixtures.map((f) => (s.objectKinds[f] || {}).label || f).join(', ') || 'no fixture'} · granted to ${r.grants.length ? r.grants.map((g) => g.role || g.agentId).join(', ') : 'nobody (the Superintendent runs it)'} `,
+        el('button', { class: 'btn small', text: 'Plan', title: 'What a run would do: receivers, missing fixtures, leash notes; nothing runs', onclick: async () => say(await api.post(`/api/recipes/${encodeURIComponent(r.id)}/plan`, { ventureId: recipeVenture.value.trim() || null, params: parseParams() }), (b) => (b.ok ? `Plan ok: ${Object.entries(b.assignments).map(([st, a]) => `${st} → ${a.agentId}`).join(', ')}${b.notes.length ? ` · ${b.notes.join('; ')}` : ''}` : `Cannot run: ${b.problems.map((x) => x.message).join('; ')}`)) }),
+        el('button', { class: 'btn small primary', text: 'Run', onclick: async () => say(await api.post(`/api/recipes/${encodeURIComponent(r.id)}/run`, { ventureId: recipeVenture.value.trim() || null, params: parseParams() }), (b) => `Run ${b.id} started: ${Object.entries(b.steps).filter(([, st]) => st.status === 'delegated').map(([id, st]) => `${id} → ${st.agentId}`).join(', ')}${b.notes.length ? ` · ${b.notes.join('; ')}` : ''}`) }),
+        el('button', { class: 'btn small', text: 'Grant to Rangers', onclick: async () => say(await api.post(`/api/recipes/${encodeURIComponent(r.id)}/grant`, { role: 'ranger' }), () => `Granted ${r.id} to every Ranger.`) }),
+        el('button', { class: 'btn small', text: 'Grant to the Chief', onclick: async () => say(await api.post(`/api/recipes/${encodeURIComponent(r.id)}/grant`, { role: 'chief_ranger' }), () => `Granted ${r.id} to the Chief.`) }),
+        r.grants.length ? el('button', { class: 'btn small', text: 'Revoke all', onclick: async () => { for (const g of r.grants) await api.post(`/api/recipes/${encodeURIComponent(r.id)}/revoke`, g); recipeNotice.textContent = `Revoked ${r.id}.`; } }) : null,
+      )),
+      ...recipeCache.runs.map((run) => el('div', { class: `use ${run.status === 'done' ? 'ok' : run.status === 'failed' ? 'failed' : 'running'}`, text: `${run.id} · ${run.recipeId} v${run.version}${run.ventureId ? ` · ${run.ventureId}` : ''} · ${run.status} · ${Object.values(run.steps).filter((st) => st.status === 'done').length}/${Object.keys(run.steps).length} steps${run.notes.length ? ` · ${run.notes.at(-1)}` : ''}` })),
+      recipeNotice,
+    ];
+  }
+  function skillsSection(s, agent) {
+    if (!s.recipes) return [];
+    loadRecipes(`${s.recipes.latest ? s.recipes.latest.at : 0}`);
+    const mine = agent.skills || [];
+    const granted = recipeCache.recipes.filter((r) => r.grants.some((g) => g.agentId === agent.id || g.role === (agent.role || 'ranger')));
+    const sel = el('select', { class: 'sel small' }, ...recipeCache.skills.filter((k) => !mine.includes(k.id)).map((k) => el('option', { value: k.id, text: `${k.title} (${k.id})` })));
+    const setSkills = async (skills) => { const r = await api.send('PATCH', `/api/agents/${encodeURIComponent(agent.id)}`, { skills }); actionNotice.textContent = r.ok ? `Skills: ${skills.join(', ') || 'none'}` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; };
+    return [
+      row('skills', mine.length ? '' : 'none attached'),
+      ...mine.map((id) => { const k = recipeCache.skills.find((x) => x.id === id); return el('div', { class: 'kv' }, el('span', { class: 'v small', text: k ? `${k.title}: ${k.instructions.slice(0, 160)}${k.instructions.length > 160 ? '…' : ''}` : `${id} (unknown skill)` }), el('button', { class: 'btn small', text: 'remove', onclick: () => setSkills(mine.filter((x) => x !== id)) })); }),
+      recipeCache.skills.some((k) => !mine.includes(k.id)) ? el('div', { class: 'row' }, el('label', { text: 'add skill' }), sel, el('button', { class: 'btn small', text: 'Attach', onclick: () => setSkills([...mine, sel.value]) })) : null,
+      row('recipes', granted.length ? granted.map((r) => `${r.id} (${r.title})`).join('; ') : 'none granted (grant one at the Peak)'),
+    ];
+  }
+
   // Phase 4 step 11: the Ranger's memory on its card, with 👍 / 👎 and forget.
   const memoryCache = { key: null, agentId: null, rows: [], loading: false };
   function loadMemory(agentId, key) {
@@ -99,6 +154,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       s.mail ? row('addresses', (() => { const mine = mailCache.addresses.filter((a) => a.agentId === agent.id || (a.kind === 'station' && a.station === agent.roomId)); if (!mailCache.addresses.length) loadMail(s, { id: agent.roomId, kind: 'zone' }); return mine.length ? mine.map((a) => a.address).join(', ') : 'none loaded'; })()) : null,
       s.queuedRuns.some((r) => r.agentId === agent.id) ? row('queued', `${s.queuedRuns.filter((r) => r.agentId === agent.id).length} run(s) waiting for this Ranger`) : null,
       agentActions(s, agent),
+      ...skillsSection(s, agent),
       ...memorySection(s, agent),
       ...workFor(s, agent.id).slice(0, 8).map((it) => el('div', { class: `use ${it.status === 'done' ? 'ok' : it.status === 'failed' || it.status === 'cancelled' ? 'failed' : 'running'}`, text: `${it.fromAgentId === agent.id ? '→ ' + it.toAgentId : '← ' + it.fromAgentId} · ${it.status} · ${(it.brief || '').slice(0, 50)}${it.deliverables && it.deliverables.length ? ` · ${it.deliverables.length} file(s)` : ''}` })),
       el('div', { class: 'k', text: 'leash (per domain, enforced by the gate)' }),
@@ -718,6 +774,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ) : null,
       row('gate queue', `${pendingGate(s).length} waiting`),
       ...resultsSection(s),
+      ...recipesSection(s),
       ...connectorsSection(s),
       ...mcpSection(s),
       ...channelsSection(s),

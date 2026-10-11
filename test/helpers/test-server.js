@@ -25,6 +25,7 @@ import { createCreative } from '../../sidecar/creative/index.js';
 import { createResults } from '../../sidecar/results.js';
 import { createScoutMemory } from '../../sidecar/scout-memory.js';
 import { createMemory } from '../../sidecar/memory/index.js';
+import { createRecipes } from '../../sidecar/recipes/index.js';
 import { createChannels } from '../../sidecar/channels/registry.js';
 import { createMcpManager } from '../../sidecar/mcp/manager.js';
 import { createOllama } from '../../sidecar/ollama.js';
@@ -49,7 +50,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 // `netGuard`: the outbound URL guard the tools and the browser use (sidecar/netguard.js).
 // The fakes every suite talks to listen on 127.0.0.1, so the default here turns the guard
 // off; a test of the guard itself passes a strict one. The sidecar never turns it off.
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, recipes: recipeOpts = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -76,13 +77,18 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const toolContext = { netGuard };
   const registry = { ...TOOLS, ...CREW_TOOLS };
   let scoutMemory = null;
+  let recipes = null;
   // Phase 4 step 11: Ranger memory, always wired (writes need the judge).
   const memory = await createMemory({ store, bus, agents, getLayout: layoutState.get, judge, clock, log: { error() {} } }).init();
   Object.assign(registry, memory.tools);
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent, fetch: localFetch, workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...memory.promptLines(agent, info || {})] });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent, fetch: localFetch, workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(recipes ? recipes.skillLines(agent) : []), ...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...(recipes ? recipes.recipeLines(agent) : []), ...memory.promptLines(agent, info || {})] });
   runsRef = runs;
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, clock, workspaceRoot }).init();
   toolContext.trails = trails;
+  // Phase 4 step 12: recipes and skills; `recipes: { starterDir }` points at a library
+  // (default: the repo's starter library; `false` seeds nothing).
+  recipes = await createRecipes({ store, bus, trails, agents, getLayout: layoutState.get, leashState, workspaceRoot, starterDir: recipeOpts === false ? null : (recipeOpts && recipeOpts.starterDir) || path.join(REPO_ROOT, 'recipes', 'starter'), clock, log: { error() {}, warn() {} } }).init();
+  Object.assign(registry, recipes.tools);
   const chief = await createChief({ bus, store, runs, agents, trails, ledger, router: createRouter(policy || defaultPolicy()), getLayout: layoutState.get, clock, workspaceRoot, log: { error() {} } }).init();
   Object.assign(registry, chief.tools);
   const scheduler = await createScheduler({ store, clock, tickMs: 60_000, log: { error() {} } }).init();
@@ -171,6 +177,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     results,
     scoutMemory,
     memory,
+    recipes,
     setup,
     ollama,
     backup,
@@ -214,6 +221,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     results,
     scoutMemory,
     memory,
+    recipes,
     setup,
     ollama,
     backup,

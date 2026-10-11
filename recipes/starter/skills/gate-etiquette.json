@@ -1,0 +1,8 @@
+{
+  "id": "gate-etiquette",
+  "version": 1,
+  "source": "starter",
+  "title": "Gate etiquette",
+  "summary": "How to act when a tool call waits at the Entrance Gate or is refused.",
+  "instructions": "When a tool call waits at the Entrance Gate, do not retry it and do not work around it with another tool: say in one sentence what is waiting and why it is needed, then continue with work that does not depend on it or finish. When the Superintendent revises, follow the notes exactly and resubmit once. When a call is refused by the leash (Observe), report it as a limit of your grant, not as a failure of your own, and name the domain. Never split one action into smaller ones to stay under a cap."
+}

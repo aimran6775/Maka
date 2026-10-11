@@ -169,7 +169,7 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
       const l = layout();
       const current = agentOf(l, id);
       if (!current) throw fail('NOT_FOUND', `no agent "${id}"`, 404);
-      const allowed = ['name', 'zoneId', 'parentAgentId', 'venture', 'specialty', 'persona', 'policy', 'budgetUsd', 'x', 'y', 'leash', 'paused'];
+      const allowed = ['name', 'zoneId', 'parentAgentId', 'venture', 'specialty', 'persona', 'policy', 'budgetUsd', 'x', 'y', 'leash', 'paused', 'skills'];
       const unknown = Object.keys(patch).filter((k) => !allowed.includes(k));
       if (unknown.length) throw fail('BAD_REQUEST', `cannot change ${unknown.join(', ')}`);
       if ('role' in patch) throw fail('BAD_REQUEST', 'role cannot change');
@@ -205,6 +205,12 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
           checkParent(current.role || 'ranger', patch.parentAgentId, l, id);
           record.parentAgentId = patch.parentAgentId;
         }
+      }
+      if (patch.skills !== undefined) {
+        // Phase 4 step 12: skill ids on the persona (the recipes module holds the texts).
+        if (patch.skills === null || (Array.isArray(patch.skills) && !patch.skills.length)) delete record.skills;
+        else if (Array.isArray(patch.skills) && patch.skills.every((s) => typeof s === 'string' && s.trim())) record.skills = [...new Set(patch.skills.map((s) => s.trim()))].slice(0, 12);
+        else throw fail('BAD_REQUEST', 'skills must be a list of skill ids');
       }
       for (const k of ['venture', 'persona']) {
         if (patch[k] !== undefined) {
