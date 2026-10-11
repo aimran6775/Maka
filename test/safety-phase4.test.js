@@ -42,7 +42,7 @@ import { makeEvent } from '../shared/events.js';
 import { startTestServer } from './helpers/test-server.js';
 import { fakeProvider, text, end } from './helpers/fake-provider.js';
 import { createAgents } from '../sidecar/agents.js';
-import { createResults } from '../sidecar/results.js';
+import { createResults, proposeFor, emptyRow } from '../sidecar/results.js';
 import { readHome, insideDir } from '../sidecar/import/homes.js';
 import { imageTool } from '../sidecar/creative/images.js';
 import { createVoice } from '../sidecar/voice.js';
@@ -1068,4 +1068,24 @@ test('L4: the ledger reserves a hosted call in one step; N concurrent image or v
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
+});
+
+
+// ---------------------------------------------------------------------------------------
+// L5: unknown orders are no data, never zero.
+// ---------------------------------------------------------------------------------------
+
+test('L5: the kill rule needs orders known to be zero; a week of spend with revenue known and orders null holds with "orders unknown", and a known zero still kills', () => {
+  const v = { id: 'v', budgetUsd: 10 };
+  const days = (n, over) => Array.from({ length: n }, (_, i) => ({ day: `2026-10-${String(i + 1).padStart(2, '0')}`, ...emptyRow(), ...over }));
+  const unknownOrders = proposeFor(v, days(7, { revenue: 0, orders: null, adSpend: 1, modelSpend: 0.1 }));
+  assert.equal(unknownOrders.verdict, 'hold', JSON.stringify(unknownOrders.because));
+  assert.match(unknownOrders.because[0], /orders unknown/);
+  assert.equal(unknownOrders.numbers.windowOrders, null);
+  const knownZero = proposeFor(v, days(7, { revenue: 0, orders: 0, adSpend: 1, modelSpend: 0.1 }));
+  assert.equal(knownZero.verdict, 'kill');
+  assert.match(knownZero.because[0], /0 orders in the last 7 day\(s\)/);
+  // Nor does a scale come from unknown orders.
+  const scaleUnknown = proposeFor(v, days(7, { revenue: 100, orders: null, refunds: 0, fees: 0, adSpend: 1, modelSpend: 0.1 }));
+  assert.notEqual(scaleUnknown.verdict, 'scale');
 });

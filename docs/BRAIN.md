@@ -437,6 +437,7 @@ L3 done: a stdio server's plain env is on its Gate card with the values, and the
 redirect what a runtime loads (PATH, NODE_OPTIONS, DYLD_*, LD_* and kin) are refused.
 L4 done: a hosted call (an image, a transcription, a hosted turn) is reserved against the
 day's cap in one step before it is made, so concurrent calls at cap−1 let one through.
+L5 done: the Chief's kill rule reads unknown orders as no data, never as zero.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

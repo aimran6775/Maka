@@ -1784,3 +1784,11 @@ reservation before anything else and release it once the call has been counted o
 failed, and the run manager's check counts what is in flight. The count itself still comes
 from the `cost.estimate` event, as before, so nothing is counted twice and a call that
 failed before the event counts nothing; reservations live in memory, as the money ones do.
+
+## D163. Unknown orders decide nothing
+
+The second safety review (L5) found the kill rule reading `(w.orders || 0) === 0`, so a
+window whose order count was unknown counted as zero orders and could kill a venture that
+had sold. The results engine's own law (D139: absent data shows "no data", never zero) now
+holds in the rule as well: a kill needs orders known to be zero, a scale needs a known
+count, and unknown orders leave the verdict at hold with "orders unknown" in the reasons.

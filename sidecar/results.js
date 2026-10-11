@@ -141,13 +141,15 @@ export function proposeFor(venture, rows, rules = RULES) {
   if (!daysObserved) return out('no_data', ['no activity recorded for this venture yet']);
   if (w.revenue === null && w.adSpend === null) return out('no_data', [`revenue, orders and ad spend are unknown: no storefront, payment or ad connector has synced (${daysObserved} day(s) observed, model spend ${money(all.modelSpend)})`]);
   const windowCost = (w.adSpend || 0) + (w.modelSpend || 0);
-  if (daysObserved >= rules.killMinDays && w.revenue !== null && (w.orders || 0) === 0 && windowCost > 0 && budget > 0 && spent >= rules.killSpendFraction * budget) {
+  // Safety 2026-10-11 L5: the kill needs orders known to be zero; unknown orders (null)
+  // are "no data", never zero, so no source that has not synced can kill a venture.
+  if (daysObserved >= rules.killMinDays && w.revenue !== null && w.orders === 0 && windowCost > 0 && budget > 0 && spent >= rules.killSpendFraction * budget) {
     return out('kill', [`0 orders in the last ${window.length} day(s) while spending ${money(windowCost)} (ads ${money(w.adSpend)}, models ${money(w.modelSpend)})`, `${money(spent)} of the $${budget.toFixed(2)} budget spent (${Math.round((spent / budget) * 100)} %) over ${daysObserved} day(s)`]);
   }
   if (daysObserved >= rules.killLossMinDays && w.net !== null && w.net < 0 && budget > 0 && spent >= rules.killLossSpendFraction * budget) {
     return out('kill', [`net ${money(w.net)} over the last ${window.length} day(s): revenue ${money(w.revenue)} less refunds ${money(w.refunds)}, fees ${money(w.fees)}, ads ${money(w.adSpend)}, models ${money(w.modelSpend)}${w.unknown.length ? ` (${w.unknown.join(', ')} unknown)` : ''}`, `${money(spent)} of the $${budget.toFixed(2)} budget spent (${Math.round((spent / budget) * 100)} %) over ${daysObserved} day(s)`]);
   }
-  if (daysObserved >= rules.windowDays && (w.orders || 0) >= rules.scaleMinOrders && w.unknown.length === 0 && w.net !== null && w.net > 0 && all.payback && all.payback.reached) {
+  if (daysObserved >= rules.windowDays && typeof w.orders === 'number' && w.orders >= rules.scaleMinOrders && w.unknown.length === 0 && w.net !== null && w.net > 0 && all.payback && all.payback.reached) {
     return out('scale', [`${w.orders} order(s) in the last ${window.length} day(s), net ${money(w.net)} after refunds, fees, ads and models`, `contribution per order ${money(w.contributionPerOrder)}, model cost per order ${money(w.modelCostPerOrder)}`, `payback reached on ${all.payback.day}`]);
   }
   const why = [];
