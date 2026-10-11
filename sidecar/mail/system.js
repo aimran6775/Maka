@@ -11,6 +11,7 @@
 // Resend holds after the persisted cursor.
 
 import path from 'node:path';
+import { makeEvent } from '../../shared/events.js';
 import { resolveKey } from '../providers/keys.js';
 import { createMailStore } from './store.js';
 import { createAddresses } from './addresses.js';
@@ -21,7 +22,17 @@ import { createClassifier } from './classify.js';
 import { DEFAULT_MAIL_DOMAIN, RESEND_BASE_URL } from './dns.js';
 
 export const MAIL_SYNC_JOB_ID = 'mail-sync';
+// Phase 4 step 6: kinds that never leave the machine (stored straight into a station's
+// mailbox; no Resend, no footer, no ceiling, no classification).
+export const INTERNAL_KINDS = Object.freeze(['briefing']);
 export const DEFAULT_MAIL_POLL_MS = 60_000;
+
+function fail(code, message, status = 400) {
+  const err = new Error(message);
+  err.code = code;
+  err.status = status;
+  return err;
+}
 
 export function createMailSystem({ bus, store, scheduler = null, getLayout, env = process.env, keystorePath, fetch: fetchImpl = globalThis.fetch, clock = { now: () => Date.now() }, workspaceRoot, domain = DEFAULT_MAIL_DOMAIN, pollMs = DEFAULT_MAIL_POLL_MS, resendBaseUrl = RESEND_BASE_URL, ceilings = {}, router = null, makeProvider = undefined, ledger = null, classify = true, log = console } = {}) {
   if (!bus || !store || typeof getLayout !== 'function' || !workspaceRoot) throw new TypeError('createMailSystem needs bus, store, getLayout and workspaceRoot');
@@ -55,7 +66,7 @@ export function createMailSystem({ bus, store, scheduler = null, getLayout, env 
   let classifying = Promise.resolve();
   if (classifier) {
     bus.listen((event) => {
-      if (event.type !== 'mail.message' || event.payload.direction !== 'in' || event.payload.kind === 'unsubscribe') return;
+      if (event.type !== 'mail.message' || event.payload.direction !== 'in' || INTERNAL_KINDS.includes(event.payload.kind) || event.payload.kind === 'unsubscribe') return; // internal mail (a briefing from the Peak) is not classified
       classifyState.queued += 1;
       classifying = classifying
         .then(async () => {
@@ -81,6 +92,30 @@ export function createMailSystem({ bus, store, scheduler = null, getLayout, env 
     classifier,
     classified: () => classifying,
     send: (msg, opts) => policy.send(msg, opts),
+    // Internal mail (phase 4 step 6): from a station address to station addresses only,
+    // stored into each recipient's mailbox as received mail, never sent through Resend.
+    // The reflection's briefings go this way (kind 'briefing'). Refused for any recipient
+    // that is not a station of this park (INTERNAL_ONLY).
+    async deliverInternal({ from, to, subject, text, kind = 'briefing', venture = null, ref = null } = {}) {
+      if (!INTERNAL_KINDS.includes(kind)) throw fail('BAD_REQUEST', `internal mail is one of ${INTERNAL_KINDS.join(', ')}`);
+      if (!from || !subject || typeof text !== 'string') throw fail('BAD_REQUEST', 'internal mail needs from, subject and text');
+      const sender = addresses.get(from);
+      if (!sender || sender.kind !== 'station') throw fail('INTERNAL_ONLY', `${from} is not a station address of this park`, 403);
+      const recipients = [...new Set((Array.isArray(to) ? to : [to]).map((a) => String(a || '').trim().toLowerCase()).filter(Boolean))];
+      if (!recipients.length) throw fail('BAD_REQUEST', 'internal mail needs a recipient');
+      const rules = recipients.map((a) => ({ address: a, rule: addresses.get(a) }));
+      const foreign = rules.filter((r) => !r.rule || r.rule.kind !== 'station' || r.rule.station === 'system');
+      if (foreign.length) throw fail('INTERNAL_ONLY', `internal mail goes to station addresses only; not ${foreign.map((r) => r.address).join(', ')}`, 403);
+      const out = [];
+      for (const { address, rule } of rules) {
+        const record = await mailStore.add({ direction: 'in', from, to: [address], subject, text, station: rule.station, venture, kind, status: 'received', labels: ['internal'], messageId: `<${kind}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@${domain}>`, headers: ref ? { 'X-Maka-Ref': String(ref) } : {} });
+        const payload = { messageId: record.id, threadId: record.threadId, direction: 'in', from, to: [address], subject, station: rule.station, kind };
+        if (venture) payload.venture = venture;
+        bus.emit(makeEvent('mail.message', payload, { ts: clock.now() }));
+        out.push(record);
+      }
+      return out;
+    },
     async init() {
       await mailStore.init();
       await addresses.init();

@@ -1254,3 +1254,17 @@ owner sets once a server has run. A secret that a server takes as an argument (t
 Postgres URL) is written as `$SECRET:NAME` and filled from the keystore when the child
 starts, so no secret value ever reaches `mcp-servers.json`. One click fills the config;
 the Gate still approves it, like a server typed by hand.
+
+## D136. A briefing is internal mail: stored into the station mailbox, never sent
+
+The brief asks for briefings "sent to the department's station address from peak@ via the
+mail system". Sending them through Resend would push an internal note out to the internet
+and back (Resend receives for the domain) and store it twice. Instead the mail system has
+one internal path: a message from a station address to station addresses is written
+straight into each recipient's mailbox as received mail of kind `briefing`, with a
+Message-ID on the domain and the reflection id in a header. Nothing leaves the machine,
+so no footer, no ceiling, no leash and no classification apply, and none of the safety
+fixes on outbound mail (M5, M6) are touched: the path refuses any recipient that is not a
+station address of this park, including the system address and Ranger aliases, and
+internal mail is not mail history for the policy. The notes file stays as the on-disk
+copy the brief kept.

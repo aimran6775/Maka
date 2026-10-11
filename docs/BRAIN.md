@@ -89,6 +89,14 @@ or the hosted URL and parks it at the Gate like any server; a secret that must t
 argument (the Postgres URL) is filled from the keystore when the child starts and never
 written to the config. Part B of phase 4 is done.
 
+Part C step 6 done: the reflection's briefings reach the camps as mail. Each briefing is
+internal mail from `peak@` to the camp's station address, stored straight into that
+mailbox as received mail of kind `briefing` (no Resend send, no footer, no ceiling, no
+classification: nothing leaves the machine), so the camp cards show it in their inbox
+threads and a Ranger with a Radio tower reads it like any station mail; the notes file
+stays the on-disk copy. Internal mail is refused for any recipient that is not a station
+address of the park.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

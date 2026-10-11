@@ -130,7 +130,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       el('div', { class: 'k', text: all ? 'mail · every station' : 'mail · this station' }),
       row('addresses', stationAddrs.length ? stationAddrs.map((a) => `${a.address}${a.agentId ? ` (${a.agentId})` : ''}`).join(', ') : 'none yet'),
       row('inbox', mailCache.threads.length ? `${mailCache.threads.length} thread(s) · ${mailCache.threads.reduce((n, t) => n + t.unread, 0)} unread · by venture: ${Object.entries(byVenture).map(([v, n]) => `${v} ${n}`).join(', ')}` : s.mail.keys && s.mail.keys.resend ? 'no threads yet' : 'Resend not wired (RESEND_API_KEY)'),
-      ...mailCache.threads.slice(0, 8).map((t) => el('div', { class: `use ${t.unread ? 'running' : ''}`, text: `${new Date(t.last).toLocaleDateString()} · ${t.station}${t.venture ? ` · ${t.venture}` : ''} · ${t.subject || '(no subject)'} · ${t.count} msg${t.classification ? ` · ${t.classification}` : ''}` })),
+      ...mailCache.threads.slice(0, 8).map((t) => el('div', { class: `use ${t.unread ? 'running' : ''}`, text: `${new Date(t.last).toLocaleDateString()} · ${t.station}${t.venture ? ` · ${t.venture}` : ''} · ${t.subject || '(no subject)'} · ${t.count} msg${t.kind === 'briefing' ? ' · briefing from the Peak' : ''}${t.classification ? ` · ${t.classification}` : ''}` })),
       row('outbox', mailCache.sent.length ? `${mailCache.sent.length} sent recently` : 'nothing sent yet'),
       ...mailCache.sent.slice(0, 5).map((m) => el('div', { class: `use ${m.status === 'bounced' || m.status === 'complained' ? 'failed' : m.status === 'delivered' ? 'ok' : ''}`, text: `${m.status} · ${m.kind} · to ${m.to.join(', ')} · ${m.subject}` })),
     ];

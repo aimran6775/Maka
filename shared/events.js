@@ -282,6 +282,7 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     ventures: { type: 'array', items: { type: 'object', required: ['id'], additionalProperties: false, properties: { id: nonEmpty, planStillRight: bool, spentUsd: num0, budgetUsd: num0, itemsDone: int0, itemsFailed: int0 } } },
     briefings: { type: 'array', items: nonEmpty },
     path: str,
+    mailed: int0, // phase 4 step 6 (optional): briefings delivered into station mail
   }),
   // Added v1 (phase 2 step 8): the Superintendent left or came back. While away, every
   // Gate item and the other decisions below are appended to the evidence log and the Peak

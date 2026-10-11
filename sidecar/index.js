@@ -110,7 +110,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   Object.assign(registry, chief.tools);
   const scheduler = await createScheduler({ store, log }).init();
   let connectors = null;
-  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router, scheduler, getLayout: layoutState.get, workspaceRoot, env, keystorePath, schedule: { daily: config.reflectAt || '07:00' }, getConnectors: () => connectors, log }).init();
+  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router, scheduler, getLayout: layoutState.get, workspaceRoot, env, keystorePath, schedule: { daily: config.reflectAt || '07:00' }, getConnectors: () => connectors, getMail: () => mail, log }).init();
   scheduler.start();
   away = await createAway({ bus, store, gateQueue, workspaceRoot, log }).init();
   const mailSetup = createMailSetup({ bus, gateQueue, env, keystorePath, domain: config.mailDomain || undefined, region: config.resendRegion || undefined, log });

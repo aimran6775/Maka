@@ -165,7 +165,9 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 
 - Peak → "Reflect now". `reflection.posted` names the ventures and the camps briefed; the
   document under `$MAKA_HOME/reflections/` cites the Stripe / Shopify / ads figures from
-  the syncs and the judge spend; `workspace/_stations/<camp>/notes/` gets a briefing.
+  the syncs and the judge spend; `workspace/_stations/<camp>/notes/` gets a briefing, and
+  (phase 4) the camp's station mailbox gets it as a `briefing` from peak@: click the camp,
+  the inbox lists "Briefing from the Mountain Peak" marked briefing, with no Resend send.
 
 ## 15. Headless park check
 

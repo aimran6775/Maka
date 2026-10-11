@@ -15,7 +15,8 @@
 // a morale note that must cite a number from the data (a note without one is replaced by
 // a plain "no grounded note"), and one briefing per department. The document is stored
 // (reflections/<id>.json, outbox/reflection-<id>.md at the Peak), each briefing is written
-// to its station's notes store (<root>/_stations/<zoneId>/notes/), reflection.posted is
+// to its station's notes store (<root>/_stations/<zoneId>/notes/) and, from phase 4 step 6,
+// delivered as internal mail from peak@ to the camp's station address, reflection.posted is
 // emitted, and the Chief gets a follow-up run to revise the plan and delegate. At the
 // judge daily cap the reflection is skipped and says so.
 //
@@ -97,6 +98,7 @@ export function createReflect({
   store,
   runs,
   getConnectors = null, // () => connectors registry (step 14); its summaries feed the reflection
+  getMail = null, // () => the mail system (phase 4 step 6): briefings go into station mail from peak@
   agents,
   trails,
   chief,
@@ -262,6 +264,30 @@ export function createReflect({
     return lines.join('\n');
   }
 
+  // Phase 4 step 6: each briefing is internal mail from peak@ to the camp's station
+  // address (kind 'briefing'; never through Resend, no footer). The notes file stays the
+  // on-disk copy. A camp with no station address, or no mail system, gets the file only.
+  async function mailBriefings(doc) {
+    const mail = typeof getMail === 'function' ? getMail() : null;
+    if (!mail || typeof mail.deliverInternal !== 'function') return [];
+    const layout = getLayout();
+    const peak = layout.rooms.find((r) => r.kind === 'mountain_peak');
+    const from = peak ? (mail.addresses.forStation(peak.id).find((r) => r.kind === 'station') || {}).address : null;
+    if (!from) return [];
+    const out = [];
+    for (const b of doc.briefings) {
+      const to = (mail.addresses.forStation(b.zoneId).find((r) => r.kind === 'station') || {}).address;
+      if (!to) continue;
+      try {
+        const [record] = await mail.deliverInternal({ from, to, subject: `Briefing from the Mountain Peak (${doc.id})`, text: b.text, kind: 'briefing', ref: doc.id });
+        out.push({ zoneId: b.zoneId, to, messageId: record.id, threadId: record.threadId });
+      } catch (err) {
+        log.error(`briefing mail to ${to} failed:`, err.message);
+      }
+    }
+    return out;
+  }
+
   async function writeBriefings(doc) {
     const written = [];
     for (const b of doc.briefings) {
@@ -324,6 +350,7 @@ export function createReflect({
       const briefings = (parsed.briefings || []).filter((b) => b && zoneIds.has(b.zoneId) && typeof b.text === 'string' && b.text.trim()).map((b) => ({ zoneId: b.zoneId, text: b.text.trim() }));
       const doc = { id, at: data.at, reason, status: 'posted', missionId: data.mission ? data.mission.id : null, provider: p.provider.name, model: p.model, usd, data, portfolio: String(parsed.portfolio).trim(), ventures, briefings, briefingFiles: [], path: '' };
       doc.briefingFiles = await writeBriefings(doc);
+      doc.briefingMail = await mailBriefings(doc);
       const outbox = path.join(workspaceRoot, CHIEF_ID, 'outbox');
       await fsp.mkdir(outbox, { recursive: true });
       const mdPath = path.join(outbox, `${id}.md`);
@@ -331,7 +358,7 @@ export function createReflect({
       doc.path = path.relative(workspaceRoot, mdPath);
       await store.saveReflection(doc);
       latest = summary(doc);
-      emit('reflection.posted', { reflectionId: id, reason, status: 'posted', missionId: doc.missionId || '', provider: doc.provider, model: doc.model, usd, reconciled: usd !== null, portfolio: doc.portfolio.slice(0, 2000), ventures: ventures.map((v) => ({ id: v.id, planStillRight: v.planStillRight, spentUsd: v.spentUsd, budgetUsd: v.budgetUsd, itemsDone: v.itemsDone, itemsFailed: v.itemsFailed })), briefings: briefings.map((b) => b.zoneId), path: doc.path });
+      emit('reflection.posted', { reflectionId: id, reason, status: 'posted', missionId: doc.missionId || '', provider: doc.provider, model: doc.model, usd, reconciled: usd !== null, portfolio: doc.portfolio.slice(0, 2000), ventures: ventures.map((v) => ({ id: v.id, planStillRight: v.planStillRight, spentUsd: v.spentUsd, budgetUsd: v.budgetUsd, itemsDone: v.itemsDone, itemsFailed: v.itemsFailed })), briefings: briefings.map((b) => b.zoneId), path: doc.path, mailed: doc.briefingMail.length });
       // The Chief revises the plan and delegates from the reflection (bounded like any follow-up).
       if (data.mission && data.mission.status !== 'done' && ventures.length) {
         const revisions = ventures.flatMap((v) => v.revisions.map((r) => `${v.id}: ${r}`));
@@ -345,7 +372,7 @@ export function createReflect({
   }
 
   function summary(doc) {
-    return { id: doc.id, at: doc.at, reason: doc.reason, status: doc.status, skipReason: doc.skipReason || null, missionId: doc.missionId || null, model: doc.model || null, usd: doc.usd ?? null, portfolio: (doc.portfolio || '').slice(0, 600), ventures: (doc.ventures || []).map((v) => ({ id: v.id, planStillRight: v.planStillRight, morale: v.morale })), briefings: (doc.briefings || []).map((b) => b.zoneId), path: doc.path || null };
+    return { id: doc.id, at: doc.at, reason: doc.reason, status: doc.status, skipReason: doc.skipReason || null, missionId: doc.missionId || null, model: doc.model || null, usd: doc.usd ?? null, portfolio: (doc.portfolio || '').slice(0, 600), ventures: (doc.ventures || []).map((v) => ({ id: v.id, planStillRight: v.planStillRight, morale: v.morale })), briefings: (doc.briefings || []).map((b) => b.zoneId), mailed: (doc.briefingMail || []).length, path: doc.path || null };
   }
 
   return {

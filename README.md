@@ -310,6 +310,10 @@ are research, the rest outbound messages, editable; a money domain needs the amo
 field). In BUILD, place an Outpost in a camp and pick the server: its Rangers get those
 tools under the leash. Nothing MCP reaches the Chief.
 
+Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
+message in that camp's station mailbox from peak@ (internal, never sent through Resend),
+so the camp card and a Ranger's mail.search show it.
+
 Step 5, the catalog: the Peak's "Catalog" lists seven vetted servers (Filesystem, GitHub,
 Google Drive, Notion, Slack workspace tools, Postgres read-only, Brave Search) with their
 source, what they need and the leash domain proposed per tool; "Add" asks for the params

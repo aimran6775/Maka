@@ -157,10 +157,11 @@ export function createMailStore({ root, clock = { now: () => Date.now() } } = {}
       const by = new Map();
       for (const m of index) {
         if ((station && m.station !== station) || (venture && m.venture !== venture)) continue;
-        const t = by.get(m.threadId) || { threadId: m.threadId, subject: m.subject, station: m.station, venture: m.venture, count: 0, first: m.date, last: m.date, participants: new Set(), labels: new Set(), unread: 0, lastDirection: m.direction, classification: null };
+        const t = by.get(m.threadId) || { threadId: m.threadId, subject: m.subject, station: m.station, venture: m.venture, count: 0, first: m.date, last: m.date, participants: new Set(), labels: new Set(), unread: 0, lastDirection: m.direction, classification: null, kind: m.kind || null };
         t.count += 1;
         t.last = Math.max(t.last, m.date);
         t.lastDirection = m.direction;
+        t.kind = m.kind || t.kind;
         participantsOf(m).forEach((p) => t.participants.add(p));
         m.labels.forEach((l) => t.labels.add(l));
         if (m.direction === 'in' && !m.labels.includes('read')) t.unread += 1;
