@@ -233,8 +233,10 @@ export function createBrowserControl({
     // it as it is, and the Ranger must decide what to do with that. A payment page is the
     // exception (safety L1): it continues only on a hand-back that carried notes, so the
     // Ranger acts on what the Superintendent said and not on a bare "returned".
-    if (last && last.kind === hit.kind && last.url === facts.url && last.status === 'returned' && (hit.kind !== 'payment' || hasNotes(last))) return { ...last, repeated: true };
-    const reason = hit.kind === 'payment' ? `${hit.reason}; say in the notes what was done and whether the Ranger may continue, or it stays parked` : hit.reason;
+    // (A payment page's hand-back counts for the run it was given in, not for a later run
+    // in the same browser session: safety 2026-10-11 M2.)
+    if (last && last.kind === hit.kind && last.url === facts.url && last.status === 'returned' && (hit.kind !== 'payment' || (hasNotes(last) && (last.runId || null) === (runId || null)))) return { ...last, repeated: true };
+    const reason = hit.kind === 'payment' ? `${hit.reason}; say in the notes what was done and whether the Ranger may continue (and the amount you paid, if you paid), or it stays parked` : hit.reason;
     return waitForReturn(session, { runId, signal, kind: hit.kind, reason, url: facts.url, title: facts.title });
   }
 
@@ -249,16 +251,17 @@ export function createBrowserControl({
     emit('browser.handoff', payloadOf(rec));
     session.page.bringToFront();
     return new Promise((resolve) => {
-      const finish = (status, notes) => {
+      const finish = (status, notes, paidUsd = null) => {
         if (rec.status !== 'waiting') return;
         rec.status = status;
         rec.until = clock.now();
         if (notes) rec.notes = notes;
+        if (typeof paidUsd === 'number') rec.paidUsd = paidUsd;
         delete rec.resolve;
         if (signal) signal.removeEventListener('abort', onAbort);
         emit('browser.handoff', payloadOf(rec));
-        record(session.agentId, { ts: rec.until, agentId: session.agentId, runId: rec.runId, action: 'handoff', input: { kind, url }, ok: status === 'returned', status, notes: notes || '' }).catch(() => {});
-        resolve({ handoffId, kind, reason, status, notes: notes || '' });
+        record(session.agentId, { ts: rec.until, agentId: session.agentId, runId: rec.runId, action: 'handoff', input: { kind, url }, ok: status === 'returned', status, notes: notes || '', ...(typeof paidUsd === 'number' ? { paidUsd } : {}) }).catch(() => {});
+        resolve({ handoffId, kind, reason, status, notes: notes || '', ...(typeof paidUsd === 'number' ? { paidUsd } : {}) });
       };
       const onAbort = () => finish('abandoned');
       rec.resolve = finish;
@@ -270,6 +273,7 @@ export function createBrowserControl({
     const p = { handoffId: rec.handoffId, agentId: rec.agentId, status: rec.status, kind: rec.kind, reason: rec.reason, url: rec.url, title: rec.title || '', headless: rec.headless };
     if (rec.runId) p.runId = rec.runId;
     if (rec.notes) p.notes = rec.notes;
+    if (typeof rec.paidUsd === 'number') p.paidUsd = rec.paidUsd;
     return p;
   }
 
@@ -304,14 +308,24 @@ export function createBrowserControl({
     async close() {
       for (const id of [...sessions.keys()]) await closeAgent(id);
     },
-    // The Superintendent finished the step in the window and hands the page back.
-    returnHandoff(handoffId, { notes = '' } = {}) {
+    // The Superintendent finished the step in the window and hands the page back. On a
+    // payment page `paidUsd` is the amount they paid (safety 2026-10-11 M2): the purchase
+    // settles at it; without it the hold settles at the larger of the declared and the
+    // Ranger-reported amounts, never at a figure a Ranger alone put forward.
+    returnHandoff(handoffId, { notes = '', paidUsd = undefined } = {}) {
       const rec = handoffs.get(handoffId);
       if (!rec) throw fail('NOT_FOUND', `no browser handoff ${handoffId}`);
       if (rec.status !== 'waiting') throw fail('NOT_WAITING', `handoff ${handoffId} is already ${rec.status}`);
       // Safety L1: a payment page comes back with explicit notes or not at all.
       if (rec.kind === 'payment' && !(typeof notes === 'string' && notes.trim())) throw fail('NOTES_REQUIRED', `handoff ${handoffId} is a payment page: say in the notes what was done and whether the Ranger may continue`);
-      rec.resolve('returned', typeof notes === 'string' ? notes.trim() : '');
+      let paid = null;
+      if (paidUsd !== undefined && paidUsd !== null && paidUsd !== '') {
+        if (rec.kind !== 'payment') throw fail('BAD_REQUEST', `handoff ${handoffId} is a ${rec.kind} page, not a payment: it takes no paid amount`);
+        const n = typeof paidUsd === 'string' ? Number(paidUsd.replace(/[$,\s]/g, '')) : Number(paidUsd);
+        if (!Number.isFinite(n) || n < 0) throw fail('BAD_REQUEST', 'paidUsd must be a non-negative number: the amount you paid, in USD');
+        paid = Math.round(n * 100) / 100;
+      }
+      rec.resolve('returned', typeof notes === 'string' ? notes.trim() : '', paid);
       return payloadOf(rec);
     },
     handoffs: ({ pendingOnly = false } = {}) => order.map((id) => handoffs.get(id)).filter((r) => r && (!pendingOnly || r.status === 'waiting')).map((r) => ({ ...payloadOf(r), since: r.since, until: r.until || null })),

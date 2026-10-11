@@ -394,6 +394,7 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     reason: str,
     notes: str,
     headless: bool,
+    paidUsd: { type: 'number', minimum: 0 }, // safety 2026-10-11 M2: what the Superintendent paid on a payment page, when they said
   }),
   // Added v1 (phase 2 step 14): a connector sync started / finished / failed / was skipped.
   // `counts` are what the sync brought in (per the connector); nothing is estimated.

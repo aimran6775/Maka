@@ -962,11 +962,11 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
       const id = decodeURIComponent(p.slice('/api/browser/handoff/'.length, -'/return'.length));
       const body = await readJsonBody(req);
       try {
-        return sendJson(res, 200, browser.returnHandoff(id, { notes: typeof body.notes === 'string' ? body.notes.trim() : '' }));
+        return sendJson(res, 200, browser.returnHandoff(id, { notes: typeof body.notes === 'string' ? body.notes.trim() : '', paidUsd: body.paidUsd }));
       } catch (err) {
         if (err.code === 'NOT_FOUND') throw new HttpError(404, err.message, err.code);
         if (err.code === 'NOT_WAITING') throw new HttpError(409, err.message, err.code);
-        if (err.code === 'NOTES_REQUIRED') throw new HttpError(400, err.message, err.code);
+        if (err.code === 'NOTES_REQUIRED' || err.code === 'BAD_REQUEST') throw new HttpError(400, err.message, err.code);
         throw err;
       }
     }

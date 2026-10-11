@@ -284,9 +284,12 @@ refuses every click, type or upload on it, after the hand-back and whatever the 
 like buy / confirm / submit / place order / pay / checkout wherever the page is
 (`PURCHASE_CLICK`), so no order is ever placed by a Ranger, saved card or not. When the Superintendent has paid in the window and handed the page back with notes,
 the Ranger reads the confirmation and files `purchase.receipt` with the order id and the
-total as the page shows them; the receipt and the trace's screenshot go to the outbox, the
-hold becomes money_out spend at the paid amount on that day, and a difference from the
-declared amount is written down. Reconciliation runs after every connector sync against
+total as the page shows them; the receipt and the trace's screenshot go to the outbox (the
+latest read or screenshot, which must be a page on the host the payment was handed off
+on), the hold becomes money_out spend on that day at the amount the Superintendent stated
+on the hand-back, else at the larger of the declared and the reported totals (safety
+2026-10-11 M2: a Ranger reporting $1 on a $900 order reopens no cap room), and a
+difference between the reported and the declared amount is written down. Reconciliation runs after every connector sync against
 connectors that expose the owner's outgoing charges; none of the wired ones does, so a paid
 purchase reads "no charge source" rather than a pretended match (D148). The Peak lists the
 purchases and lets the Superintendent cancel an open one; `purchase.update` carries every
@@ -405,7 +408,10 @@ what the selector resolves to (D154). M1 done: MCP tools are accepted as a snaps
 the server is approved; a later connect's new or changed tool holds itself at the Gate at
 every leash level under outbound_messages until accepted, a rejected one is not a tool of
 the park until it changes again, and read-only counts only without destructiveHint; a
-tool may now hold itself at the Gate through `holdAtGate` (D155).
+tool may now hold itself at the Gate through `holdAtGate` (D155). M2 done: a payment
+hand-back takes the amount the Superintendent paid, a purchase settles at it or else at
+max(declared, reported), the receipt's evidence must be on the handoff's host, and a
+payment hand-back counts for its own run only (D156).
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

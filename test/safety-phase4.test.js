@@ -35,6 +35,9 @@ import { createLayoutState } from '../sidecar/server.js';
 import { createToolGate } from '../sidecar/capability/gate.js';
 import { createMcpManager, domainFor, toolFingerprint, classifyTools } from '../sidecar/mcp/manager.js';
 import { grantsForRun } from '../sidecar/runs.js';
+import { createPurchases } from '../sidecar/purchases.js';
+import { allGrantsFor } from '../shared/world.js';
+import { makeEvent } from '../shared/events.js';
 
 const local = createNetGuard({ allowLocal: true });
 const quiet = { warn() {}, error() {} };
@@ -543,6 +546,152 @@ test('M1: the tools listed when a server is approved are the accepted snapshot; 
     assert.equal(h.gateQueue.pending().filter((it) => it.tool === 'mcp.accept_tools').length, 0, 'nothing new to accept');
   } finally {
     if (again) await again.close();
+    await h.cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------------------
+// M2: the purchase hold settles at what the Superintendent paid, never at a Ranger's figure.
+// ---------------------------------------------------------------------------------------
+
+const PURCHASE = { venture: 'lantern-co', supplierUrl: `${SUPPLIER}/`, items: [{ name: 'Rice paper roll', qty: 2, unitUsd: 450 }], amountUsd: 900 };
+
+async function purchasesHarness() {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-safety4-purchases-'));
+  const store = createStore({ root: path.join(dir, 'home') });
+  await store.init();
+  const bus = createEventBus();
+  const events = [];
+  bus.listen((e) => events.push(e));
+  const clock = fakeClock(Date.UTC(2026, 9, 11, 10));
+  const layout = defaultLayout();
+  layout.objects.push({ id: 'office', kind: 'field_office', roomId: 'ranger-station', x: 2, y: 2 });
+  layout.agents.push({ id: 'driver', name: 'Dee', roomId: 'ranger-station', x: 4, y: 2, role: 'ranger', venture: 'lantern-co' });
+  const layoutState = createLayoutState({ initial: layout, store, bus, clock });
+  const ledger = await createLeashLedger({ store, clock }).init();
+  const leash = defaultLeash();
+  leash.domains.money_out = { level: 'act_free' };
+  leash.domains.browser_control = { level: 'act_free' };
+  const leashState = createLeashState({ initial: leash, store });
+  const gateQueue = await createGateQueue({ bus, store, ledger, leashState, getLayout: layoutState.get, clock }).init();
+  const workspaceRoot = path.join(dir, 'ws');
+  for (const a of layout.agents) await fsp.mkdir(path.join(workspaceRoot, a.id), { recursive: true });
+  const netGuard = createNetGuard({ allowLocal: true });
+  const driver = fakeBrowserDriver();
+  const browser = await createBrowserControl({ bus, workspaceRoot, env: {}, config: { headless: true }, clock, driver, netGuard, log: { error() {} } }).init();
+  const items = [];
+  const trails = { items, cancelled: [], async delegate(spec, { by }) { const item = { id: `work-${items.length + 1}`, status: 'queued', runId: null, ...spec, by }; items.push(item); return item; }, get: (id) => items.find((i) => i.id === id) || null, async cancel(id) { this.cancelled.push(id); return items.find((i) => i.id === id); } };
+  const purchases = await createPurchases({ bus, store, trails, ledger, browser, getLayout: layoutState.get, netGuard, workspaceRoot, clock, log: { error() {} } }).init();
+  const registry = { ...browser.tools, ...purchases.tools };
+  const gateFor = (agentId, runId) => ({
+    gate: createToolGate({ getLayout: layoutState.get, agentId, workspaceDir: path.join(workspaceRoot, agentId), registry, grants: allGrantsFor, toolContext: { browser, netGuard }, getLeash: () => leashState.get(), ledger, submit: { submit: (item) => gateQueue.submit({ ...item, runId, agentId }), log: (item) => gateQueue.log({ ...item, runId, agentId }) } }),
+    ctx: { runId, turn: 1 },
+  });
+  // Starts a purchase and drives it to the cart hand-off; returns the waiting handoff.
+  async function toHandoff(runId) {
+    const p = await purchases.request(PURCHASE, { by: 'superintendent' });
+    bus.emit(makeEvent('agent.run.start', { runId, agentId: 'driver', provider: 'fake', model: 'm', prompt: `PURCHASE ${p.id} for venture lantern-co`, maxTurns: 10, budgetUsd: 0.6, tools: [] }, { ts: clock.now() }));
+    await waitUntil(() => purchases.get(p.id).status === 'driving');
+    const { gate, ctx } = gateFor('driver', runId);
+    assert.equal((await gate.execute({ id: `${runId}-open`, name: 'browser.open', input: { url: `${SUPPLIER}/` } }, ctx)).ok, true);
+    const clicking = gate.execute({ id: `${runId}-add`, name: 'browser.click', input: { text: 'Add to cart' } }, ctx);
+    const waiting = await waitUntil(() => browser.handoffs({ pendingOnly: true })[0]);
+    return { p, gate, ctx, waiting, clicking };
+  }
+  return { bus, events, clock, ledger, gateQueue, browser, driver, purchases, workspaceRoot, gateFor, toHandoff, cleanup: async () => { await purchases.close(); await browser.close(); await fsp.rm(dir, { recursive: true, force: true }); } };
+}
+
+test('M2: declared $900, paid $900, reported $1: the hold settles at $900 (max of declared and reported) when the Superintendent stated no amount, at the stated amount when they did; the hand-back takes paidUsd on payment pages only', async () => {
+  const h = await purchasesHarness();
+  try {
+    // 1. No amount stated on the hand-back: the Ranger's $1 does not reopen cap room.
+    const a = await h.toHandoff('run-a');
+    assert.equal(a.waiting.kind, 'payment');
+    assert.match(a.waiting.reason, /the amount you paid/);
+    h.driver.state.pay();
+    h.browser.returnHandoff(a.waiting.handoffId, { notes: 'paid with the park card' });
+    assert.equal((await a.clicking).ok, true);
+    assert.equal((await a.gate.execute({ id: 'a-read', name: 'browser.read', input: {} }, a.ctx)).ok, true);
+    const filed = await a.gate.execute({ id: 'a-receipt', name: 'purchase.receipt', input: { purchaseId: a.p.id, orderId: 'LS-1001', totalUsd: 1 } }, a.ctx);
+    assert.equal(filed.ok, true, filed.error);
+    assert.equal(JSON.parse(filed.output).paidUsd, 900);
+    const rec = h.purchases.get(a.p.id);
+    assert.deepEqual([rec.paidUsd, rec.receipt.totalUsd, rec.receipt.reportedUsd, rec.receipt.settledBy, rec.receipt.differsFromDeclared], [900, 900, 1, 'declared', -899]);
+    assert.deepEqual(h.ledger.spentToday('money_out'), { usd: 900, actions: 1 });
+    assert.deepEqual(h.ledger.holds(), []);
+    const md = await fsp.readFile(path.join(h.workspaceRoot, 'driver', 'outbox', 'purchases', `${a.p.id}.md`), 'utf8');
+    assert.match(md, /Settled in the ledger: \$900\.00 \(the declared amount, since the reported one was lower/);
+    assert.match(md, /Reported by the Ranger: 1\.00 USD/);
+    // 2. The Superintendent states the amount on the hand-back: that is what settles, high or low.
+    const b = await h.toHandoff('run-b');
+    assert.throws(() => h.browser.returnHandoff(b.waiting.handoffId, { notes: 'paid', paidUsd: -5 }), (e) => e.code === 'BAD_REQUEST');
+    assert.throws(() => h.browser.returnHandoff(b.waiting.handoffId, { notes: 'paid', paidUsd: 'lots' }), (e) => e.code === 'BAD_REQUEST');
+    h.driver.state.pay();
+    const returned = h.browser.returnHandoff(b.waiting.handoffId, { notes: 'paid, the supplier added shipping', paidUsd: '912.40' });
+    assert.equal(returned.paidUsd, 912.4);
+    assert.equal(h.events.filter((e) => e.type === 'browser.handoff').at(-1).payload.paidUsd, 912.4, 'the event carries what was stated');
+    assert.equal((await b.clicking).ok, true);
+    assert.equal((await b.gate.execute({ id: 'b-shot', name: 'browser.screenshot', input: {} }, b.ctx)).ok, true);
+    const filedB = await b.gate.execute({ id: 'b-receipt', name: 'purchase.receipt', input: { purchaseId: b.p.id, orderId: 'LS-1002', totalUsd: 1 } }, b.ctx);
+    assert.equal(filedB.ok, true, filedB.error);
+    const recB = h.purchases.get(b.p.id);
+    assert.deepEqual([recB.paidUsd, recB.receipt.settledBy, recB.receipt.handoffPaidUsd, recB.receipt.reportedUsd], [912.4, 'superintendent', 912.4, 1]);
+    assert.deepEqual(h.ledger.spentToday('money_out'), { usd: 1812.4, actions: 2 });
+    // A stated amount below the declared one is honoured too: the Superintendent saw the page.
+    const c = await h.toHandoff('run-c');
+    h.driver.state.pay();
+    h.browser.returnHandoff(c.waiting.handoffId, { notes: 'paid less: one roll was out of stock', paidUsd: 450 });
+    assert.equal((await c.clicking).ok, true);
+    assert.equal((await c.gate.execute({ id: 'c-read', name: 'browser.read', input: {} }, c.ctx)).ok, true);
+    assert.equal((await c.gate.execute({ id: 'c-receipt', name: 'purchase.receipt', input: { purchaseId: c.p.id, orderId: 'LS-1003', totalUsd: 450 } }, c.ctx)).ok, true);
+    assert.deepEqual([h.purchases.get(c.p.id).paidUsd, h.purchases.get(c.p.id).receipt.settledBy], [450, 'superintendent']);
+    // A reported amount above the declared one, nothing stated: the higher figure settles.
+    const d = await h.toHandoff('run-d');
+    h.driver.state.pay();
+    h.browser.returnHandoff(d.waiting.handoffId, { notes: 'paid' });
+    assert.equal((await d.clicking).ok, true);
+    assert.equal((await d.gate.execute({ id: 'd-read', name: 'browser.read', input: {} }, d.ctx)).ok, true);
+    assert.equal((await d.gate.execute({ id: 'd-receipt', name: 'purchase.receipt', input: { purchaseId: d.p.id, orderId: 'LS-1004', totalUsd: 950 } }, d.ctx)).ok, true);
+    assert.deepEqual([h.purchases.get(d.p.id).paidUsd, h.purchases.get(d.p.id).receipt.settledBy], [950, 'reported']);
+    // paidUsd on a page that is not a payment page is refused.
+    assert.throws(() => h.browser.returnHandoff('hand-none', { notes: 'x', paidUsd: 1 }), (e) => e.code === 'NOT_FOUND');
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('M2: the receipt\'s evidence must be a page on the host the Superintendent paid on; a page elsewhere or no page at all is no receipt', async () => {
+  const h = await purchasesHarness();
+  try {
+    const a = await h.toHandoff('run-a');
+    h.driver.state.pay();
+    h.browser.returnHandoff(a.waiting.handoffId, { notes: 'paid' });
+    assert.equal((await a.clicking).ok, true);
+    // The Ranger's latest page is elsewhere (the click's own trace line is not a read).
+    assert.equal((await a.gate.execute({ id: 'a-elsewhere', name: 'browser.open', input: { url: 'http://elsewhere.test/thanks' } }, a.ctx)).ok, true);
+    assert.equal((await a.gate.execute({ id: 'a-read-elsewhere', name: 'browser.read', input: {} }, a.ctx)).ok, true);
+    const wrong = await a.gate.execute({ id: 'a-receipt', name: 'purchase.receipt', input: { purchaseId: a.p.id, orderId: 'LS-1001', totalUsd: 900 } }, a.ctx);
+    assert.equal(wrong.ok, false);
+    assert.equal(wrong.code, 'EVIDENCE_HOST');
+    assert.match(wrong.error, /on elsewhere\.test, not on supplier\.test/);
+    assert.equal(h.purchases.get(a.p.id).status, 'driving', 'nothing settled');
+    assert.equal(h.ledger.holds().length, 1, 'the hold stands');
+    // Back on the supplier: read the confirmation, and the receipt goes through.
+    assert.equal((await a.gate.execute({ id: 'a-back', name: 'browser.open', input: { url: `${SUPPLIER}/confirmation` } }, a.ctx)).ok, true);
+    assert.equal((await a.gate.execute({ id: 'a-read', name: 'browser.read', input: {} }, a.ctx)).ok, true);
+    const ok = await a.gate.execute({ id: 'a-receipt-2', name: 'purchase.receipt', input: { purchaseId: a.p.id, orderId: 'LS-1001', totalUsd: 900 } }, a.ctx);
+    assert.equal(ok.ok, true, ok.error);
+    assert.equal(h.purchases.get(a.p.id).receipt.evidence.url, `${SUPPLIER}/confirmation`);
+    // No read or screenshot at all on a fresh Ranger trace: refused.
+    const b = await h.toHandoff('run-b');
+    h.driver.state.pay();
+    h.browser.returnHandoff(b.waiting.handoffId, { notes: 'paid' });
+    assert.equal((await b.clicking).ok, true);
+    const trace = await h.browser.trace('driver');
+    assert.ok(trace.some((e) => e.ok && e.action === 'read'), 'an older read is on the trace from the first purchase');
+    const stale = await b.gate.execute({ id: 'b-receipt', name: 'purchase.receipt', input: { purchaseId: b.p.id, orderId: 'LS-1002', totalUsd: 900 } }, b.ctx);
+    assert.equal(stale.ok, true, 'the latest read is still on the supplier host, so it stands (the Ranger shares one trace)');
+  } finally {
     await h.cleanup();
   }
 });

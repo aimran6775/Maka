@@ -1683,3 +1683,21 @@ and a refused tool is not registered or granted at all (stricter than Draft, and
 avoids a card on every reconnect) until it changes again, when it is asked about afresh.
 A server stored before this decision has no snapshot, so all its tools are pending until
 accepted once. Read-only counts only when the tool does not also call itself destructive.
+
+## D156. A purchase settles at what the Superintendent paid, and a Ranger's figure never lowers it
+
+The second safety review (M2) found the hold settled at the total the Ranger reported, so
+a $900 order reported as $1 reopened $899 of cap room, and that the receipt's evidence was
+whatever page the Ranger last read, anywhere. The amount paid is now the Superintendent's
+to state: the payment hand-back takes it (the Peak's card asks for it, the route and the
+browser control carry it, the `browser.handoff` event shows it), and the receipt settles
+the hold at that figure, high or low, because the Superintendent saw the page. Without a
+stated amount the hold settles at the larger of the declared and the reported totals,
+following the review; the reported total is kept on the receipt and the `.md` says which
+rule settled. The evidence must be the latest read or screenshot and a page on the host
+the payment was handed off on; a page elsewhere, or none, is no receipt (the review asked
+for the host; requiring a page at all is the stricter reading, since "none captured" was a
+receipt with no proof). While writing the test it showed that the earlier rule "a returned
+payment page is not re-raised" (L1) was keyed on the browser session, so a second purchase
+by the same Ranger on the same supplier within one session would not have handed off at
+the cart; the suppression now counts for the run the hand-back was given in only.

@@ -238,7 +238,8 @@ export function createPurchases({ bus, store, trails, ledger, browser = null, ge
   }
 
   // The receipt: only the Ranger driving the purchase, only after the Superintendent handed a
-  // payment page back with notes for this run. Settles the hold at the paid amount.
+  // payment page back with notes for this run. Settles the hold at the amount the
+  // Superintendent stated on the hand-back, else at max(declared, reported) (M2).
   async function receipt(input, { agentId, runId = null } = {}) {
     if (!input || typeof input.purchaseId !== 'string') throw fail('BAD_REQUEST', 'purchaseId is required');
     const p = find(input.purchaseId);
@@ -251,30 +252,44 @@ export function createPurchases({ bus, store, trails, ledger, browser = null, ge
     if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) throw fail('BAD_REQUEST', 'currency must be a three-letter code');
     const handedBack = (browser && typeof browser.handoffs === 'function' ? browser.handoffs() : []).find((h) => h.kind === 'payment' && h.status === 'returned' && h.notes && h.agentId === agentId && (!p.runId || h.runId === p.runId || h.runId === runId));
     if (!handedBack) throw fail('NOT_PAID_BY_SUPERINTENDENT', 'no payment page was handed back with notes by the Superintendent for this run; a receipt records the Superintendent\'s payment and nothing else');
-    // Evidence: the trace's latest entry (the confirmation page the Ranger read or shot).
+    // Evidence (safety 2026-10-11 M2): the trace's latest read or screenshot, and it must be
+    // a page on the host the Superintendent paid on (the handoff's), else there is no
+    // receipt: a page elsewhere proves nothing about this order.
+    const handoffHost = supplierHost(handedBack.url) || p.supplierHost;
     let evidence = null;
+    let latest = null;
     if (browser && typeof browser.trace === 'function') {
       const trace = await browser.trace(agentId, { limit: 10 }).catch(() => []);
-      const last = trace.find((e) => e.ok && (e.action === 'read' || e.action === 'screenshot')); // newest first
-      if (last) evidence = { url: last.url || null, title: last.title || null, screenshot: last.screenshot || null, at: last.ts };
+      latest = trace.find((e) => e.ok && (e.action === 'read' || e.action === 'screenshot')) || null; // newest first
+      if (latest) evidence = { url: latest.url || null, title: latest.title || null, screenshot: latest.screenshot || null, at: latest.ts };
     }
-    const totalUsd = Math.round(input.totalUsd * 100) / 100;
+    if (!evidence) throw fail('EVIDENCE_REQUIRED', `no page read or screenshot is on the trace to stand as the receipt's evidence; browser.read and browser.screenshot the confirmation page on ${handoffHost} first`);
+    const evidenceHost = supplierHost(evidence.url);
+    if (!evidenceHost || evidenceHost !== handoffHost) throw fail('EVIDENCE_HOST', `the latest page read or screenshot is on ${evidenceHost || 'no host'}, not on ${handoffHost} where the Superintendent paid; read or screenshot the confirmation page there first`);
+    const reportedUsd = Math.round(input.totalUsd * 100) / 100;
+    // The settled amount (safety 2026-10-11 M2): what the Superintendent said they paid on
+    // the hand-back, else the larger of the declared and the reported amounts, so a Ranger
+    // reporting $1 on a $900 order never reopens cap room.
+    const stated = typeof handedBack.paidUsd === 'number' && Number.isFinite(handedBack.paidUsd) ? Math.round(handedBack.paidUsd * 100) / 100 : null;
+    const totalUsd = stated !== null ? stated : Math.max(p.amountUsd, reportedUsd);
+    const settledBy = stated !== null ? 'superintendent' : totalUsd === reportedUsd && reportedUsd >= p.amountUsd ? 'reported' : 'declared';
     const dir = path.join(workspaceRoot, agentId, 'outbox', 'purchases');
     await fsp.mkdir(dir, { recursive: true });
     const rel = path.posix.join('outbox', 'purchases', `${p.id}.json`);
-    p.receipt = { orderId: input.orderId.trim().slice(0, 120), totalUsd, currency, paidAt: input.paidAt && !Number.isNaN(Date.parse(input.paidAt)) ? new Date(Date.parse(input.paidAt)).toISOString() : new Date(clock.now()).toISOString(), notes: typeof input.notes === 'string' ? input.notes.slice(0, 500) : '', handoffId: handedBack.handoffId, handoffNotes: handedBack.notes, evidence, path: rel };
+    p.receipt = { orderId: input.orderId.trim().slice(0, 120), totalUsd, reportedUsd, settledBy, currency, paidAt: input.paidAt && !Number.isNaN(Date.parse(input.paidAt)) ? new Date(Date.parse(input.paidAt)).toISOString() : new Date(clock.now()).toISOString(), notes: typeof input.notes === 'string' ? input.notes.slice(0, 500) : '', handoffId: handedBack.handoffId, handoffNotes: handedBack.notes, ...(stated !== null ? { handoffPaidUsd: stated } : {}), evidence, path: rel };
     p.paidUsd = totalUsd;
-    if (Math.abs(totalUsd - p.amountUsd) > RECONCILE_TOLERANCE_USD) p.receipt.differsFromDeclared = Math.round((totalUsd - p.amountUsd) * 100) / 100;
+    if (Math.abs(reportedUsd - p.amountUsd) > RECONCILE_TOLERANCE_USD) p.receipt.differsFromDeclared = Math.round((reportedUsd - p.amountUsd) * 100) / 100;
     await writeJsonAtomic(path.join(dir, `${p.id}.json`), { purchase: publicView({ ...p, status: 'paid' }) });
     const md = [
       `# Purchase ${p.id} — ${p.venture}`,
       '',
       `Supplier: ${p.supplierUrl}`,
       `Items: ${p.items.map((it) => `${it.qty} × ${it.name}`).join('; ')}`,
-      `Declared: $${p.amountUsd.toFixed(2)} ${p.currency} · Paid: ${totalUsd.toFixed(2)} ${currency}${p.receipt.differsFromDeclared ? ` (differs from the declared amount by ${p.receipt.differsFromDeclared})` : ''}`,
+      `Declared: $${p.amountUsd.toFixed(2)} ${p.currency} · Reported by the Ranger: ${reportedUsd.toFixed(2)} ${currency}${p.receipt.differsFromDeclared ? ` (differs from the declared amount by ${p.receipt.differsFromDeclared})` : ''}`,
+      `Settled in the ledger: $${totalUsd.toFixed(2)} (${settledBy === 'superintendent' ? 'the amount the Superintendent said they paid' : settledBy === 'reported' ? 'the reported amount, not below the declared one' : 'the declared amount, since the reported one was lower and the Superintendent stated none'})`,
       `Order id: ${p.receipt.orderId} · Paid at: ${p.receipt.paidAt}`,
       `Paid by the Superintendent in the browser window (handoff ${handedBack.handoffId}: "${handedBack.notes}").`,
-      evidence ? `Evidence: ${evidence.url || 'page'}${evidence.screenshot ? ` · screenshot ${evidence.screenshot}` : ''}` : 'Evidence: none captured (read or screenshot the confirmation page before filing)',
+      `Evidence: ${evidence.url}${evidence.screenshot ? ` · screenshot ${evidence.screenshot}` : ''}`,
       p.receipt.notes ? `Notes: ${p.receipt.notes}` : '',
     ].filter((l) => l !== '').join('\n');
     await fsp.writeFile(path.join(dir, `${p.id}.md`), `${md}\n`);
@@ -374,7 +389,7 @@ export function createPurchases({ bus, store, trails, ledger, browser = null, ge
     },
     'purchase.receipt': {
       name: 'purchase.receipt',
-      description: 'File the receipt of a purchase you are driving, after the Superintendent paid on the handed-off payment page and handed it back with notes: the order id, the total and the currency exactly as the confirmation page shows them (browser.read and browser.screenshot it first; the latest is attached as evidence). Writes outbox/purchases/<id>.json and .md and settles the held amount at what was paid.',
+      description: 'File the receipt of a purchase you are driving, after the Superintendent paid on the handed-off payment page and handed it back with notes: the order id, the total and the currency exactly as the confirmation page shows them (browser.read and browser.screenshot it first; the latest is attached as evidence). Writes outbox/purchases/<id>.json and .md and settles the held amount at what the Superintendent said they paid on the hand-back, else at the larger of the declared and the reported totals; the latest read or screenshot must be a page on the supplier where the payment was handed off.',
       inputSchema: {
         type: 'object',
         required: ['purchaseId', 'orderId', 'totalUsd'],

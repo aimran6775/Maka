@@ -324,10 +324,13 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   field. On a supplier that shows "Buy now" or "Buy with Shop Pay" on the product page
   with a saved card, the Ranger's click on it is refused before it happens
   (`PURCHASE_CLICK` in the trace) and no order is placed (safety 2026-10-11 H3).
-- Pay in the window, hand the page back with a note: the Ranger reads the confirmation and
-  files the receipt; `outbox/purchases/<id>.json` and `.md` exist with the screenshot path,
-  today's money_out spend shows the paid amount, the hold is gone, the row says `paid` and
-  "no charge source".
+- Pay in the window, hand the page back with a note and the amount you paid: the Ranger
+  reads the confirmation and files the receipt; `outbox/purchases/<id>.json` and `.md`
+  exist with the screenshot path, today's money_out spend shows the amount you entered
+  (leave it empty and it shows the larger of the declared and the Ranger's reported total;
+  the `.md` says which), the hold is gone, the row says `paid` and "no charge source". A
+  receipt filed while the Ranger's latest page is not on the supplier is refused
+  `EVIDENCE_HOST` (safety 2026-10-11 M2).
 - Cancel an open purchase from the Peak: the work item is cancelled and the hold released.
 - From a Ranger: `purchase.request` at Observe is refused, at Draft it waits at the Gate
   with the amount on the card.
