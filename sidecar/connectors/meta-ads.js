@@ -1,5 +1,6 @@
 // Meta Ads connector (phase 2 step 17): the Marketing API of one ad account, read into
-// the local store (the account, campaigns, the last 7 days of insights); writes are a new
+// the local store (the account, campaigns, the last 7 days of insights; phase 4 step 7: ad
+// sets, ads and creatives too, see meta-ads-sets.js); writes are a new
 // campaign (created PAUSED), a daily budget change and a status change, all money_out
 // with the daily budget as the amount so the daily cap applies. Official API only:
 // https://graph.facebook.com/v21.0, bearer access token (META_ACCESS_TOKEN or keystore
@@ -8,6 +9,8 @@
 //   createMetaAdsClient({ accessToken, adAccountId, fetch, baseUrl })
 //   metaAdsSpec({ baseUrl })   -> a connector spec (camp marketing)
 //   META_ADS_TOOLS
+
+import { META_ADSET_TOOLS, adsetClientCalls, adsetRow, adRow, creativeRow } from './meta-ads-sets.js';
 
 export const META_BASE_URL = 'https://graph.facebook.com/v21.0';
 export const META_SYNC_MS = 15 * 60 * 1000;
@@ -28,7 +31,7 @@ export function adAccountId(id) {
   return s.startsWith('act_') ? s : `act_${s}`;
 }
 
-export function createMetaAdsClient({ accessToken, adAccountId: account, fetch: fetchImpl = globalThis.fetch, baseUrl = META_BASE_URL } = {}) {
+export function createMetaAdsClient({ accessToken, adAccountId: account, pageId = null, fetch: fetchImpl = globalThis.fetch, baseUrl = META_BASE_URL } = {}) {
   const act = adAccountId(account);
   if (!act) throw fail('NO_AD_ACCOUNT', 'Meta Ads needs the ad account id (connectors.meta_ads.adAccountId in config.json or META_AD_ACCOUNT_ID), e.g. "act_123"');
   if (!accessToken) throw new TypeError('createMetaAdsClient needs accessToken');
@@ -56,6 +59,8 @@ export function createMetaAdsClient({ accessToken, adAccountId: account, fetch: 
   }
   const client = {
     account: act,
+    pageId: pageId ? String(pageId) : null, // the Page creatives post as (phase 4 step 7)
+    call,
     accountInfo: () => call('GET', act, { params: { fields: 'id,name,currency,account_status,amount_spent,balance,timezone_name' } }),
     async listAll(p, params = {}, { maxPages = META_MAX_PAGES } = {}) {
       const out = [];
@@ -73,6 +78,7 @@ export function createMetaAdsClient({ accessToken, adAccountId: account, fetch: 
     createCampaign: (body) => call('POST', `${act}/campaigns`, { body }),
     updateCampaign: (id, body) => call('POST', id, { body }),
   };
+  Object.assign(client, adsetClientCalls(client, act)); // phase 4 step 7: ad sets, ads, creatives, images
   return client;
 }
 
@@ -81,7 +87,7 @@ const campaignRow = (c) => ({ id: c.id, name: c.name, status: c.status, effectiv
 const insightRow = (r) => ({ campaignId: r.campaign_id, campaignName: r.campaign_name, spend: Number(r.spend) || 0, impressions: Number(r.impressions) || 0, clicks: Number(r.clicks) || 0, cpc: r.cpc !== undefined ? Number(r.cpc) : null, ctr: r.ctr !== undefined ? Number(r.ctr) : null, results: (r.actions || []).map((a) => ({ type: a.action_type, value: Number(a.value) || 0 })) });
 
 export function emptyMetaAdsData() {
-  return { account: null, campaigns: [], insights: { preset: META_INSIGHTS_PRESET, rows: [] } };
+  return { account: null, campaigns: [], adsets: [], ads: [], creatives: [], insights: { preset: META_INSIGHTS_PRESET, rows: [] } };
 }
 
 export function summarizeMetaAds(data) {
@@ -103,11 +109,11 @@ export function metaAdsSpec({ baseUrl = META_BASE_URL } = {}) {
     syncEveryMs: META_SYNC_MS,
     emptyData: emptyMetaAdsData,
     summarize: summarizeMetaAds,
-    makeClient: ({ token, fetch: fetchImpl, env, config }) => createMetaAdsClient({ accessToken: token.accessToken, adAccountId: (config && config.adAccountId) || env.META_AD_ACCOUNT_ID, fetch: fetchImpl, baseUrl }),
+    makeClient: ({ token, fetch: fetchImpl, env, config }) => createMetaAdsClient({ accessToken: token.accessToken, adAccountId: (config && config.adAccountId) || env.META_AD_ACCOUNT_ID, pageId: (config && config.pageId) || env.META_PAGE_ID || null, fetch: fetchImpl, baseUrl }),
     async sync({ client, data }) {
-      const [account, campaigns, insights] = await Promise.all([client.accountInfo(), client.campaigns(), client.insights()]);
-      const next = { ...data, account: { id: account.id, name: account.name || '', currency: account.currency || '', status: account.account_status, amountSpent: minorToMajor(account.amount_spent), balance: minorToMajor(account.balance), timezone: account.timezone_name || '' }, campaigns: campaigns.map(campaignRow), insights: { preset: META_INSIGHTS_PRESET, rows: insights.map(insightRow) } };
-      return { data: next, counts: { campaigns: next.campaigns.length, active: next.campaigns.filter((c) => c.effectiveStatus === 'ACTIVE').length, insightRows: next.insights.rows.length, spend7d: Number(next.insights.rows.reduce((n, r) => n + r.spend, 0).toFixed(2)) } };
+      const [account, campaigns, insights, adsets, ads, creatives] = await Promise.all([client.accountInfo(), client.campaigns(), client.insights(), client.adsets(), client.ads(), client.creatives()]);
+      const next = { ...data, account: { id: account.id, name: account.name || '', currency: account.currency || '', status: account.account_status, amountSpent: minorToMajor(account.amount_spent), balance: minorToMajor(account.balance), timezone: account.timezone_name || '' }, campaigns: campaigns.map(campaignRow), adsets: adsets.map(adsetRow), ads: ads.map(adRow), creatives: creatives.map(creativeRow), insights: { preset: META_INSIGHTS_PRESET, rows: insights.map(insightRow) } };
+      return { data: next, counts: { campaigns: next.campaigns.length, active: next.campaigns.filter((c) => c.effectiveStatus === 'ACTIVE').length, adsets: next.adsets.length, ads: next.ads.length, creatives: next.creatives.length, insightRows: next.insights.rows.length, spend7d: Number(next.insights.rows.reduce((n, r) => n + r.spend, 0).toFixed(2)) } };
     },
     tools: META_ADS_TOOLS,
   };
@@ -255,4 +261,5 @@ export const META_ADS_TOOLS = Object.freeze({
   'meta_ads.create_campaign': metaAdsCreateCampaign,
   'meta_ads.set_budget': metaAdsSetBudget,
   'meta_ads.set_status': metaAdsSetStatus,
+  ...META_ADSET_TOOLS, // phase 4 step 7
 });

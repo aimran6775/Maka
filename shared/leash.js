@@ -92,6 +92,27 @@ export const TOOL_DOMAINS = deepFreeze({
   'google_ads.create_campaign': 'money_out',
   'google_ads.set_budget': 'money_out',
   'google_ads.set_status': 'money_out',
+  // Phase 4 step 7: below the campaign. Budgets at set level and every activation are
+  // money out with the real amount (an active ad or group spends its set's or campaign's
+  // budget); copy, creatives, structure and image uploads are publishing.
+  'meta_ads.adsets': 'research',
+  'meta_ads.ads': 'research',
+  'meta_ads.creatives': 'research',
+  'meta_ads.create_adset': 'money_out',
+  'meta_ads.set_adset_budget': 'money_out',
+  'meta_ads.set_adset_status': 'money_out',
+  'meta_ads.upload_image': 'publishing',
+  'meta_ads.create_creative': 'publishing',
+  'meta_ads.create_ad': 'publishing',
+  'meta_ads.set_ad_status': 'money_out',
+  'google_ads.ad_groups': 'research',
+  'google_ads.ads': 'research',
+  'google_ads.assets': 'research',
+  'google_ads.create_ad_group': 'publishing',
+  'google_ads.set_ad_group_status': 'money_out',
+  'google_ads.create_rsa': 'publishing',
+  'google_ads.set_ad_status': 'money_out',
+  'google_ads.upload_image_asset': 'publishing',
   // Phase 2 step 13: every browser action is browser_control, reads included (a real
   // browser with the Ranger's cookies is never just research).
   'browser.open': 'browser_control',

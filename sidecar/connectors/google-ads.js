@@ -1,6 +1,7 @@
 // Google Ads connector (phase 2 step 17): the Google Ads API (REST, GAQL through
 // searchStream) of one customer, read into the local store (the customer, campaigns with
-// their budgets, the last 7 days of metrics); writes are a new campaign (a budget plus a
+// their budgets, the last 7 days of metrics; phase 4 step 7: ad groups, ads and image
+// assets too, see google-ads-groups.js); writes are a new campaign (a budget plus a
 // PAUSED campaign), a budget change and a status change, all money_out with the daily
 // budget as the amount. Official API only: https://googleads.googleapis.com/v18, OAuth 2
 // through the framework (GOOGLE_ADS_CLIENT_ID / GOOGLE_ADS_CLIENT_SECRET, scope adwords),
@@ -10,6 +11,8 @@
 //   createGoogleAdsClient({ accessToken, developerToken, customerId, loginCustomerId, fetch, baseUrl })
 //   googleAdsSpec({ baseUrl, authorizeUrl, tokenUrl })  -> a connector spec (camp marketing)
 //   GOOGLE_ADS_TOOLS
+
+import { GOOGLE_AD_GROUP_TOOLS, adGroupClientCalls, adGroupRow, adRow, assetRow, AD_GROUP_QUERY, AD_QUERY, ASSET_QUERY } from './google-ads-groups.js';
 
 export const GOOGLE_ADS_BASE_URL = 'https://googleads.googleapis.com/v18';
 export const GOOGLE_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -61,6 +64,7 @@ export function createGoogleAdsClient({ accessToken, developerToken, customerId:
   }
   const client = {
     customer,
+    call,
     async search(query) {
       const batches = await call('/googleAds:searchStream', { query });
       return (Array.isArray(batches) ? batches : [batches]).flatMap((b) => b.results || []);
@@ -68,6 +72,7 @@ export function createGoogleAdsClient({ accessToken, developerToken, customerId:
     mutateBudgets: (operations) => call('/campaignBudgets:mutate', { operations }),
     mutateCampaigns: (operations) => call('/campaigns:mutate', { operations }),
   };
+  Object.assign(client, adGroupClientCalls(client)); // phase 4 step 7: ad groups, ads, assets
   return client;
 }
 
@@ -75,7 +80,7 @@ const campaignRow = (r) => ({ id: String(r.campaign.id), name: r.campaign.name, 
 const metricRow = (r) => ({ campaignId: String(r.campaign.id), campaignName: r.campaign.name, cost: microsToMajor(r.metrics.costMicros) || 0, impressions: Number(r.metrics.impressions) || 0, clicks: Number(r.metrics.clicks) || 0, conversions: Number(r.metrics.conversions) || 0, conversionsValue: Number(r.metrics.conversionsValue) || 0 });
 
 export function emptyGoogleAdsData() {
-  return { customer: null, campaigns: [], metrics: { range: 'LAST_7_DAYS', rows: [] } };
+  return { customer: null, campaigns: [], adGroups: [], ads: [], assets: [], metrics: { range: 'LAST_7_DAYS', rows: [] } };
 }
 
 export function summarizeGoogleAds(data) {
@@ -99,10 +104,10 @@ export function googleAdsSpec({ baseUrl = GOOGLE_ADS_BASE_URL, authorizeUrl = GO
     summarize: summarizeGoogleAds,
     makeClient: async ({ token, fetch: fetchImpl, env, config, keys }) => createGoogleAdsClient({ accessToken: token.accessToken, developerToken: await keys.get('googleAdsDeveloperToken'), customerId: (config && config.customerId) || env.GOOGLE_ADS_CUSTOMER_ID, loginCustomerId: (config && config.loginCustomerId) || env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || null, fetch: fetchImpl, baseUrl }),
     async sync({ client, data }) {
-      const [customer, campaigns, metrics] = await Promise.all([client.search(CUSTOMER_QUERY), client.search(CAMPAIGN_QUERY), client.search(METRICS_QUERY)]);
+      const [customer, campaigns, metrics, adGroups, ads, assets] = await Promise.all([client.search(CUSTOMER_QUERY), client.search(CAMPAIGN_QUERY), client.search(METRICS_QUERY), client.search(AD_GROUP_QUERY), client.search(AD_QUERY), client.search(ASSET_QUERY)]);
       const c = customer[0] && customer[0].customer ? customer[0].customer : {};
-      const next = { ...data, customer: { id: String(c.id || client.customer), name: c.descriptiveName || '', currency: c.currencyCode || '', timezone: c.timeZone || '' }, campaigns: campaigns.map(campaignRow), metrics: { range: 'LAST_7_DAYS', rows: metrics.map(metricRow) } };
-      return { data: next, counts: { campaigns: next.campaigns.length, enabled: next.campaigns.filter((x) => x.status === 'ENABLED').length, metricRows: next.metrics.rows.length, cost7d: Number(next.metrics.rows.reduce((n, r) => n + r.cost, 0).toFixed(2)) } };
+      const next = { ...data, customer: { id: String(c.id || client.customer), name: c.descriptiveName || '', currency: c.currencyCode || '', timezone: c.timeZone || '' }, campaigns: campaigns.map(campaignRow), adGroups: adGroups.map(adGroupRow), ads: ads.map(adRow), assets: assets.map(assetRow), metrics: { range: 'LAST_7_DAYS', rows: metrics.map(metricRow) } };
+      return { data: next, counts: { campaigns: next.campaigns.length, enabled: next.campaigns.filter((x) => x.status === 'ENABLED').length, adGroups: next.adGroups.length, ads: next.ads.length, assets: next.assets.length, metricRows: next.metrics.rows.length, cost7d: Number(next.metrics.rows.reduce((n, r) => n + r.cost, 0).toFixed(2)) } };
     },
     tools: GOOGLE_ADS_TOOLS,
   };
@@ -253,4 +258,5 @@ export const GOOGLE_ADS_TOOLS = Object.freeze({
   'google_ads.create_campaign': googleAdsCreateCampaign,
   'google_ads.set_budget': googleAdsSetBudget,
   'google_ads.set_status': googleAdsSetStatus,
+  ...GOOGLE_AD_GROUP_TOOLS, // phase 4 step 7
 });

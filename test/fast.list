@@ -43,3 +43,4 @@ test/discord-slack.test.js
 test/mcp.test.js
 test/mcp-catalog.test.js
 test/briefings.test.js
+test/ads-creatives.test.js

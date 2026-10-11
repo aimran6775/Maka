@@ -125,13 +125,13 @@ test('the Notice board grants the ad tools; Meta Ads syncs the account, campaign
   assert.equal(ENV_VARS.metaAds, 'META_ACCESS_TOKEN');
   assert.equal(ENV_VARS.googleAdsDeveloperToken, 'GOOGLE_ADS_DEVELOPER_TOKEN');
   assert.deepEqual(OBJECT_KINDS.notice_board.grants, ['connector.status', 'connector.sync', ...Object.keys(META_ADS_TOOLS), ...Object.keys(GOOGLE_ADS_TOOLS)]);
-  for (const name of [...Object.keys(META_ADS_TOOLS), ...Object.keys(GOOGLE_ADS_TOOLS)]) assert.equal(TOOL_DOMAINS[name], /create|set_/.test(name) ? 'money_out' : 'research', name);
+  for (const name of [...Object.keys(META_ADS_TOOLS), ...Object.keys(GOOGLE_ADS_TOOLS)]) assert.equal(TOOL_DOMAINS[name], /upload|create_creative|create_ad$|create_ad_group|create_rsa/.test(name) ? 'publishing' : /create|set_/.test(name) ? 'money_out' : 'research', name);
   assert.equal(summarizeMetaAds(null), null);
   const fake = await startFakeMetaAds();
   const h = await harness({ meta: fake });
   try {
     assert.equal(h.connectors.status('meta_ads').connected, true);
-    assert.deepEqual((await h.connectors.sync('meta_ads', 'manual')).counts, { campaigns: 2, active: 1, insightRows: 1, spend7d: 84.5 });
+    assert.deepEqual((await h.connectors.sync('meta_ads', 'manual')).counts, { campaigns: 2, active: 1, adsets: 2, ads: 1, creatives: 1, insightRows: 1, spend7d: 84.5 });
     const data = h.connectors.data('meta_ads');
     assert.equal(data.account.amountSpent, 123.45);
     assert.equal(data.campaigns[0].dailyBudget, 20);
@@ -196,7 +196,7 @@ test('Google Ads from a keystore token: the sync reads the customer, campaigns w
     const st = h.connectors.status('google_ads');
     assert.equal(st.connected, true);
     assert.equal(st.auth, 'oauth2');
-    assert.deepEqual((await h.connectors.sync('google_ads', 'manual')).counts, { campaigns: 2, enabled: 1, metricRows: 1, cost7d: 61.25 });
+    assert.deepEqual((await h.connectors.sync('google_ads', 'manual')).counts, { campaigns: 2, enabled: 1, adGroups: 1, ads: 1, assets: 1, metricRows: 1, cost7d: 61.25 });
     const data = h.connectors.data('google_ads');
     assert.equal(data.customer.name, 'Lantern Co');
     assert.equal(data.campaigns[0].dailyBudget, 15);

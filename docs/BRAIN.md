@@ -234,7 +234,8 @@ Ranger's tools and the reflection read from there. A Notice board placed in the 
 grants the reads (research) and the money: a new campaign (always created paused), a
 daily budget change and an activation are money_out with the daily budget as the amount,
 so the Gate item and the ledger carry the figure and the daily cap applies; pausing
-moves nothing. Ad sets, ad groups and creatives are not managed in this build.
+moves nothing. Phase 4 step 7 added the level below: ad sets, ads and creatives for Meta,
+ad groups, responsive search ads and image assets for Google (see below).
 
 Phase 2 step 16 done: the storefronts. Shopify (a custom app's Admin API token and the
 shop domain) and Etsy (an OAuth sign-in approved at the Gate, the app keystring as the
