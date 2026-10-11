@@ -399,6 +399,10 @@ export function createRunManager({
           await finish(outcome);
           return outcome;
         })();
+        // The run leaves `running` before its end listeners are awaited, so another run's
+        // pump() can resolve `idle` while this one's listeners (the trails closing a work
+        // item, say) still work; tracking the whole lifecycle keeps waitForIdle honest.
+        track(done);
         active.done = done;
         entry.done = done;
         return done;

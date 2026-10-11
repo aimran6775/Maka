@@ -1806,3 +1806,11 @@ match and the rows it writes are the record of that day.
   Claude Code session on the owner's Mac; docs/MAC_HANDOFF.md is its brief and
   scripts/mac-bootstrap.sh prepares the machine with everything on the LaCie (APFS/HFS+
   required for the 0600 keystore).
+
+## D165. The data home may sit inside a git checkout; the repo ignores it
+
+The owner kept the LaCie ExFAT (`mac-bootstrap.sh --keep-exfat`), so `MAKA_HOME` is
+`~/Maka/home` on the internal disk — and the owner's internal-disk clone of this repo is
+`~/Maka` itself, which puts the keystore inside a checkout. `.gitignore` now ignores
+`/home/` at the repo root so a stray `git add .` there can never stage the keystore or the
+ledgers. The sidecar's own 0600 check still guards the file itself.

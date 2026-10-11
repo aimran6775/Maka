@@ -82,7 +82,8 @@ test('stdio client against the fake server: initialize, paged and sanitised tool
   const env = JSON.parse((await client.callTool('env_check', {})).text);
   assert.equal(env.FAKE_SECRET, 's3cret');
   assert.equal(env.LEAKED, null);
-  assert.deepEqual(env.keys, ['FAKE_SECRET', 'PATH'], 'the child gets the named variables and nothing of the sidecar\'s environment');
+  // macOS's loader injects __CF_USER_TEXT_ENCODING into every child; it is not ours to pass or withhold.
+  assert.deepEqual(env.keys.filter((k) => k !== '__CF_USER_TEXT_ENCODING'), ['FAKE_SECRET', 'PATH'], 'the child gets the named variables and nothing of the sidecar\'s environment');
   const resources = await client.listResources();
   assert.deepEqual(resources, [{ uri: 'fake://notes/today', name: 'Today', description: "The day's notes", mimeType: 'text/plain' }]);
   assert.equal((await client.readResource('fake://notes/today')).text, 'buy lanterns');
@@ -232,7 +233,8 @@ test('the manager: a server is added through the Gate (reject stores nothing; ap
     assert.match(h.registry['mcp.fake.echo'].description, /^\[Fake MCP via MCP\] Echoes the text back\./);
     const env = JSON.parse((await h.registry['mcp.fake.env_check'].run({}, {})).output);
     assert.equal(env.FAKE_SECRET, 'hush');
-    assert.deepEqual(env.keys, ['FAKE_SECRET', 'PATH'], 'only the named variables (the harness env has no HOME to pass on)');
+    // macOS's loader injects __CF_USER_TEXT_ENCODING into every child; it is not ours to pass or withhold.
+    assert.deepEqual(env.keys.filter((k) => k !== '__CF_USER_TEXT_ENCODING'), ['FAKE_SECRET', 'PATH'], 'only the named variables (the harness env has no HOME to pass on)');
     // Leash overrides: a money mapping needs an amount reading.
     await assert.rejects(h.mcp.setLeash('fake', { tool: 'pay', domain: 'money_out' }), (e) => e.code === 'AMOUNT_REQUIRED');
     await assert.rejects(h.mcp.setLeash('fake', { tool: 'pay', domain: 'teleport' }), (e) => e.code === 'BAD_REQUEST');

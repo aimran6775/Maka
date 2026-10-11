@@ -26,7 +26,7 @@ class SandboxError extends Error {
   }
 }
 
-async function realpathExisting(p) {
+export async function realpathExisting(p) {
   // Real path of the deepest existing ancestor of p, plus the remaining relative tail.
   let cur = p;
   const tail = [];

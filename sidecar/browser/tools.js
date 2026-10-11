@@ -9,6 +9,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { defaultNetGuard } from '../netguard.js';
+import { realpathExisting } from '../capability/tools.js';
 
 // Safety H1: a Ranger's browser only opens public URLs (never the sidecar, the LAN or
 // loopback); sidecar/browser/control.js checks the page it lands on after every action.
@@ -50,8 +51,10 @@ function describeTarget(input) {
 }
 
 async function insideWorkspace(ctx, p) {
+  // A missing file must compare by its deepest existing ancestor's real path, or a
+  // workspace under a symlinked root (macOS /var -> /private/var) reads as an escape.
   const abs = path.resolve(ctx.workspaceDir, p);
-  const rel = path.relative(await fsp.realpath(ctx.workspaceDir), await fsp.realpath(abs).catch(() => abs));
+  const rel = path.relative(await fsp.realpath(ctx.workspaceDir), await realpathExisting(abs));
   if (rel.startsWith('..') || path.isAbsolute(rel)) throw Object.assign(new Error(`${p} is outside the workspace`), { code: 'SANDBOX' });
   return abs;
 }

@@ -91,7 +91,9 @@ async function main() {
   // says `webgpu` and frames had draw calls), or the device was lost at the first present
   // (headless Chromium's software WebGPU cannot present to a canvas) and the park restarted
   // on WebGL2 saying so; the errors the lost device produced are then expected and listed.
-  const lostErrors = errors.filter((e) => /Device Lost|Instance dropped|Instance reference no longer exists/.test(e));
+  // The loss also cascades as "GPUValidationError ... due to a previous error" on some
+  // Chromes (macOS): consequences of the same loss, expected on the device-lost path only.
+  const lostErrors = errors.filter((e) => /Device Lost|Instance dropped|Instance reference no longer exists|GPUValidationError[\s\S]*due to a previous error/.test(e));
   const otherErrors = errors.filter((e) => !lostErrors.includes(e));
   let rendererOk;
   let unexpectedErrors = errors;

@@ -30,5 +30,7 @@ if (unlisted.length) {
   process.exit(2);
 }
 
-const result = spawnSync(process.execPath, ['--test', ...files], { cwd: root, stdio: 'inherit' });
+// --test-force-exit: a failing test that leaves a child process or socket open must fail
+// the gate, not hang it (seen on macOS: a thrown assertion skipped a client.close()).
+const result = spawnSync(process.execPath, ['--test', '--test-force-exit', ...files], { cwd: root, stdio: 'inherit' });
 process.exit(result.status ?? 1);

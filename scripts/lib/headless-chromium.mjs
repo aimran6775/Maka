@@ -3,14 +3,14 @@
 // step 15). Finds the binary, launches it with a throwaway profile, connects, and cleans up.
 //
 //   CHROMIUM=/path/to/chromium   the binary or a directory holding one
-//   (default: /opt/pw-browsers/chromium or `chromium` on PATH)
+//   (default: the sidecar's known install locations — Playwright's folder, the macOS app
+//   bundles, /usr/bin — then `chromium` on PATH)
 
 import { spawn } from 'node:child_process';
 import { promises as fsp } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-
-const CHROMIUM = process.env.CHROMIUM || '/opt/pw-browsers/chromium';
+import { findChromium as findInstalled } from '../../sidecar/browser/cdp.js';
 
 // The flags the park check always uses: software GL, no sandbox, a fixed window.
 export const BASE_FLAGS = Object.freeze(['--headless=new', '--no-sandbox', '--disable-gpu', '--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--window-size=1280,800']);
@@ -19,47 +19,10 @@ export const BASE_FLAGS = Object.freeze(['--headless=new', '--no-sandbox', '--di
 // Dawn). A loopback page is a secure context, so `navigator.gpu` appears with them.
 export const WEBGPU_FLAGS = Object.freeze(['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader', '--enable-features=Vulkan']);
 
+// The sidecar's discovery ($CHROMIUM, then the known install locations, macOS app
+// bundles included); `chromium` on PATH stays the last resort for Linux images.
 export async function findChromium() {
-  for (const p of [CHROMIUM, path.join(CHROMIUM, 'chrome'), path.join(CHROMIUM, 'chromium')]) {
-    try {
-      const st = await fsp.stat(p);
-      if (st.isFile()) return p;
-      if (st.isDirectory()) {
-        for (const name of await fsp.readdir(p)) {
-          if (/^chrom/.test(name)) {
-            const inner = await findChromiumIn(path.join(p, name));
-            if (inner) return inner;
-          }
-        }
-      }
-    } catch {
-      /* next */
-    }
-  }
-  return 'chromium';
-}
-
-async function findChromiumIn(dir) {
-  try {
-    const st = await fsp.stat(dir);
-    if (st.isFile()) return dir;
-    for (const name of await fsp.readdir(dir)) {
-      if (name === 'chrome' || name === 'chromium' || name === 'headless_shell') {
-        const f = path.join(dir, name);
-        if ((await fsp.stat(f)).isFile()) return f;
-      }
-    }
-    for (const name of await fsp.readdir(dir)) {
-      const sub = path.join(dir, name);
-      if ((await fsp.stat(sub)).isDirectory()) {
-        const found = await findChromiumIn(sub);
-        if (found) return found;
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  return null;
+  return (await findInstalled()) || 'chromium';
 }
 
 // Minimal CDP client over the global WebSocket.
