@@ -8,7 +8,7 @@ prints the sequence before anything runs. What was validated where:
 | Where | What |
 | --- | --- |
 | Linux (this repository's CI, no Xcode) | `npm run test:fast` (212 tests incl. the release scripts in dry run, the Node bundling against a fake nodejs.org, the shell's config and icons), `npm run shell:check` (`cargo check --target aarch64-apple-darwin` of `src-tauri/` and the host tests of the credential store, the broker and the HTTP client), `npm run demo`, `npm run demo:phase4`, `node scripts/park-check.mjs` |
-| The Mac (this runbook) | `cargo test` in `src-tauri/` (incl. the Keychain), the build, signing, notarization, the smoke launch, the clean-account launch, publishing, the updater |
+| The Mac (this runbook) | `cargo test` in `src-tauri/` (incl. the Keychain) and `npm run shell:check` — verified on the owner's Mac 2026-10-11 (20 + 16 tests). Still to verify here: the build, signing, notarization, the smoke launch, the clean-account launch, publishing, the updater |
 
 ## 0. One-time setup on the Mac
 

@@ -16,4 +16,9 @@ path = "src/lib.rs"
 serde_json = "=1.0.152"
 serde = { version = "=1.0.229", features = ["derive"] }
 
+# credentials.rs is included by path; its #[cfg(target_os = "macos")] keychain module
+# needs the same pinned dependency as the shell (on Linux the cfg compiles it out).
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "=3.7.0"
+
 [workspace]
