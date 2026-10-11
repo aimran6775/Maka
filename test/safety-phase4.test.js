@@ -16,7 +16,7 @@ import { gateButtonData } from '../sidecar/channels/adapter.js';
 import { createTelegramAdapter } from '../sidecar/channels/telegram.js';
 import { createSlackAdapter } from '../sidecar/channels/slack.js';
 import { createDiscordAdapter } from '../sidecar/channels/discord.js';
-import { createNetGuard } from '../sidecar/netguard.js';
+import { createNetGuard, guardedFetch, initWithoutCredentials, CREDENTIAL_HEADERS } from '../sidecar/netguard.js';
 import { defaultLeash } from '../shared/leash.js';
 import { defaultLayout } from '../shared/world.js';
 import { fakeChannel } from './helpers/fake-channel.js';
@@ -910,4 +910,40 @@ test('M4: the preview shows the whole persona and the whole instructions; the im
     await srv.close();
     await h.cleanup();
   }
+});
+
+// ---------------------------------------------------------------------------------------
+// L1: a redirect onto another host does not carry the credentials.
+// ---------------------------------------------------------------------------------------
+
+test('L1: guardedFetch drops Authorization, Cookie, mcp-session-id and api-key headers when a redirect changes the host; a same-host hop keeps them', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, headers: { ...init.headers } });
+    if (url === 'https://mcp.example/mcp') return new Response('', { status: 307, headers: { location: 'https://other.example/mcp' } });
+    if (url === 'https://mcp.example/same') return new Response('', { status: 307, headers: { location: 'https://mcp.example/landed' } });
+    if (url === 'https://api.example/a') return new Response('', { status: 302, headers: { location: 'https://cdn.example/b' } });
+    if (url === 'https://cdn.example/b') return new Response('', { status: 302, headers: { location: 'https://api.example/c' } });
+    return new Response('ok', { status: 200 });
+  };
+  const guard = createNetGuard({ allowLocal: false, lookup: async () => [{ address: '93.184.216.34', family: 4 }] });
+  const init = { method: 'POST', headers: { authorization: 'Bearer secret-1', 'mcp-session-id': 'sess-9', cookie: 'a=b', 'x-api-key': 'k', 'content-type': 'application/json' }, body: '{}' };
+  // The review's scenario: an MCP server redirects to another host.
+  assert.equal(await (await guardedFetch('https://mcp.example/mcp', init, { fetch: fetchImpl, guard })).text(), 'ok');
+  assert.deepEqual(calls.map((c) => c.url), ['https://mcp.example/mcp', 'https://other.example/mcp']);
+  assert.deepEqual(calls[0].headers, init.headers, 'the first host gets everything');
+  assert.deepEqual(calls[1].headers, { 'content-type': 'application/json' }, 'the other host gets no credential');
+  calls.length = 0;
+  await guardedFetch('https://mcp.example/same', init, { fetch: fetchImpl, guard });
+  assert.deepEqual(calls[1].headers, init.headers, 'a hop on the same host keeps them');
+  // Back to the first host after a detour: the credentials return only to that host.
+  calls.length = 0;
+  await guardedFetch('https://api.example/a', init, { fetch: fetchImpl, guard });
+  assert.deepEqual(calls.map((c) => [c.url, Boolean(c.headers.authorization)]), [['https://api.example/a', true], ['https://cdn.example/b', false], ['https://api.example/c', true]]);
+  // A Headers instance and a header list are handled too; the body and method stay.
+  calls.length = 0;
+  await guardedFetch('https://mcp.example/mcp', { method: 'POST', headers: new Headers({ Authorization: 'Bearer x', Accept: 'text/plain' }), body: 'b' }, { fetch: fetchImpl, guard });
+  assert.deepEqual(calls[1].headers, { accept: 'text/plain' });
+  assert.deepEqual(Object.keys(initWithoutCredentials({ headers: [['Cookie', 'c'], ['X-Api-Key', 'k'], ['Accept', 'a']] }).headers), ['accept']);
+  assert.deepEqual(CREDENTIAL_HEADERS.slice(0, 4), ['authorization', 'proxy-authorization', 'cookie', 'mcp-session-id']);
 });

@@ -189,11 +189,43 @@ export function defaultNetGuard() {
 
 // GET with every redirect hop checked by the guard. Resolves with the final Response
 // (a 3xx without a Location is returned as is). Throws NET_GUARD / TOO_MANY_REDIRECTS.
+// Headers that are a credential or a session for the host they were meant for; a redirect
+// onto another host does not get them (safety 2026-10-11 L1: a cross-host redirect from an
+// MCP server or a Bot API host would otherwise carry the bearer along).
+export const CREDENTIAL_HEADERS = Object.freeze(['authorization', 'proxy-authorization', 'cookie', 'mcp-session-id', 'x-api-key', 'api-key', 'x-auth-token', 'x-goog-api-key', 'x-amz-security-token']);
+
+function plainHeaders(h) {
+  const out = {};
+  if (!h) return out;
+  if (typeof h.forEach === 'function' && !Array.isArray(h)) h.forEach((v, k) => { out[String(k).toLowerCase()] = v; });
+  else if (Array.isArray(h)) for (const [k, v] of h) out[String(k).toLowerCase()] = v;
+  else for (const [k, v] of Object.entries(h)) out[String(k).toLowerCase()] = v;
+  return out;
+}
+
+// The request init for a hop on another host: the credential headers dropped.
+export function initWithoutCredentials(init = {}) {
+  const headers = plainHeaders(init.headers);
+  for (const k of CREDENTIAL_HEADERS) delete headers[k];
+  return { ...init, headers };
+}
+
+const hostOf = (u) => {
+  try {
+    return new URL(u).host.toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
 export async function guardedFetch(url, init = {}, { fetch: fetchImpl = globalThis.fetch, guard = defaultNetGuard(), maxRedirects = DEFAULT_MAX_REDIRECTS } = {}) {
   let current = url instanceof URL ? url.toString() : String(url);
+  const firstHost = hostOf(current);
   for (let hop = 0; ; hop++) {
     await guard.assert(current);
-    const res = await fetchImpl(current, { ...init, redirect: 'manual' });
+    // The credentials travel to the host they were given for and to no other (L1).
+    const hopInit = hostOf(current) === firstHost ? init : initWithoutCredentials(init);
+    const res = await fetchImpl(current, { ...hopInit, redirect: 'manual' });
     const location = res.headers && typeof res.headers.get === 'function' ? res.headers.get('location') : null;
     if (!REDIRECT_STATUSES.includes(res.status) || !location) return res;
     if (hop >= maxRedirects) throw fail('TOO_MANY_REDIRECTS', `more than ${maxRedirects} redirects from ${url}`);

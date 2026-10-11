@@ -1737,3 +1737,14 @@ Peak and enables on a card, so the hidden line is seen before it reaches a promp
 import attaches it to nobody. The alternative, keeping the instructions in the persona
 behind a full preview, was rejected because a preview is read once and a persona runs on
 every turn; D150 stands for everything else.
+
+## D159. A credential travels to the host it was given for, and to no other
+
+The second safety review (L1) found `guardedFetch` re-sending the whole request, headers
+included, on every redirect hop, so an MCP server or a Bot API host redirecting to another
+host handed that host the bearer and the session id. Fetch's own behaviour on cross-origin
+redirects (dropping Authorization) is the model, applied by name rather than by trust in
+the runtime: a fixed list of credential headers is dropped for any hop whose host is not
+the one the request was made to, and comes back for a hop that returns there. The list
+rather than "drop everything but content negotiation" keeps a server's own non-secret
+headers working across its redirects; the list is exported so a reviewer can read it.

@@ -428,6 +428,9 @@ the specialty (D157).
 M4 done: an import follows no symbolic link, keeps the workspace inside the home, previews
 everything, and turns the home's instructions into a skill the owner enables rather than
 persona (D158).
+L1 done: the guarded fetch sends credential headers (the bearer, the cookie, the MCP
+session id, api keys) to the host the request was made to and to no redirect hop on
+another host.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release
