@@ -35,7 +35,7 @@ import { seal, open as openSnapshot, keyFromHex, newKeyHex } from './archive.js'
 export const DEFAULT_AT = '03:00';
 export const DEFAULT_PREFIX = 'maka';
 export const JOB_ID = 'backup';
-export const HOME_FILES = Object.freeze(['spend.json', 'leash-ledger.json', 'leash.json', 'layout.json', 'gate-items.json', 'work-items.json', 'mission.json', 'plan.json', 'away.json', 'mail-addresses.json', 'scheduler.json', 'setup.json']);
+export const HOME_FILES = Object.freeze(['spend.json', 'leash-ledger.json', 'leash.json', 'layout.json', 'gate-items.json', 'work-items.json', 'mission.json', 'plan.json', 'away.json', 'mail-addresses.json', 'scheduler.json', 'setup.json', 'channels.json']);
 export const HOME_DIRS = Object.freeze(['reflections', 'connectors']);
 export const MAX_SNAPSHOT_BYTES = 512 * 1024 * 1024;
 

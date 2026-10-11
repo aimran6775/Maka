@@ -83,6 +83,16 @@ export const CHIEF_SYSTEM_PROMPT = [
   'Budgets are model-spend budgets in USD; stay within the mission budget. Keep briefs concrete: what to produce, where the evidence must come from, what not to do.',
 ].join('\n');
 
+// Phase 4 step 1: "ask the Peak" from an owner channel. The Chief answers one question
+// from the recorded data it is handed, with no tools (nothing can change from a chat
+// message) and a small bound on turns and spend.
+export const ASK_SYSTEM_PROMPT = [
+  'You are the Chief Ranger at the Mountain Peak of Maka. The Superintendent (the owner) asks you a question from their phone.',
+  'Answer from the recorded data below only. Where a figure is missing say "unknown"; never estimate revenue, orders or results, never promise outcomes.',
+  'You have no tools in this run: you cannot plan, hire, delegate or change anything. If the question asks for an action, say what you would do and that it needs the park or a mission.',
+  'Keep the answer short (a few sentences or a short list) and cite the numbers you use.',
+].join('\n');
+
 const SPECIALTY_LINES = SPECIALTY_NAMES.map((k) => `- ${k}: ${SPECIALTIES[k].label}, camp "${ZONE_LABELS[SPECIALTIES[k].zoneKind]}"`).join('\n');
 
 function fail(code, message, status = 400) {
@@ -292,6 +302,33 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
       return { mission: { ...mission }, runId: started ? started.runId : null, queued: started ? started.queued : false };
     },
     followUp,
+    // One question, one bounded tool-less run on the Chief's model; the answer resolves
+    // when the run ends. `context` is reflect.gather()'s document when the caller has it.
+    async ask({ question, context = null, by = 'channel' } = {}) {
+      if (typeof question !== 'string' || !question.trim()) throw fail('BAD_REQUEST', 'a question is required');
+      await agents.ensureChief();
+      const cap = judgeCapReason();
+      if (cap) throw fail('JUDGE_CAP', cap, 429);
+      if (runs.activeFor(CHIEF_ID) || runs.queued().some((r) => r.agentId === CHIEF_ID)) throw fail('CONFLICT', 'the Chief Ranger is in a run; ask again when it ends', 409);
+      const facts = [];
+      if (mission) facts.push(`Mission ${mission.id} (${mission.status}${mission.reason ? `, ${mission.reason}` : ''}): ${mission.text.slice(0, 600)}; budget $${mission.budgetUsd.toFixed(2)}, horizon ${mission.horizon}.`);
+      else facts.push('No mission has been given yet.');
+      if (plan) facts.push(`Plan v${plan.version}: ${plan.summary.slice(0, 800)}`);
+      if (context && typeof context === 'object') {
+        if (typeof context.missionSpentUsd === 'number') facts.push(`Mission spend so far $${context.missionSpentUsd.toFixed(2)}; judge today $${context.judgeToday ? context.judgeToday.usd.toFixed(2) : '?'} of $${context.judgeCapUsd}; Gate items pending ${context.gatePending}.`);
+        if (context.connectors) facts.push(`Connectors: ${context.connectors}.`);
+        for (const v of context.ventures || []) facts.push(`Venture ${v.id} "${v.name}": budget $${v.budgetUsd.toFixed(2)}, spent $${v.spentUsd.toFixed(2)}; crew ${v.crew.map((c) => c.id).join(', ') || 'none'}; runs ${v.runs} (${v.runsFailed} failed); items done ${v.itemsDone}, failed ${v.itemsFailed}, open ${v.itemsOpen}; deliverables ${v.deliverables}; Gate approved ${v.gateApproved}, rejected ${v.gateRejected}, pending ${v.gatePending}; revenue ${v.revenue}.`);
+      }
+      facts.push(...crewLines());
+      const prompt = ['RECORDED DATA:', ...facts, '', `QUESTION from the Superintendent (via ${by}): ${question.trim()}`].join('\n');
+      const started = await runs.start({ agentId: CHIEF_ID, prompt, step: 'plan', budgetUsd: 1, maxTurns: 2, review: false, system: ASK_SYSTEM_PROMPT, grants: () => [] });
+      chiefRuns.add(started.runId);
+      const evidence = [];
+      if (plan) evidence.push(`plan v${plan.version}`);
+      if (mission) evidence.push(`mission ${mission.id}`);
+      const answer = started.done.then((outcome) => (outcome ? { ok: outcome.reason === 'completed', reason: outcome.reason, text: outcome.finalText || '', usd: outcome.spentUsd || 0, evidence } : { ok: false, reason: 'cancelled', text: '', usd: 0, evidence })).catch((err) => ({ ok: false, reason: err.message, text: '', usd: 0, evidence }));
+      return { runId: started.runId, queued: started.queued, answer };
+    },
   };
 }
 

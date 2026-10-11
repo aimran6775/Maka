@@ -38,6 +38,9 @@ const SAMPLES = {
   'setup.changed': { step: 'workspace', change: 'done', detail: '/Volumes/LaCie/Maka/workspace' },
   'backup.snapshot': { status: 'done', reason: 'scheduled', key: 'maka/mac/2026-10-10T03-00-00Z.tar.gz.enc', files: 12, bytes: 4096 },
   'backup.restore': { status: 'done', key: 'maka/mac/2026-10-10T03-00-00Z.tar.gz.enc', into: '/ws/_restore/2026', files: 12 },
+  'channel.inbound': { channel: 'telegram', chatId: '12345', userId: '777', action: 'gate', paired: true, outcome: 'accepted', itemId: 'gate-1', decision: 'approve', messageId: '42' },
+  'channel.connect': { channel: 'telegram', status: 'up', message: 'long polling as @maka_bot', by: 'env' },
+  'channel.delivery': { channel: 'telegram', chatId: '12345', kind: 'gate_card', status: 'sent', itemId: 'gate-1', messageId: '43' },
   'browser.handoff': { handoffId: 'hand-1', agentId: 'ranger-1', status: 'waiting', kind: 'login', runId: 'run-1', url: 'https://shop.example/login', title: 'Sign in', reason: 'the page asks for a password', headless: false },
   'mail.classified': { messageId: 'msg-1', classification: 'customer', by: 'worker', confidence: 0.92, reason: 'asks about an order' },
   'mail.dns': { domain: 'makapark.com', change: 'applied', itemId: 'gate-1', create: 4, update: 1, remove: 0, unchanged: 2, errors: [], message: '5 change(s) written' },
@@ -114,6 +117,9 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('setup.changed', { step: 'coffee', change: 'done' });
   bad('backup.snapshot', { status: 'done' });
   bad('backup.restore', { status: 'done', key: '' });
+  bad('channel.inbound', { channel: 'telegram', chatId: '1', userId: '2', action: 'wave', paired: true, outcome: 'x' });
+  bad('channel.connect', { channel: 'telegram', status: 'maybe' });
+  bad('channel.delivery', { channel: 'telegram', chatId: '1', kind: 'gate_card', status: 'queued' });
   bad('judge.verdict', { ...SAMPLES['judge.verdict'], verdict: 'shrug' });
   bad('crew.agent', { agentId: 'x', change: 'cloned' });
   bad('plan.updated', { missionId: 'm', change: 'dreamt' });

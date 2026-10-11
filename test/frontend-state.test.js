@@ -379,3 +379,27 @@ test('backup: the snapshot carries the status; backup.snapshot and backup.restor
   assert.equal(s.backup.lastRestore.into, '/ws/_restore/1');
   assert.equal(s.backupEvents.length, 3);
 });
+
+test('owner channels (phase 4 step 1): the snapshot seeds the rows and the pairing code; channel.connect patches a row; a pairing event moves the chat in and out; deliveries and inbound messages are kept, bounded', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ channels: { adapters: [{ name: 'telegram', label: 'Telegram', status: 'not_wired', by: null, detail: '', missing: ['TELEGRAM_BOT_TOKEN'], keys: ['TELEGRAM_BOT_TOKEN'], paired: [], lastError: null, pendingItemId: 'gate-9' }], pairing: { code: 'ABCDEF23', issuedAt: 1, expiresAt: 999999999999999, attempts: 0 } } }));
+  assert.equal(s.channels.adapters[0].status, 'not_wired');
+  assert.equal(s.channels.pairing.code, 'ABCDEF23');
+  s = reduce(s, [ev('channel.connect', { channel: 'telegram', status: 'up', message: 'as @maka_bot', by: 'keystore' })]);
+  assert.deepEqual([s.channels.adapters[0].status, s.channels.adapters[0].by, s.channels.adapters[0].detail, s.channels.adapters[0].pendingItemId], ['up', 'keystore', 'as @maka_bot', null]);
+  s = reduce(s, [ev('channel.inbound', { channel: 'telegram', chatId: '42', userId: 'owner', action: 'pair', paired: true, outcome: 'paired' })]);
+  assert.deepEqual(s.channels.adapters[0].paired.map((c) => [c.chatId, c.userId]), [['42', 'owner']]);
+  assert.equal(s.channels.pairing, null, 'a spent code leaves the Peak');
+  s = reduce(s, [ev('channel.delivery', { channel: 'telegram', chatId: '42', kind: 'gate_card', status: 'sent', itemId: 'gate-1', messageId: '7' }), ev('channel.inbound', { channel: 'telegram', chatId: '42', userId: 'owner', action: 'gate', paired: true, outcome: 'accepted', itemId: 'gate-1', decision: 'approve' })]);
+  assert.deepEqual(s.channelEvents.map((e) => e.type), ['channel.connect', 'channel.inbound', 'channel.delivery', 'channel.inbound']);
+  s = reduce(s, [ev('channel.inbound', { channel: 'telegram', chatId: '42', userId: 'owner', action: 'pair', paired: false, outcome: 'unpaired at the Peak' })]);
+  assert.deepEqual(s.channels.adapters[0].paired, []);
+  s = reduce(s, [ev('channel.connect', { channel: 'telegram', status: 'error', message: 'token rejected', by: 'keystore' })]);
+  assert.equal(s.channels.adapters[0].lastError.message, 'token rejected');
+  for (let i = 0; i < 210; i++) s = reduce(s, [ev('channel.delivery', { channel: 'telegram', chatId: '42', kind: 'notice', status: 'sent' })]);
+  assert.equal(s.channelEvents.length, 200);
+  // Without channels in the snapshot the events are kept and nothing else is invented.
+  const none = reduce(applySnapshot(initialState(), snapshot()), [ev('channel.connect', { channel: 'telegram', status: 'up' })]);
+  assert.equal(none.channels, null);
+  assert.equal(none.channelEvents.length, 1);
+});

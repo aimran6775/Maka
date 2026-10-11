@@ -36,7 +36,7 @@ async function setup() {
 test('away: evidence log, counters, stamped Gate items, digest on return, persistence across a restart', async () => {
   const h = await setup();
   try {
-    assert.deepEqual([...LOGGED_TYPES], ['gate.item', 'work.done', 'plan.updated', 'reflection.posted', 'budget.threshold', 'agent.run.error']);
+    assert.deepEqual([...LOGGED_TYPES], ['gate.item', 'work.done', 'plan.updated', 'reflection.posted', 'budget.threshold', 'agent.run.error', 'channel.inbound']);
     assert.equal(h.away.state().away, false);
     await assert.rejects(h.away.set('yes'), /true or false/);
     // Nothing is logged while present.

@@ -65,6 +65,12 @@
 //   POST /api/connectors/:kind/connect    { apiKey } or {} (OAuth) → a Gate item; 202
 //   POST /api/connectors/:kind/disconnect → a Gate item; 202
 //   POST /api/connectors/:kind/sync       sync now → { counts, ms }
+//   GET  /api/channels         owner channels (phase 4 step 1): one row per adapter (status, paired
+//                              chats), the current pairing code when one is valid
+//   POST /api/channels/pair    a fresh single-use pairing code (ten minutes) → { code, expiresAt }
+//   POST /api/channels/:name/unpair     { chatId }
+//   POST /api/channels/:name/connect    { token } → a Gate item (account_settings); 202
+//   POST /api/channels/:name/disconnect → a Gate item; 202
 //   GET  /api/browser          chromium found?, headless, open sessions, pending handoffs
 //   GET  /api/browser/handoffs recent BROWSER HANDOFFs, oldest first
 //   POST /api/browser/handoff/:id/return   { notes? } the Superintendent hands the page back
@@ -272,7 +278,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, research = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, research = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -347,6 +353,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         mail: await mailStatus(),
         browser: browser ? await browser.status() : null,
         connectors: connectors ? connectors.list() : null,
+        channels: channels ? { adapters: channels.list(), pairing: channels.pairing() } : null,
         research: research ? await research.status() : null,
         setup: setup ? await setup.state() : null,
         ollama: ollama ? ollama.summary() : null,
@@ -641,6 +648,23 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
           throw err;
         }
       }
+    }
+    if (p === '/api/channels' && method === 'GET') {
+      if (!channels) throw new HttpError(404, 'no channels');
+      return sendJson(res, 200, { adapters: channels.list(), pairing: channels.pairing() });
+    }
+    if (p === '/api/channels/pair' && method === 'POST') {
+      if (!channels) throw new HttpError(404, 'no channels');
+      return sendJson(res, 201, await channels.newPairingCode());
+    }
+    if (p.startsWith('/api/channels/') && method === 'POST') {
+      if (!channels) throw new HttpError(404, 'no channels');
+      const [name, action] = p.slice('/api/channels/'.length).split('/').map(decodeURIComponent);
+      const body = await readJsonBody(req);
+      if (action === 'unpair') return sendJson(res, 200, await rethrow(() => channels.unpair(name, typeof body.chatId === 'string' || typeof body.chatId === 'number' ? String(body.chatId) : '')));
+      if (action === 'connect') return sendJson(res, 202, await rethrow(() => channels.connect(name, body)));
+      if (action === 'disconnect') return sendJson(res, 202, await rethrow(() => channels.disconnect(name)));
+      throw new HttpError(404, 'no such route');
     }
     if (p === '/api/browser' && method === 'GET') {
       if (!browser) throw new HttpError(404, 'no browser control');

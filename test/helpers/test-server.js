@@ -21,6 +21,7 @@ import { createBrowserControl } from '../../sidecar/browser/control.js';
 import { createNetGuard } from '../../sidecar/netguard.js';
 import { createConnectors } from '../../sidecar/connectors/registry.js';
 import { createResearch } from '../../sidecar/research/index.js';
+import { createChannels } from '../../sidecar/channels/registry.js';
 import { createOllama } from '../../sidecar/ollama.js';
 import { createSetup } from '../../sidecar/setup.js';
 import { createBackup } from '../../sidecar/backup/index.js';
@@ -43,7 +44,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 // `netGuard`: the outbound URL guard the tools and the browser use (sidecar/netguard.js).
 // The fakes every suite talks to listen on 127.0.0.1, so the default here turns the guard
 // off; a test of the guard itself passes a strict one. The sidecar never turns it off.
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -111,6 +112,12 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const ollama = ollamaUrl ? createOllama({ env: { ...env, OLLAMA_HOST: ollamaUrl }, bus, clock, log: { error() {} } }) : null;
   const restartCalls = [];
   const setup = setupOpts ? await createSetup({ home, workspaceRoot, env, keystorePath, bus, ollama, chief, agents, providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch, probeLocal: false }), restart: setupOpts.restart || (() => restartCalls.push(clock ? clock.now() : Date.now())), fetch: globalThis.fetch, fs: setupOpts.fs, platform: setupOpts.platform, clock, verifyUrls: setupOpts.verifyUrls, log: { error() {} } }).init() : null;
+  // `channels`: adapters to register (fakes); absent → no channel registry is wired.
+  const channels = channelAdapters ? await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, clock, log: { error() {}, warn() {} } }).init() : null;
+  if (channels) {
+    for (const a of channelAdapters) channels.register(a);
+    await channels.start();
+  }
   // `backup`: { endpoint, config } wires the R2 backup against a fake S3 endpoint.
   const backup = backupOpts ? await createBackup({ store, scheduler, bus, home, workspaceRoot, env, keystorePath, config: backupOpts.config || {}, fetch: globalThis.fetch, clock, hostname: backupOpts.hostname || 'test-mac', endpoint: backupOpts.endpoint, log: { error() {} } }).init() : null;
   const app = createApp({
@@ -130,6 +137,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     mail: mailSystem,
     browser: browserControl,
     connectors,
+    channels,
     research,
     setup,
     ollama,
@@ -168,6 +176,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     mail: mailSystem,
     browser: browserControl,
     connectors,
+    channels,
     research,
     setup,
     ollama,
@@ -242,6 +251,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
       await runs.waitForIdle();
       if (browserControl) await browserControl.close();
       if (connectors) await connectors.close();
+      if (channels) await channels.close();
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
       // A run record flushed by a follow-up that started during the cancel can land while the

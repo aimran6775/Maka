@@ -198,7 +198,9 @@ export function createRunManager({
     },
     pending: () => [...pendingPrompts.entries()].map(([promptId, p]) => ({ promptId, runId: p.runId })),
 
-    async start({ agentId = 'ranger', prompt, provider: providerName, model, step = null, maxTurns = DEFAULT_MAX_TURNS, budgetUsd = DEFAULT_BUDGET_USD, workItemId = null, system = null, review: wantReview = true } = {}) {
+    // `grants` (internal, never from /api/run): replaces the fixture + role grants for this
+    // run; the Chief's answer to a question from a channel runs with none (phase 4 step 1).
+    async start({ agentId = 'ranger', prompt, provider: providerName, model, step = null, maxTurns = DEFAULT_MAX_TURNS, budgetUsd = DEFAULT_BUDGET_USD, workItemId = null, system = null, review: wantReview = true, grants = null } = {}) {
       if (typeof prompt !== 'string' || !prompt.trim()) throw fail('BAD_REQUEST', 'prompt is required');
       if (!workspaceOnline()) throw fail('WORKSPACE_OFFLINE', `workspace root ${workspaceRoot} is offline; runs are paused until it is back`);
       const layout = getLayout();
@@ -308,7 +310,7 @@ export function createRunManager({
           fetch: fetchImpl,
           ask,
           registry,
-          grants: grantsForRun,
+          grants: typeof grants === 'function' ? grants : grantsForRun,
           toolContext: { agents, runs: api, ...toolContext },
           getLeash: currentLeash,
           ledger,

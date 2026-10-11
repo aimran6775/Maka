@@ -31,6 +31,8 @@ export function initialState() {
     connectors: [], // one row per connector from the snapshot; connector.* events patch them
     connectorEvents: [], // connector.sync / connector.error payloads this session, oldest first (bounded)
     research: null, // { search, searchKey, trends, judge } from the snapshot
+    channels: null, // { adapters: [row per channel], pairing } from the snapshot; channel.connect patches rows (phase 4 step 1)
+    channelEvents: [], // channel.inbound / channel.delivery payloads this session, oldest first (bounded)
     setup: null, // the first-run flow from the snapshot (/api/setup shape); setup.changed asks for a re-read
     setupChanges: [], // setup.changed payloads this session, oldest first
     ollama: null, // the local worker summary from the snapshot (/api/ollama shape without a fresh probe)
@@ -105,6 +107,7 @@ export function applySnapshot(state, snap) {
   next.browser = snap.browser || null;
   next.connectors = Array.isArray(snap.connectors) ? snap.connectors : [];
   next.research = snap.research || null;
+  next.channels = snap.channels || null;
   next.setup = snap.setup || null;
   next.ollama = snap.ollama || null;
   next.backup = snap.backup || null;
@@ -399,6 +402,23 @@ export function applyEvent(state, event) {
         if (event.type === 'connector.error') return { ...c, lastError: { at: event.ts, stage: p.stage, message: p.message, code: p.code || '' } };
         return { ...c, connected: p.connected, auth: p.auth || c.auth, by: p.by || c.by, authorizeUrl: p.change === 'authorizing' ? p.authorizeUrl || null : null, pendingItemId: null };
       });
+      break;
+    }
+    case 'channel.connect': {
+      next.channelEvents = [...next.channelEvents, { type: event.type, ...p, ts: event.ts }].slice(-200);
+      if (next.channels) next.channels = { ...next.channels, adapters: (next.channels.adapters || []).map((c) => (c.name === p.channel ? { ...c, status: p.status, by: p.by || c.by, detail: p.status === 'up' ? p.message || c.detail : c.detail, lastError: p.status === 'error' ? { at: event.ts, message: p.message || '' } : c.lastError, pendingItemId: null } : c)) };
+      break;
+    }
+    case 'channel.inbound':
+    case 'channel.delivery': {
+      next.channelEvents = [...next.channelEvents, { type: event.type, ...p, ts: event.ts }].slice(-200);
+      if (event.type === 'channel.inbound' && p.action === 'pair' && next.channels) {
+        next.channels = { ...next.channels, adapters: (next.channels.adapters || []).map((c) => {
+          if (c.name !== p.channel) return c;
+          const paired = (c.paired || []).filter((x) => x.chatId !== p.chatId);
+          return { ...c, paired: p.paired && p.outcome === 'paired' ? [...paired, { chatId: p.chatId, userId: p.userId, pairedAt: event.ts }] : paired };
+        }), pairing: p.outcome === 'paired' ? null : next.channels.pairing };
+      }
       break;
     }
     case 'browser.handoff': {

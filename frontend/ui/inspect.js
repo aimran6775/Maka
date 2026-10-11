@@ -337,6 +337,34 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     ];
   }
 
+  // Owner channels (phase 4 step 1): the Peak on the phone. Pairing code, paired chats, the
+  // bot token through the Gate. Everything shown comes from the snapshot and channel.* events.
+  const channelNotice = { text: '' };
+  function channelsSection(s) {
+    if (!s.channels) return [];
+    const rows = s.channels.adapters || [];
+    const pairing = s.channels.pairing && s.channels.pairing.expiresAt > Date.now() ? s.channels.pairing : null;
+    const recent = s.channelEvents.slice(-5).reverse();
+    return [
+      el('div', { class: 'k', text: 'owner channels (the Peak on your phone; only a paired chat may act on the Gate)' }),
+      rows.length ? null : el('div', { class: 'muted small', text: 'no channel adapters registered: Telegram, Discord and Slack arrive in phase 4 steps 2 and 3' }),
+      ...rows.map((c) => el('div', { class: 'connector-row' },
+        el('div', { class: 'kv' }, el('span', { class: 'k', text: c.label }), el('span', { class: 'v', text: c.status === 'up' ? `up (${c.by || '?'}${c.detail ? ` · ${c.detail}` : ''}) · ${c.paired.length} paired chat(s)` : c.status === 'not_wired' ? `not wired: set ${(c.missing || c.keys || []).join(', ')} or connect below` : c.pendingItemId ? `waiting at the Gate (${c.pendingItemId})` : `${c.status}${c.lastError ? ` · ${c.lastError.message}` : ''} · ${c.paired.length} paired chat(s)` })),
+        ...c.paired.map((ch) => el('div', { class: 'row' }, el('span', { class: 'small', text: `chat ${ch.chatId} (user ${ch.userId}) paired ${new Date(ch.pairedAt).toLocaleString()}` }), el('button', { class: 'btn small', text: 'Unpair', onclick: async () => { const r = await api.post(`/api/channels/${encodeURIComponent(c.name)}/unpair`, { chatId: ch.chatId }); channelNotice.text = r.ok ? `Unpaired ${c.label} chat ${ch.chatId}.` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; selectionRefresh && selectionRefresh(); } }))),
+        el('div', { class: 'row' },
+          c.status !== 'up' && !c.pendingItemId && c.keys && c.keys.length === 1 ? el('button', { class: 'btn small primary', text: 'Connect (bot token, via the Gate)', onclick: async () => { const t = window.prompt(`${c.label} bot token (stored in the keystore after your approval at the Gate):`, ''); if (!t) return; const r = await api.post(`/api/channels/${encodeURIComponent(c.name)}/connect`, { token: t }); channelNotice.text = r.ok ? `Connect waiting at the Gate (${r.body.itemId}).` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; selectionRefresh && selectionRefresh(); } }) : null,
+          c.status === 'up' && !c.pendingItemId ? el('button', { class: 'btn small', text: 'Disconnect (via the Gate)', onclick: async () => { const r = await api.post(`/api/channels/${encodeURIComponent(c.name)}/disconnect`, {}); channelNotice.text = r.ok ? `Disconnect waiting at the Gate (${r.body.itemId}).` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; selectionRefresh && selectionRefresh(); } }) : null,
+        ),
+      )),
+      rows.length ? el('div', { class: 'row' },
+        el('button', { class: 'btn small', text: pairing ? 'New pairing code' : 'Pairing code', title: 'A single-use code, valid ten minutes; send it from your chat to pair it', onclick: async () => { const r = await api.post('/api/channels/pair', {}); channelNotice.text = r.ok ? `Pairing code ${r.body.code}: send it to the bot from your chat within 10 minutes.` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; selectionRefresh && selectionRefresh(); } }),
+        pairing ? el('span', { class: 'small warn', text: `code ${pairing.code} · expires ${new Date(pairing.expiresAt).toLocaleTimeString()}${pairing.attempts ? ` · ${pairing.attempts} wrong attempt(s)` : ''}` }) : el('span', { class: 'small muted', text: 'no pairing code active' }),
+      ) : null,
+      ...recent.map((e) => el('div', { class: `use ${e.type === 'channel.delivery' ? (e.status === 'sent' ? 'ok' : 'failed') : e.paired === false ? 'failed' : ''}`, text: e.type === 'channel.delivery' ? `${new Date(e.ts).toLocaleTimeString()} · ${e.channel} → ${e.chatId}: ${e.kind} ${e.status}${e.error ? ` (${e.error})` : ''}` : e.type === 'channel.inbound' ? `${new Date(e.ts).toLocaleTimeString()} · ${e.channel} ← ${e.chatId}: ${e.action}${e.decision ? ` ${e.decision} ${e.itemId}` : ''} · ${e.outcome}` : `${new Date(e.ts).toLocaleTimeString()} · ${e.channel}: ${e.status}${e.message ? ` (${e.message})` : ''}` })),
+      channelNotice.text ? el('div', { class: 'notice', text: channelNotice.text }) : null,
+    ];
+  }
+
   // Venture briefs (step 18): listed from every Ranger's outbox, fetched when the Peak is
   // inspected and again when a work item finishes.
   const briefCache = { key: null, rows: [], loading: false };
@@ -450,6 +478,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ) : null,
       row('gate queue', `${pendingGate(s).length} waiting`),
       ...connectorsSection(s),
+      ...channelsSection(s),
       ...briefsSection(s),
       s.browser ? row('browser', `${s.browser.wired ? `${s.browser.chromium}${s.browser.headless ? ' (headless)' : ''}` : 'not wired: no Chromium found (browser.chromiumPath or CHROMIUM)'} · ${(s.browser.sessions || []).length} open · ${pendingHandoffs(s).length} handoff(s) waiting`) : null,
       ...backupSection(s),

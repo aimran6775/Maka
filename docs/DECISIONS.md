@@ -1132,3 +1132,43 @@ tool's after-write sync go through the same queue.
   renderer LOD/WebGPU, Ledger Desk, supplier purchasing via browser with mandatory payment
   handoff, macOS computer control under a new computer_control leash defaulting to Observe,
   imports. Nothing may weaken a safety-review fix.
+
+## D125. A chat acts only after pairing with a single-use code, and the code is strict
+
+The phase 4 brief asks for an 8-character code shown at the Peak that the owner sends
+from their chat. The stricter readings are taken: the code is made only by a click at the
+Peak (a mutating route, so behind the per-boot token), lives ten minutes, pairs exactly
+one chat and is spent by it, is replaced by the next code, and is revoked after five wrong
+attempts from anyone, so a bot's public username cannot be brute-forced into the Gate.
+An unpaired chat gets one "send the code" reminder an hour and nothing else; a button
+press from it is refused, logged with the chat and user ids, and emitted as a
+`channel.inbound { paired: false }` event. Unpairing is a click at the Peak; a disconnect
+of the bot keeps the pairings (the token changes, the owner does not). The pairing state
+is one atomic file (`channels.json`) and is part of the offsite backup.
+
+## D126. Bot tokens are keys like any other, and the adapter sees them once
+
+Tokens come from the environment or the keystore / Keychain through `keys.js`, go in
+through a Gate item in `account_settings` like a connector key (D75), and are handed to
+the adapter's `start()` only; they are never on a status row, in an event or in a log
+line. The registry resolves them, so an adapter cannot read the keystore and a test can
+hand a fake adapter a fake token.
+
+## D127. "Ask the Peak" is a tool-less run of the Chief, counted as judge spend
+
+A question from the phone could have been one model call outside the run manager. Running
+it as a Chief run keeps the transcript, the cost events and the cap in the same places as
+every other Chief decision (D51): the run uses the Chief's planning model, at most two
+turns and $1, no judge review (as for every Chief run), and counts in the judge ledger so
+the daily cap bounds it; at the cap the chat is told so and nothing runs. The run is
+granted no tools at all (an internal `grants` option of `runs.start`, never reachable
+from `/api/run`, safety M3): a chat message cannot plan, hire, delegate or spend, and
+the answer is grounded in the data the prompt carries (mission, plan, the reflection's
+gathered actuals, the crew) with the run id as the evidence link, since the park is
+local and a chat cannot open it.
+
+## D128. Channel messages are evidence while away
+
+A Gate decision taken from the phone while away is exactly what the evidence log is for,
+so `channel.inbound` joined the away log's event types. The decision itself is logged as
+the `gate.item` it resolves, as before; the channel event says it came from a chat.

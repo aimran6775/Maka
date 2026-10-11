@@ -21,7 +21,9 @@ import { promises as fsp } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { makeEvent } from '../shared/events.js';
 
-export const LOGGED_TYPES = Object.freeze(['gate.item', 'work.done', 'plan.updated', 'reflection.posted', 'budget.threshold', 'agent.run.error']);
+// Phase 4 step 1: a message acted on from an owner channel (a Gate decision from the
+// phone, a question to the Peak) is evidence too, so channel.inbound is logged while away.
+export const LOGGED_TYPES = Object.freeze(['gate.item', 'work.done', 'plan.updated', 'reflection.posted', 'budget.threshold', 'agent.run.error', 'channel.inbound']);
 
 function fail(code, message, status = 400) {
   const err = new Error(message);

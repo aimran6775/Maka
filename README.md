@@ -283,6 +283,20 @@ clean-account launch, publishing, the updater, rollback. All seven steps of
 notarization, the Keychain, Gatekeeper) are scripted and documented here, verified on
 the owner's Mac.
 
+## Phase 4 so far: beyond StarNet
+
+Step 1, the owner channels: `sidecar/channels/` holds the adapter contract and the
+registry. Click the Peak for "owner channels": make a pairing code (single use, ten
+minutes) and send it to the bot from your chat; from then on that chat gets every
+Entrance Gate item as a card with Approve / Revise / Reject (Revise asks for your notes
+as the next message), hears reflections and away digests, can `/gate`, `/status`,
+`/away`, `/back`, and anything else you write is a question the Chief Ranger answers from
+the recorded data (a bounded run with no tools, counted as judge spend). An unpaired chat
+can do nothing but pair, and every attempt is logged. Bot tokens come from
+`TELEGRAM_BOT_TOKEN` / `DISCORD_BOT_TOKEN` / `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN`, or
+from "Connect" at the Peak through the Gate into the keystore. The Telegram, Discord and
+Slack adapters are the next two steps.
+
 ## License
 
 MIT. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).

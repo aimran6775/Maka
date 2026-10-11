@@ -460,6 +460,47 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     files: int0,
     error: str,
   }),
+  // Added v1 (phase 4 step 1): a message arrived on an owner channel (Telegram, Discord,
+  // Slack). `action` is what Maka made of it: 'pair' (the pairing code), 'gate' (a decision
+  // on a Gate item, with `itemId` and `decision`), 'notes' (the revise notes that followed),
+  // 'ask' (free text for the Peak), 'command' (a slash command), 'ignored'. `paired` says
+  // whether the chat was a paired owner chat at the time; `outcome` says what happened
+  // (accepted, refused: not paired, refused: unknown item, …). Message text stays out of
+  // the event beyond a bounded preview.
+  'channel.inbound': payload(['channel', 'chatId', 'userId', 'action', 'paired', 'outcome'], {
+    channel: nonEmpty,
+    chatId: nonEmpty,
+    userId: nonEmpty,
+    action: { type: 'string', enum: ['pair', 'gate', 'notes', 'ask', 'command', 'ignored'] },
+    paired: bool,
+    outcome: nonEmpty,
+    text: str,
+    itemId: str,
+    decision: { type: 'string', enum: ['approve', 'revise', 'reject'] },
+    messageId: str,
+    runId: str,
+  }),
+  // Added v1 (phase 4 step 1): a channel adapter came up, went down or failed. `by` says
+  // where the bot token came from (env, keystore) or who stopped it.
+  'channel.connect': payload(['channel', 'status'], {
+    channel: nonEmpty,
+    status: { type: 'string', enum: ['up', 'down', 'error', 'not_wired'] },
+    message: str,
+    by: str,
+  }),
+  // Added v1 (phase 4 step 1): something Maka sent to an owner chat: a Gate card, a
+  // reflection, an away digest, an answer from the Peak, a plain notice. `status` is what
+  // the platform answered; nothing is marked sent that the platform did not accept.
+  'channel.delivery': payload(['channel', 'chatId', 'kind', 'status'], {
+    channel: nonEmpty,
+    chatId: nonEmpty,
+    kind: { type: 'string', enum: ['gate_card', 'gate_update', 'reflection', 'digest', 'answer', 'notice', 'pairing'] },
+    status: { type: 'string', enum: ['sent', 'failed'] },
+    itemId: str,
+    messageId: str,
+    error: str,
+    ref: str,
+  }),
 });
 
 export const EVENT_TYPES = deepFreeze(Object.keys(PAYLOAD_SCHEMAS));

@@ -40,6 +40,22 @@ Three ideas carry everything:
 
 ## Current state
 
+Phase 4 (`docs/PHASE4_BRIEF.md`, "beyond StarNet") is under way. Step 1 done: the owner
+channels' contract and registry (`sidecar/channels/`). An adapter is transport only
+(start / stop, send a card or a text, hand every inbound message to the registry); the
+registry decides everything: a chat is trusted only after it sent the single-use
+8-character pairing code shown at the Peak (ten minutes, five wrong attempts revoke it),
+only a paired chat may approve, revise or reject a Gate item (a button or a slash
+command; Revise takes the notes from the next message), re-list the Gate, toggle away
+mode or ask the Peak a question, which is one tool-less run of the Chief on its planning
+model over the recorded data, answered with the run id as evidence. Every pending Gate
+item goes to every paired chat as a card, decided items tell the other chats who decided,
+reflections and away digests go as text, and every send and every inbound message is an
+event (`channel.delivery`, `channel.inbound`); an unpaired chat's attempt to act is
+refused and logged. Bot tokens live in the keystore or the Keychain, reach the adapter's
+`start()` only, and go in through the Gate like a connector key. The adapters themselves
+(Telegram, Discord, Slack) are steps 2 and 3.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

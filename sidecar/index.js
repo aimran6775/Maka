@@ -39,6 +39,7 @@ import { createNetGuard } from './netguard.js';
 import { createConnectors } from './connectors/registry.js';
 import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { createResearch } from './research/index.js';
+import { createChannels } from './channels/registry.js';
 import { createOllama } from './ollama.js';
 import { createSetup } from './setup.js';
 import { createBackup } from './backup/index.js';
@@ -121,6 +122,10 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   Object.assign(registry, connectors.tools);
   toolContext.connectors = connectors;
   const research = createResearch({ env, keystorePath, judge, workspaceRoot });
+  // Phase 4 step 1: the owner channels. Adapters (Telegram, Discord, Slack) register here
+  // as they arrive; a channel whose token is not wired says so at the Peak.
+  const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, log }).init();
+  await channels.start();
   Object.assign(registry, research.tools);
   toolContext.judge = judge;
   const backup = await createBackup({ store, scheduler, bus, home, workspaceRoot, env, keystorePath, config: config.backup || {}, log }).init();
@@ -151,6 +156,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     mail,
     browser,
     connectors,
+    channels,
     research,
     setup,
     ollama,
@@ -190,6 +196,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const mailSys = await mail.status();
   const connectorRows = connectors.list();
   log.info(`  connectors: ${connectorRows.length ? connectorRows.map((c) => `${c.label} ${c.connected ? `connected (${c.by})` : 'not connected'}`).join(' · ') : 'none defined yet'}`);
+  const channelRows = channels.list();
+  log.info(`  channels: ${channelRows.length ? channelRows.map((c) => `${c.label} ${c.status === 'up' ? `up (${c.by}${c.detail ? `, ${c.detail}` : ''})` : c.status === 'not_wired' ? `not wired (${c.missing.join(', ')})` : c.status}, ${c.paired.length} paired chat(s)`).join(' · ') : 'none registered yet'}`);
   const researchStatus = await research.status();
   log.info(`  research: search via ${researchStatus.search} · trends ${researchStatus.trends.join(', ')}`);
   const browserStatus = await browser.status();
@@ -206,6 +214,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await runs.waitForIdle();
     await browser.close();
     await connectors.close();
+    await channels.close();
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
@@ -215,7 +224,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const setupState = await setup.state();
   log.info(`  first run: ${setupState.firstRun ? 'yes (the park shows the first-run card)' : `done ${new Date(setupState.completedAt).toISOString()}${setupState.skipped ? ' (skipped)' : ''}`} · worker ${ollama.summary().worker}`);
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, research, setup, ollama, backup, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, research, setup, ollama, backup, close };
 }
 
 function validateConfig(data) {

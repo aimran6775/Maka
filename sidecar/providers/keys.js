@@ -48,6 +48,11 @@ export const ENV_VARS = Object.freeze({
   r2AccessKeyId: 'R2_ACCESS_KEY_ID',
   r2SecretAccessKey: 'R2_SECRET_ACCESS_KEY',
   backupKey: 'MAKA_BACKUP_KEY',
+  // Phase 4 step 1: the owner channels' bot tokens (sidecar/channels/).
+  telegramBot: 'TELEGRAM_BOT_TOKEN',
+  discordBot: 'DISCORD_BOT_TOKEN',
+  slackBot: 'SLACK_BOT_TOKEN',
+  slackApp: 'SLACK_APP_TOKEN',
 });
 
 export function defaultKeystorePath(env = process.env) {
