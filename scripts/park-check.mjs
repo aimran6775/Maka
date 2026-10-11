@@ -100,6 +100,39 @@ async function main() {
   console.log('status after mission:', await statusText());
   const bodies = JSON.parse((await evaluate('window.maka && window.maka.park() ? JSON.stringify(window.maka.park().bodies()) : "[]"')) || '[]');
   console.log('bodies:', JSON.stringify(bodies));
+  // Navigation (D167): the movement keys walk the view, typing into a brief never does,
+  // and the Jump to menu puts the camera at the place it names. Without this a broken
+  // key listener is invisible until somebody tries to drive the park by hand.
+  const camera = async () => JSON.parse((await evaluate('window.maka && window.maka.park() && window.maka.park().camera ? JSON.stringify(window.maka.park().camera()) : "null"')) || 'null');
+  const moved = (a, b) => (a && b ? Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) : 0);
+  // Everything here waits for the camera to arrive, never for a stopwatch: software GL
+  // draws about a frame a second, and the walk and the jump both advance per frame.
+  const camStart = await camera();
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', key: 'w' }))");
+  const walkDist = await until(async () => {
+    const d = moved(camStart, await camera());
+    return d > 2 ? d : 0;
+  }, 15000);
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW', key: 'w' }))");
+  // The key is up: whatever the camera does next, it is not this key.
+  await wait(1200);
+  const camBeforeTyping = await camera();
+  await evaluate(`(() => { const t = document.querySelector('textarea.prompt'); if (!t) return false; t.focus(); t.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', key: 'w', bubbles: true })); return true; })()`);
+  await wait(1500);
+  const typingDist = moved(camBeforeTyping, await camera());
+  const places = JSON.parse((await evaluate('window.maka && window.maka.park() ? JSON.stringify(window.maka.park().places()) : "[]"')) || '[]');
+  const peak = places.find((p) => p.kind === 'peak');
+  if (peak) await evaluate(`window.maka.park().focus(${JSON.stringify(peak)})`);
+  const jumpedNear = peak
+    ? await until(async () => {
+        const c = await camera();
+        const d = c ? Math.hypot(c.target.x - peak.x, c.target.z - peak.z) : Infinity;
+        return d < 3 ? d : 0;
+      }, 20000).then((d) => (d === 0 ? Infinity : d))
+    : Infinity;
+  const navOk = walkDist > 2 && typingDist < 0.01 && Boolean(peak) && jumpedNear < 3;
+  console.log(`navigation: walk moved ${walkDist.toFixed(1)} units, typing moved ${typingDist.toFixed(3)}, jump landed ${jumpedNear.toFixed(1)} from the Peak, ${places.length} places`, navOk ? 'OK' : 'NOT OK');
+
   console.log('console errors:', errors.length ? errors : 'none');
   if (logs.length) console.log('console logs:', logs.slice(0, 10));
   const finalStatus = await statusText();
@@ -132,7 +165,7 @@ async function main() {
     console.log('renderer: webgpu wanted NOT AS WANTED');
   }
   if (unexpectedErrors !== errors) console.log('console errors (unexpected):', unexpectedErrors.length ? unexpectedErrors : 'none');
-  const ok = unexpectedErrors.length === 0 && /ranger (ready|static)/.test(finalStatus) && rendererOk && bodies.length === summary.agents.length && bodies.some((b) => b.role === 'chief_ranger') && firstRunShown && firstRunSteps.length === 4 && firstRunHidden;
+  const ok = unexpectedErrors.length === 0 && navOk && /ranger (ready|static)/.test(finalStatus) && rendererOk && bodies.length === summary.agents.length && bodies.some((b) => b.role === 'chief_ranger') && firstRunShown && firstRunSteps.length === 4 && firstRunHidden;
   // Cleanup never decides the verdict: the check passed or failed above.
   cdp.close();
   await stopChromium(chrome);

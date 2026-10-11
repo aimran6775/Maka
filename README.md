@@ -37,9 +37,13 @@ export ANTHROPIC_API_KEY=sk-ant-...   # the judge; or OPENROUTER_API_KEY; or the
 npm start                             # node sidecar/index.js
 ```
 
-Then open <http://127.0.0.1:8790>. Orbit with the mouse, scroll to zoom, switch to fly or
-follow with the buttons at the bottom, re-roll the terrain seed there too. Click a Ranger,
-a zone, a trail, a fixture, the Entrance Gate or the Mountain Peak to inspect it. Routine turns run on the local worker model (Ollama at
+Then open <http://127.0.0.1:8790>. Walk the park with **W A S D** (or the arrows), **Q**
+and **E** for lower and higher, **Shift** to move faster; drag to turn, scroll to come
+closer. Press **?** for the full key legend, **J** for a Jump to menu over every zone,
+landmark and Ranger, and **P**, **G**, **H** for the Mountain Peak, the Entrance Gate and
+home. The bar along the top says where you are and switches the camera between orbit, a
+fly-around and following a Ranger. Click a Ranger, a zone, a trail, a fixture, the
+Entrance Gate or the Mountain Peak to inspect it. Routine turns run on the local worker model (Ollama at
 `OLLAMA_HOST`, default `http://127.0.0.1:11434`, model `OLLAMA_MODEL` or the first installed).
 Claude via the Anthropic API is the judge tier (see "Phase 2 so far").
 Without Ollama running, a default run answers `400 OLLAMA_UNREACHABLE`; without a key, an

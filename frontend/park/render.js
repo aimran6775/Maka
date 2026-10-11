@@ -33,6 +33,7 @@ import { sunFor } from './sun.js';
 import { LOD, bucketFoliage, crewLod, shouldRebucket, clusterDecimate, cellSizeFor } from './lod.js';
 import { createFrameStats, overlayLines } from './frametime.js';
 import { chooseRenderer, rendererLabel } from './gpu.js';
+import { movementFromKeys, isTyping, placesFor, MOVE_CODES } from './controls.js';
 
 export const CAMERA_MODES = Object.freeze(['orbit', 'fly', 'follow']);
 
@@ -1710,8 +1711,67 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     return first.done ? null : first.value.root;
   }
 
+  // ---- walking the view (D167) ----
+  // The keys held right now, and a jump in progress. Orbit mode carries both the camera
+  // and what it looks at, so moving feels like walking the park rather than dragging a
+  // model around; fly and follow drive themselves and ignore the keys.
+  const pressed = new Set();
+  let jump = null; // { from, to, fromTarget, toTarget, t }
+  const tmpF = new THREE.Vector3();
+  const tmpR = new THREE.Vector3();
+
+  function walk(dt) {
+    const move = movementFromKeys(pressed, { sprint: pressed.has('ShiftLeft') || pressed.has('ShiftRight') });
+    if (!move.moving) return false;
+    jump = null; // a key cancels a jump: the person took the wheel
+    // Forward is where the camera looks, flattened onto the ground.
+    tmpF.subVectors(controls.target, camera.position);
+    tmpF.y = 0;
+    if (tmpF.lengthSq() < 1e-6) tmpF.set(0, 0, -1);
+    tmpF.normalize();
+    tmpR.crossVectors(tmpF, new THREE.Vector3(0, 1, 0)).normalize();
+    const step = new THREE.Vector3()
+      .addScaledVector(tmpF, move.forward * dt)
+      .addScaledVector(tmpR, move.right * dt)
+      .addScaledVector(new THREE.Vector3(0, 1, 0), move.up * dt);
+    camera.position.add(step);
+    controls.target.add(step);
+    return true;
+  }
+
+  // Move the view to a place over about a second, easing in and out. `focus` is what the
+  // Jump to menu calls; the camera keeps its own angle and only changes where it stands.
+  function focusOn({ x, z, y = 0 }, { distance = 34, height = 18 } = {}) {
+    if (cameraMode !== 'orbit') api.setCameraMode('orbit');
+    const target = new THREE.Vector3(x, y + 1.5, z);
+    const dir = new THREE.Vector3().subVectors(camera.position, controls.target);
+    dir.y = 0;
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+    dir.normalize().multiplyScalar(distance);
+    jump = {
+      fromTarget: controls.target.clone(),
+      toTarget: target,
+      from: camera.position.clone(),
+      to: target.clone().add(dir).add(new THREE.Vector3(0, height, 0)),
+      t: 0,
+    };
+  }
+
   function updateCamera(dt, t) {
     const followed = cameraMode === 'follow' ? followTarget() : null;
+    if (cameraMode === 'orbit' && jump) {
+      jump.t = Math.min(1, jump.t + dt / 0.9);
+      const e = jump.t < 0.5 ? 2 * jump.t * jump.t : 1 - (-2 * jump.t + 2) ** 2 / 2; // ease in and out
+      camera.position.lerpVectors(jump.from, jump.to, e);
+      controls.target.lerpVectors(jump.fromTarget, jump.toTarget, e);
+      if (jump.t >= 1) jump = null;
+      controls.update();
+      return;
+    }
+    if (cameraMode === 'orbit' && walk(dt)) {
+      controls.update();
+      return;
+    }
     if (followed) {
       const target = followed.position.clone();
       const behind = new THREE.Vector3(Math.sin(followed.rotation.y + Math.PI), 0.55, Math.cos(followed.rotation.y + Math.PI)).multiplyScalar(9);
@@ -1845,15 +1905,31 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     overlayAt = now;
     overlay.textContent = overlayLines(frameStats()).join('\n');
   }
+  // The movement keys are held, not tapped, so the park tracks them down and up and reads
+  // the set every frame (controls.js). Typing in a brief never moves the camera.
   const onKey = (e) => {
-    if (e.key === '`' && !(e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName))) overlay.hidden = !overlay.hidden;
+    if (isTyping(e.target)) return;
+    if (e.key === '`') overlay.hidden = !overlay.hidden;
+    if (MOVE_CODES.includes(e.code)) {
+      pressed.add(e.code);
+      e.preventDefault(); // the arrows would otherwise scroll the page
+    }
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') pressed.add(e.code);
   };
+  const onKeyUp = (e) => {
+    pressed.delete(e.code);
+  };
+  // A window that loses focus never hears the key go up, and the camera would drift away
+  // on its own until the key is pressed and released again.
+  const onBlur = () => pressed.clear();
   window.addEventListener('keydown', onKey);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onBlur);
 
   frame();
   report();
 
-  return {
+  const api = {
     status,
     get cameraMode() {
       return cameraMode;
@@ -1881,12 +1957,32 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     update() {
       /* state is read every frame */
     },
+    // Where a person can jump to, and the jump itself (D167): the Jump to menu reads the
+    // first and calls the second, and the park eases the view over rather than cutting.
+    places() {
+      return placesFor(model, model ? model.agents : []);
+    },
+    // Where the view stands and what it looks at: the headless check reads this to prove
+    // the movement keys and the Jump to menu actually move the camera.
+    camera() {
+      return {
+        x: Math.round(camera.position.x * 100) / 100,
+        y: Math.round(camera.position.y * 100) / 100,
+        z: Math.round(camera.position.z * 100) / 100,
+        target: { x: Math.round(controls.target.x * 100) / 100, z: Math.round(controls.target.z * 100) / 100 },
+      };
+    },
+    focus(place, opts) {
+      if (place) focusOn(place, opts);
+    },
     destroy() {
       destroyed = true;
       renderer.domElement.removeEventListener('pointerdown', onDown);
       renderer.domElement.removeEventListener('pointerup', onUp);
       window.removeEventListener('resize', resize);
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
       overlay.remove();
       if (envTarget) envTarget.dispose();
       if (pmremGen) pmremGen.dispose();
@@ -1894,4 +1990,5 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       renderer.domElement.remove();
     },
   };
+  return api;
 }

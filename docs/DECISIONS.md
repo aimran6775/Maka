@@ -1857,3 +1857,36 @@ Cost, measured on the owner's Mac: 60 fps at 16.7 ms with 4.8 M triangles and 70
 calls, and the LOD gain the bench reports rose from ×1.4 to ×12.8, because there is now
 something for it to cull. Two timing assumptions in `scripts/park-check.mjs` broke under
 the heavier park and became condition polls, which is what they should always have been.
+
+## D167. The park is navigable: a dock, a Jump to menu, and the keys written down
+
+The owner: "i dont like the layout or the game sturcture. could be much btter and how do
+u move wghere too? there should be a key map legend too and a jump to manu too."
+
+Three faults, and the third explains the first two. **There was no way to learn the park.**
+The only way to move was to drag the mouse, nothing said so, and nothing said where the
+zones were — so the park read as a picture rather than a place, and no arrangement of
+panels was going to fix that.
+
+- **Moving.** `frontend/park/controls.js` is the keyboard as data: `KEY_MAP` (the legend),
+  `MOVE_CODES`, and `movementFromKeys(pressed)` returning a camera-relative vector with
+  diagonals normalised. render.js reads it every frame and walks both the camera and what
+  it looks at, so WASD, the arrows and Q/E feel like walking the park rather than dragging
+  a model. Keys are tracked down and up, never tapped; a blurred window clears them, or
+  the view drifts off on its own; and `isTyping` means a brief never moves the camera.
+- **Going somewhere.** `placesFor(model)` lists the landmarks, then the zones, then the
+  crew; the Jump to menu (J) offers them and `park.focus(place)` eases the view over in
+  about a second. P, G and H are the Peak, the Gate and home.
+- **The legend.** The UI renders `KEY_MAP` itself (the `?` key), so the keys a person is
+  shown are the keys render.js listens to: there is no second list to drift out of date.
+- **The layout.** Panels docked into two rails — the work you are doing on the left, what
+  the park is telling you on the right — instead of floating windows at fixed pixel
+  coordinates that overlapped each other and covered the view. A nav bar carries where you
+  are, Jump to, the camera modes and the keys. BUILD listed every tool a fixture grants,
+  up to thirty identifiers each, which buried the fixtures; it now says "Park Store · 15
+  tools" with the names one click away.
+
+`scripts/park-check.mjs` proves all of it headlessly: a held key moves the camera, the
+same key typed into a brief does not, and a jump lands on the Peak. Those assertions poll
+for the camera to arrive rather than sleeping, because software GL draws about a frame a
+second and every fixed timeout here was wrong at that rate.

@@ -10,9 +10,11 @@ import { createPermission } from './ui/permission.js';
 import { createInspect } from './ui/inspect.js';
 import { createFirstRun } from './ui/firstrun.js';
 import { createVoice } from './ui/voice.js';
+import { createNav } from './ui/nav.js';
 import { el, setChildren } from './ui/windows.js';
 import { tileToWorld, TILE_WORLD } from './park/placement.js';
 import { parkOptions } from './park/gpu.js';
+import { isTyping } from './park/controls.js';
 
 let state = initialState();
 const getState = () => state;
@@ -102,31 +104,67 @@ async function onPick(info) {
   if (info && info.type === 'object' && build.activeKind()) {
     return showError(await api.post('/api/layout/reclaim', { objectId: info.object.id }));
   }
-  if (info && info.type === 'ground') return inspect.select(null);
+  if (info && info.type === 'ground') {
+    nav.setWhere('the park');
+    return inspect.select(null);
+  }
   inspect.select(info);
+  // The bar says where you are looking, so a click is not the only record of it.
+  const named =
+    info && info.type === 'agent' ? (info.agent && info.agent.name) || 'a Ranger'
+    : info && info.type === 'zone' ? (info.room && info.room.name) || 'a zone'
+    : info && info.type === 'gate' ? 'Entrance Gate'
+    : info && info.type === 'peak' ? 'Mountain Peak'
+    : info && info.type === 'trail' ? 'a trail'
+    : info && info.type === 'object' ? 'a fixture'
+    : null;
+  if (named) nav.setWhere(named);
   if (info && info.type === 'agent' && park) park.follow(info.agent.id);
 }
 
-const comms = createComms({ parent: ui, getState, api, x: 16, y: 16, w: 440 });
-const spend = createSpend({ parent: ui, getState, x: window.innerWidth - 300, y: 16, w: 270 });
-const build = createBuild({ parent: ui, getState, world: { setBuild() { render(); } }, x: window.innerWidth - 300, y: 190, w: 270 });
+// The panels dock into two rails (D167) instead of floating at fixed pixel positions,
+// where they overlapped each other and covered the park. Left is the work you are doing,
+// right is what the park is telling you.
+const railLeft = el('div', { class: 'rail left' });
+const railRight = el('div', { class: 'rail right' });
+ui.append(railLeft, railRight);
+
+const comms = createComms({ parent: railLeft, getState, api, x: 0, y: 0, w: 348 });
+const spend = createSpend({ parent: railRight, getState, x: 0, y: 0, w: 278 });
+const build = createBuild({ parent: railRight, getState, world: { setBuild() { render(); } }, x: 0, y: 0, w: 278 });
 const permission = createPermission({ parent: ui, getState, api });
-const inspect = createInspect({ parent: ui, getState, api, x: window.innerWidth - 300, y: 420, w: 270 });
+const inspect = createInspect({ parent: railRight, getState, api, x: 0, y: 0, w: 278 });
 const firstRun = createFirstRun({ parent: ui, getState, api, onRefresh: () => render() });
 // Voice (phase 4 step 14): hold to talk, the transcript shown before anything acts on it,
 // the station voice for Gate items and the Peak's answers when switched on.
 const voice = createVoice({ parent: ui, getState, api, onMission: (text) => { inspect.setMissionDraft(text); } });
 
-// Camera and park controls (a small bar under the status line).
-const cameraBar = el('div', { class: 'camera-bar' });
-ui.append(cameraBar);
-function renderCameraBar() {
-  const mode = park ? park.cameraMode : null;
-  setChildren(cameraBar,
-    ...['orbit', 'fly', 'follow'].map((m) => el('button', { class: `btn ${mode === m ? 'active' : ''}`, text: m, disabled: !park, onclick: () => { park.setCameraMode(m); render(); } })),
-    el('button', { class: 'btn', text: 're-roll park', title: 'New terrain seed (persisted by the sidecar)', onclick: async () => showError(await api.post('/api/layout/reroll', {})) }),
-  );
-}
+// The navigation bar: where you are, the Jump to menu, the camera modes and the keys.
+const nav = createNav({ parent: ui, getState, getPark: () => park, api, onFlash: (x, kind) => (typeof x === 'string' ? flash(x, kind) : showError(x)) });
+
+// The park's own keys live in render.js (it needs them every frame); these are the ones
+// that drive the page: jumping, the landmarks, the modes and the legend. The table a
+// person reads is park/controls.js KEY_MAP, which render.js listens to.
+window.addEventListener('keydown', (e) => {
+  if (isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === '?' || (k === '/' && e.shiftKey)) return nav.toggleKeys();
+  if (k === 'escape') {
+    nav.toggleKeys(false);
+    inspect.select(null);
+    return;
+  }
+  if (!park) return;
+  if (k === 'j') { e.preventDefault(); return nav.openJump(); }
+  if (k === 'p') return nav.goToKind('peak');
+  if (k === 'g') return nav.goToKind('gate');
+  if (k === 'h') return nav.goToKind('home');
+  if (k === 'f') { park.setCameraMode('follow'); return render(); }
+  if (k === '1' || k === '2' || k === '3') {
+    park.setCameraMode({ 1: 'orbit', 2: 'fly', 3: 'follow' }[k]);
+    render();
+  }
+});
 
 function showError(res) {
   if (res && !res.ok) flash(`${res.body.code || res.status}: ${res.body.error || 'failed'}`, 'error');
@@ -170,7 +208,7 @@ function render() {
   requestAnimationFrame(() => {
     renderQueued = false;
     renderStatus();
-    renderCameraBar();
+    nav.render();
     comms.render();
     spend.render();
     build.render();

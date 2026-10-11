@@ -19,10 +19,18 @@ body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--sans); ov
 #park { position: fixed; inset: 0 0 26px 0; width: 100%; height: calc(100% - 26px); display: block; background: var(--bg); }
 #park canvas { width: 100% !important; height: 100% !important; display: block; }
 .park-missing { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--warn); font-family: var(--mono); padding: 24px; text-align: center; }
-.camera-bar { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); display: flex; gap: 6px; }
-.camera-bar .btn.active { outline: 2px solid var(--accent); }
 #ui { position: fixed; inset: 0 0 26px 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
+
+/* The dock (D167): panels live in two rails down the sides instead of floating over the
+   park at fixed pixel positions, where they overlapped each other and hid the view. The
+   middle is always the park. */
+.rail { position: absolute; top: 46px; bottom: 44px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overflow-x: hidden; padding: 2px; scrollbar-width: thin; pointer-events: none; }
+.rail > * { pointer-events: auto; }
+.rail.left { left: 10px; width: 360px; }
+.rail.right { right: 10px; width: 290px; }
+.rail .win { position: static; max-width: 100%; max-height: none; flex: 0 0 auto; }
+@media (max-width: 1100px) { .rail.left { width: 290px; } }
 #status { position: fixed; left: 0; right: 0; bottom: 0; height: 26px; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--panel); border-top: 1px solid var(--panel-border); color: var(--muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; overflow: hidden; }
 #status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--error); }
 #status .dot.on { background: var(--ok); }
@@ -79,6 +87,12 @@ body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--sans); ov
 .run-foot.running { color: var(--warn); }
 
 .palette { display: flex; flex-direction: column; gap: 4px; }
+.kind-row { display: flex; flex-direction: column; gap: 2px; }
+.kind-tools summary { cursor: pointer; list-style: none; }
+.kind-tools summary::-webkit-details-marker { display: none; }
+.kind-tools summary::before { content: '▸ '; }
+.kind-tools[open] summary::before { content: '▾ '; }
+.kind-tools > div { padding: 2px 0 4px 10px; word-break: break-word; }
 .placed { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
 
 .perm-host { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 10; }
@@ -141,6 +155,26 @@ svg.spark .spark-empty { font-size: 9px; fill: var(--muted); }
 .voice-bar .voice-talk.active { background: var(--warn); color: #000; }
 .voice-box { flex-basis: 100%; }
 .voice-box textarea { width: 100%; }
+
+/* The navigation bar (D167): where you are, where you can go, how to look, the keys. */
+.nav-bar { position: absolute; top: 10px; left: 10px; right: 10px; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; font-family: var(--mono); font-size: 12px; }
+.nav-brand { color: var(--accent); letter-spacing: 0.18em; font-weight: 600; }
+.nav-where { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; }
+.nav-jump { margin-left: auto; max-width: 240px; }
+.nav-modes { display: flex; gap: 4px; }
+.nav-modes .btn.active { outline: 2px solid var(--accent); }
+
+.keys-host { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5, 10, 7, 0.5); z-index: 15; }
+.keys-host[hidden] { display: none; }
+.keys-card { width: 520px; max-height: 80vh; overflow: auto; background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.6); }
+.keys-head { display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); letter-spacing: 0.12em; color: var(--accent); }
+.keys-group-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 4px; }
+.keys-group { border-top: 1px solid var(--panel-border); padding-top: 8px; }
+.keys-row { display: flex; gap: 10px; align-items: baseline; padding: 2px 0; }
+.keys-keys { flex: 0 0 170px; display: flex; gap: 4px; flex-wrap: wrap; }
+.keys-what { flex: 1; }
+kbd { background: #0f1a14; border: 1px solid var(--panel-border); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-family: var(--mono); font-size: 11px; color: var(--text); }
+kbd.alt { opacity: 0.6; }
 
 /* The park's dev frame-time overlay (phase 4 step 15): `?dev=1` or the backtick key. */
 .park-overlay { position: fixed; right: 16px; bottom: 44px; margin: 0; padding: 8px 10px; background: rgba(10, 20, 14, 0.78); color: #d9e6d0; font-family: var(--mono); font-size: 11px; line-height: 1.45; border: 1px solid var(--panel-border); border-radius: 6px; z-index: 6; pointer-events: none; white-space: pre; }
