@@ -25,22 +25,46 @@ export function splatWeights({ height, slope, x, z, seed }) {
 
 export const LAYER_NAMES = Object.freeze(['grass', 'forest', 'rock', 'sand']);
 
-// The mean sRGB colour of each layer's diffuse map, 0..1 per channel. `layers` are
-// { data, width, height } RGBA reads of the four maps.
-export function layerMeans(layers) {
+// The colour each layer stands for, 0..1 per channel, from { data, width, height } RGBA
+// reads of the four diffuse maps.
+//
+// For bare ground that is the plain mean. For the vegetation layers it is the mean of
+// the leafy pixels only — the ones greener than the photo's own average. A grass scan
+// averages to khaki because half of it is the soil between the blades, so the plain mean
+// paints a meadow the colour of a dirt road; the leafy half is what a person means when
+// they say the grass is green (D166).
+export function layerMeans(layers, { vegetation = ['grass', 'forest'] } = {}) {
   const out = {};
   for (const name of LAYER_NAMES) {
     const l = layers[name];
+    const n = l.width * l.height;
+    const greenness = (i) => l.data[i * 4 + 1] - (l.data[i * 4] + l.data[i * 4 + 2]) / 2;
+    let cut = -Infinity;
+    if (vegetation.includes(name)) {
+      let sum = 0;
+      for (let i = 0; i < n; i++) sum += greenness(i);
+      cut = sum / n;
+    }
     let r = 0;
     let g = 0;
     let b = 0;
-    const n = l.width * l.height;
+    let count = 0;
     for (let i = 0; i < n; i++) {
+      if (greenness(i) < cut) continue;
       r += l.data[i * 4];
       g += l.data[i * 4 + 1];
       b += l.data[i * 4 + 2];
+      count++;
     }
-    out[name] = [r / n / 255, g / n / 255, b / n / 255];
+    if (!count) {
+      for (let i = 0; i < n; i++) {
+        r += l.data[i * 4];
+        g += l.data[i * 4 + 1];
+        b += l.data[i * 4 + 2];
+      }
+      count = n;
+    }
+    out[name] = [r / count / 255, g / count / 255, b / count / 255];
   }
   return out;
 }
@@ -117,11 +141,64 @@ export function terrainVertexColors({ positions, sampleHeight, seed, means }) {
       0.17 * (1 - valueNoise(x * 0.012, z * 0.012, seed + 431)) -
       0.09 * (1 - valueNoise(x * 0.047, z * 0.047, seed + 613));
     const k = shade / DETAIL_MEAN_LINEAR;
+    // The layer's own colour, not a saturated version of it: these means come from
+    // photographs, and a dry-grass photo averages to a warm khaki, so "more saturation"
+    // means "more orange", not "more green". Variety comes from the splat instead.
     out[i * 3] = srgbToLinear(r) * k;
     out[i * 3 + 1] = srgbToLinear(g) * k;
     out[i * 3 + 2] = srgbToLinear(b) * k;
   }
   return out;
+}
+
+// A tileable sawn-timber texture: albedo and its normal map, grain running along v.
+// The park's built pieces (the cabin, the signs, the crates, the fences) are boards, and
+// a board needs grain and a seam between planks or it reads as a coloured box (D166).
+// `width` is how many planks fit across the tile.
+export function woodGrain({ size = 256, seed = 5, planks = 4, dark = [86, 62, 40], light = [146, 112, 72] }) {
+  const albedo = new Uint8ClampedArray(size * size * 4);
+  const height = new Float32Array(size * size);
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++) {
+      const u = i / size;
+      const v = j / size;
+      // Which plank this column belongs to, and how far across it we are.
+      const across = u * planks;
+      const plank = Math.floor(across);
+      const inPlank = across - plank;
+      const tone = hash2(plank, 3, seed); // every board is cut from a different piece
+      // Grain: noise stretched hard along the board's length, so it runs in lines.
+      const g = valueNoise((u * planks * 9 + tone * 20) % 512, (v * 2.2) % 512, seed + plank * 7);
+      const fine = valueNoise((u * planks * 34) % 512, (v * 9) % 512, seed + 101);
+      let t = 0.35 + 0.45 * g + 0.2 * fine + (tone - 0.5) * 0.3;
+      // The seam between two boards, and the softened edge either side of it.
+      const seam = Math.min(inPlank, 1 - inPlank);
+      const edge = Math.min(1, seam / 0.045);
+      t *= 0.35 + 0.65 * edge;
+      t = Math.min(1, Math.max(0, t));
+      height[j * size + i] = t;
+      const o = (j * size + i) * 4;
+      albedo[o] = dark[0] + (light[0] - dark[0]) * t;
+      albedo[o + 1] = dark[1] + (light[1] - dark[1]) * t;
+      albedo[o + 2] = dark[2] + (light[2] - dark[2]) * t;
+      albedo[o + 3] = 255;
+    }
+  }
+  const normal = new Uint8ClampedArray(size * size * 4);
+  const at = (i, j) => height[((j + size) % size) * size + ((i + size) % size)];
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++) {
+      const hx = at(i + 1, j) - at(i - 1, j);
+      const hy = at(i, j + 1) - at(i, j - 1);
+      const inv = 1 / Math.hypot(hx * 3, hy * 3, 1);
+      const o = (j * size + i) * 4;
+      normal[o] = (-hx * 3 * inv * 0.5 + 0.5) * 255;
+      normal[o + 1] = (-hy * 3 * inv * 0.5 + 0.5) * 255;
+      normal[o + 2] = (inv * 0.5 + 0.5) * 255;
+      normal[o + 3] = 255;
+    }
+  }
+  return { albedo, normal, size };
 }
 
 // An alpha-cutout foliage card: one branch spray drawn into a square RGBA sprite, with a

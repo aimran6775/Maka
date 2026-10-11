@@ -3,7 +3,7 @@
 // foliage cards. Pure pixel maths, so it runs under node with no DOM and no Three.js.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { splatWeights, layerMeans, detailGrayscale, terrainVertexColors, foliageCard, srgbToLinear, DETAIL_MEAN_LINEAR, LAYER_NAMES } from '../frontend/park/surface.js';
+import { splatWeights, layerMeans, detailGrayscale, terrainVertexColors, foliageCard, woodGrain, srgbToLinear, DETAIL_MEAN_LINEAR, LAYER_NAMES } from '../frontend/park/surface.js';
 import { TERRAIN, heightAt } from '../frontend/park/terrain.js';
 
 // A flat RGBA image of one colour, the shape loadPixels hands the surface maths.
@@ -97,6 +97,47 @@ test('terrain vertex colours: the layer blend in linear space, divided by the de
   assert.ok(Math.abs(shore[0] * DETAIL_MEAN_LINEAR - sandLinear) < sandLinear * 0.35, 'the ground lands on the layer albedo, give or take the macro shading');
   // Deterministic.
   assert.deepEqual([...terrainVertexColors({ positions, sampleHeight: sample, seed: 5, means })], [...colors]);
+});
+
+test('layer colours: a vegetation layer is read from its leafy pixels, bare ground from all of them', () => {
+  // Mostly the soil between the blades, a quarter green blades — the proportions of a
+  // real grass scan, whose plain mean is therefore khaki and whose leafy pixels are not.
+  const size = 8;
+  const data = new Uint8ClampedArray(size * size * 4);
+  for (let i = 0; i < size * size; i++) {
+    const leaf = i % 4 === 0;
+    data[i * 4] = leaf ? 60 : 165;
+    data[i * 4 + 1] = leaf ? 125 : 135;
+    data[i * 4 + 2] = leaf ? 45 : 95;
+    data[i * 4 + 3] = 255;
+  }
+  const img = { data, width: size, height: size };
+  const veg = layerMeans({ grass: img, forest: img, rock: img, sand: img });
+  const plain = layerMeans({ grass: img, forest: img, rock: img, sand: img }, { vegetation: [] });
+  assert.ok(veg.grass[1] > veg.grass[0], 'the grass layer comes out green');
+  assert.ok(plain.grass[0] > plain.grass[1], 'the plain mean of the same image is khaki');
+  assert.deepEqual(veg.rock, plain.rock, 'bare ground is not a vegetation layer: it keeps its plain mean');
+  // An image with no green at all still answers something sane rather than nothing.
+  const grey = { data: new Uint8ClampedArray(size * size * 4).fill(120), width: size, height: size };
+  const flatVeg = layerMeans({ grass: grey, forest: grey, rock: grey, sand: grey });
+  for (const v of flatVeg.grass) assert.ok(v > 0.4 && v < 0.6, `${v} is not the flat grey back again`);
+});
+
+test('wood grain: planks with a seam between them, grain along the board, and a normal map', () => {
+  const g = woodGrain({ size: 64, seed: 5, planks: 4 });
+  assert.equal(g.albedo.length, 64 * 64 * 4);
+  const row = (j, i) => g.albedo[(j * 64 + i) * 4];
+  // The seam between two boards is darker than the middle of one.
+  const mid = row(32, 8); // the middle of the first plank
+  const seam = row(32, 0); // the seam at its edge
+  assert.ok(seam < mid, `the seam (${seam}) is darker than the board (${mid})`);
+  // The grain runs along the board: a column varies less than a row crossing the planks.
+  const spread = (vals) => Math.max(...vals) - Math.min(...vals);
+  const down = spread(Array.from({ length: 64 }, (_, j) => row(j, 8)));
+  const across = spread(Array.from({ length: 64 }, (_, i) => row(32, i)));
+  assert.ok(across > down, `across the boards (${across}) varies more than along one (${down})`);
+  for (let i = 0; i < 64 * 64; i++) assert.equal(g.albedo[i * 4 + 3], 255, 'timber is opaque');
+  assert.deepEqual([...woodGrain({ size: 32, seed: 5 }).albedo], [...woodGrain({ size: 32, seed: 5 }).albedo], 'deterministic');
 });
 
 test('foliage cards: a needle spray and a leaf spray, mostly empty, opaque where the foliage is, with a normal map', () => {

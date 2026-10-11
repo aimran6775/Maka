@@ -169,7 +169,30 @@ export function scatterFoliage(layout, clearings, trails, { trees = FOLIAGE.tree
       placed++;
     }
   };
-  scatter(trees, 2, (x, z, y) => (y < TERRAIN.waterLevel + 0.8 ? null : { kind: 'tree', variant: Math.floor(rand() * 4), x, z, y, rotation: rand() * Math.PI * 2, scale: 0.85 + rand() * 0.5 }));
+  // Trees grow in stands with open ground between them, never on an even lattice, and a
+  // stand holds saplings next to full-grown trees. Both are what stops a forest reading
+  // as scenery stamped at regular intervals (D166). `stands` are drawn first and every
+  // tree is pulled toward the nearest one; `density` keeps the look at any count.
+  const standCount = Math.max(6, Math.round(14 * Math.sqrt(trees / FOLIAGE.trees)));
+  const stands = Array.from({ length: standCount }, () => ({ x: (rand() * 2 - 1) * half, z: (rand() * 2 - 1) * half, r: 14 + rand() * 26 }));
+  scatter(trees, 2, (x, z, y) => {
+    if (y < TERRAIN.waterLevel + 0.8) return null;
+    let best = null;
+    let bestD = Infinity;
+    for (const s of stands) {
+      const d = Math.hypot(s.x - x, s.z - z);
+      if (d < bestD) {
+        bestD = d;
+        best = s;
+      }
+    }
+    // Outside every stand the ground stays open, bar the occasional lone tree.
+    if (best && bestD > best.r && rand() > 0.12) return null;
+    // Younger at the edge of a stand, full-grown in its heart.
+    const core = best ? 1 - Math.min(1, bestD / best.r) : 0.4;
+    const scale = 0.5 + core * 0.7 + rand() * 0.75;
+    return { kind: 'tree', variant: Math.floor(rand() * 4), x, z, y, rotation: rand() * Math.PI * 2, scale };
+  });
   scatter(rocks, 1, (x, z, y) => ({ kind: 'rock', variant: Math.floor(rand() * 3), x, z, y, rotation: rand() * Math.PI * 2, scale: 0.7 + rand() * 0.9 }));
   scatter(grass, 0, (x, z, y) => (y < TERRAIN.waterLevel + 0.5 ? null : { kind: 'grass', variant: Math.floor(rand() * 2), x, z, y, rotation: rand() * Math.PI * 2, scale: 0.7 + rand() * 0.8 }), 0.66);
   return out;

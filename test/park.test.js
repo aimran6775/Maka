@@ -146,7 +146,15 @@ test('sun: rises in the east, high at noon, below the horizon at night, always u
     assert.ok(Math.abs(Math.hypot(d.x, d.y, d.z) - 1) < 1e-9);
     assert.ok(at(h).intensity > 0);
   }
-  assert.equal(at(7).color, 0xffb070, 'warm light at dawn');
+  // The light warms on a ramp toward the horizon, never on a switch (D166): the middle
+  // of the day is neutral, dawn and dusk are warm, and the dome overhead stays blue.
+  const blue = (hex) => (hex & 255) / (((hex >> 16) & 255) || 1);
+  assert.equal(noon.warmth, 0, 'no warmth at noon');
+  assert.ok(at(7).warmth > 0.1 && at(7).warmth < 0.5, `dawn is on the way up: ${at(7).warmth}`);
+  assert.ok(at(17.5).warmth > at(16).warmth, 'the afternoon warms as the sun drops');
+  assert.ok(blue(at(7).color) < blue(noon.color), 'dawn light is warmer than noon light');
+  assert.ok(blue(at(7).zenith) > 1, 'the sky overhead stays blue at dawn');
+  assert.ok(blue(night.zenith) > 1 && night.warmth === 0, 'night has no golden hour');
 });
 
 test('a mountain_peak room is the Peak clearing (no duplicate), and its agents stand on the Peak', async () => {

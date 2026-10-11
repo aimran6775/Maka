@@ -26,7 +26,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildParkModel } from './placement.js';
 import { TERRAIN, valueNoise } from './terrain.js';
 import { hash2 } from './random.js';
-import { detailGrayscale, foliageCard, layerMeans, terrainVertexColors } from './surface.js';
+import { detailGrayscale, foliageCard, layerMeans, terrainVertexColors, woodGrain } from './surface.js';
 import { pointAtFraction } from './spline.js';
 import { clipFor, placeFor, badgeFor, lookFor, lampsFor } from './clips.js';
 import { sunFor } from './sun.js';
@@ -46,9 +46,8 @@ const ASSETS = {
   terrain: { grass: 'polyhaven/leafy_grass', forest: 'polyhaven/forest_leaves_04', rock: 'polyhaven/rock_face', sand: 'polyhaven/sandy_gravel' },
   bark: 'polyhaven/pine_bark',
   waterNormals: '/vendor/three/textures/waternormals.jpg',
-  station: { structure: 'survival-kit/structure.glb', tent: 'survival-kit/tent.glb', campfire: 'survival-kit/campfire-pit.glb', signpost: 'survival-kit/signpost.glb', tentOpen: 'nature-kit/tent_detailedOpen.glb', crate: 'survival-kit/box.glb', logs: 'nature-kit/campfire_logs.glb', fenceGate: 'nature-kit/fence_gate.glb', fenceSimple: 'nature-kit/fence_simple.glb' },
-  gate: { doorway: 'survival-kit/fence-doorway.glb', fence: 'survival-kit/fence.glb', signpost: 'survival-kit/signpost.glb' },
-  fixtures: { trailhead_sign: 'nature-kit/sign.glb', supply_cache: 'survival-kit/chest.glb' }, // radio_tower, field_office and outpost are built in code (makeTower, makeFieldOffice, makeOutpost)
+  // The station, gate and fixture pieces are built in code (buildProps): real-size
+  // timber, canvas and stone instead of a bright low-poly kit (D166).
   ranger: { body: 'characters/characterMedium.fbx', skin: 'characters/skaterMaleA.png', clips: { idle: 'characters/idle.fbx', run: 'characters/run.fbx' } },
 };
 // The ground detail tiles about every two world units, the scale the textures were shot
@@ -59,11 +58,14 @@ const GRASS_PARTS = 2; // how many of the grass scan's five tufts each clump kee
 // How each zone kind is dressed (data; kit pieces by key from ASSETS.station). The Ranger
 // Station keeps its phase 1 look; camps are tents around a fire; the Visitor Center is a
 // building with a counter crate; a trailhead is a signpost and a gate.
+// How each zone kind is dressed: [piece, x and z as a fraction of the clearing radius,
+// turn, size]. The pieces are built at real size (buildProps), so the size is a nudge
+// around 1, not a kit model's scale factor.
 const ZONE_DRESS = {
-  ranger_station: [['structure', -0.45, -0.45, Math.PI / 6, 4.2], ['tent', 0.5, -0.4, -Math.PI / 3, 3.6], ['campfire', 0.1, 0.1, 0, 2.8], ['signpost', -0.6, 0.55, Math.PI / 2, 3]],
-  visitor_center: [['structure', 0, -0.4, 0, 4.6], ['crate', -0.45, 0.35, 0.3, 3], ['crate', -0.25, 0.4, -0.2, 3], ['signpost', 0.55, 0.45, Math.PI, 3]],
-  trailhead: [['signpost', 0, 0, Math.PI / 4, 3.4], ['fenceGate', 0, 0.5, 0, 3.2], ['logs', -0.5, -0.3, 0, 2.4]],
-  camp: [['tentOpen', -0.5, -0.4, Math.PI / 5, 3.4], ['tent', 0.5, -0.45, -Math.PI / 4, 3.4], ['campfire', 0, 0.15, 0, 2.6], ['signpost', -0.55, 0.55, Math.PI / 2, 3], ['crate', 0.55, 0.5, 0, 2.6]],
+  ranger_station: [['structure', -0.45, -0.45, Math.PI / 6, 1.15], ['tent', 0.5, -0.4, -Math.PI / 3, 1], ['campfire', 0.1, 0.1, 0, 1], ['signpost', -0.6, 0.55, Math.PI / 2, 1]],
+  visitor_center: [['structure', 0, -0.4, 0, 1.3], ['crate', -0.45, 0.35, 0.3, 1], ['crate', -0.25, 0.4, -0.2, 0.85], ['signpost', 0.55, 0.45, Math.PI, 1]],
+  trailhead: [['signpost', 0, 0, Math.PI / 4, 1.1], ['fenceGate', 0, 0.5, 0, 1], ['logs', -0.5, -0.3, 0, 1]],
+  camp: [['tentOpen', -0.5, -0.4, Math.PI / 5, 1], ['tent', 0.5, -0.45, -Math.PI / 4, 1], ['campfire', 0, 0.15, 0, 0.9], ['signpost', -0.55, 0.55, Math.PI / 2, 1], ['crate', 0.55, 0.5, 0, 0.9]],
 };
 const DISC_COLORS = { gate: 0xc2ad86, peak: 0x9a948a, visitor_center: 0x8fbf6a, trailhead: 0x7fb15a, zone: 0x6fae52 };
 
@@ -176,7 +178,10 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   scene.add(sun, sun.target);
   const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x3b5a2a, 0.5);
   scene.add(hemi);
-  scene.fog = new THREE.Fog(0xbcd6e8, 90, 320);
+  // Exponential haze, not a linear band: distance is the strongest depth cue a landscape
+  // has, and real air thickens with the square of it. The far hills dissolve into the
+  // sky's own colour, which is what stops the park reading as a flat painted model.
+  scene.fog = new THREE.FogExp2(0xbcd6e8, 0.0042);
 
   // ---- environment lighting (D166): a sky gradient lights the scene through a PMREM ----
   // The Sky mesh itself is not the source: its shader carries real sky radiance (the sun
@@ -202,10 +207,12 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     try {
       const ctx = envCanvas.getContext('2d');
       const grad = ctx.createLinearGradient(0, 0, 0, ENV_H);
+      const zenith = new THREE.Color(s.zenith);
       const sky7 = new THREE.Color(s.sky);
       const fog7 = new THREE.Color(s.fog);
       const ground = new THREE.Color(s.night ? 0x0a0f14 : 0x4a4332);
-      grad.addColorStop(0, `#${sky7.getHexString()}`);
+      grad.addColorStop(0, `#${zenith.getHexString()}`);
+      grad.addColorStop(0.3, `#${sky7.getHexString()}`);
       grad.addColorStop(0.48, `#${fog7.getHexString()}`);
       grad.addColorStop(0.52, `#${fog7.clone().lerp(ground, 0.65).getHexString()}`);
       grad.addColorStop(1, `#${ground.getHexString()}`);
@@ -447,6 +454,202 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     return g;
   }
 
+  // ---- the park's built pieces (D166) ----
+  // The Kenney kits were bright low-poly toys standing in a photographic landscape, which
+  // is the thing the eye catches first. Every station, gate and fixture piece is now built
+  // here from boxes and cylinders at real size, in sawn timber, round poles, canvas and
+  // stone, so they belong to the same world as the ground they stand on. Simple shapes,
+  // honest materials — no kit, nothing to attribute.
+  const props = {};
+  function buildProps() {
+    const grain = woodGrain({ size: 256, seed: 5, planks: 4 });
+    const timber = new THREE.MeshStandardMaterial({
+      map: textureFromPixels(grain.albedo, grain.size, { srgb: true }),
+      normalMap: textureFromPixels(grain.normal, grain.size),
+      roughness: 0.88,
+      metalness: 0,
+    });
+    const weathered = timber.clone();
+    weathered.color = new THREE.Color(0x8e8777); // roofs and old boards go grey
+    const pole = surfaces.bark
+      ? new THREE.MeshStandardMaterial({ map: surfaces.bark.map, normalMap: surfaces.bark.normalMap, roughnessMap: surfaces.bark.armMap, roughness: 1 })
+      : new THREE.MeshStandardMaterial({ color: 0x6b5236, roughness: 1 });
+    const stone = surfaces.disc
+      ? new THREE.MeshStandardMaterial({ map: surfaces.disc.map, normalMap: surfaces.disc.normalMap, roughnessMap: surfaces.disc.armMap, color: 0x9d9a94, roughness: 1 })
+      : new THREE.MeshStandardMaterial({ color: 0x8d8a84, roughness: 1 });
+    const canvasMat = new THREE.MeshStandardMaterial({ color: 0xc8bda2, roughness: 0.95, metalness: 0, side: THREE.DoubleSide });
+    const charcoal = new THREE.MeshStandardMaterial({ color: 0x241f1c, roughness: 1 });
+    const iron = new THREE.MeshStandardMaterial({ color: 0x3b3a38, roughness: 0.6, metalness: 0.6 });
+    const shadowed = (mesh) => {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    };
+    const box = (w, h, d, mat, x = 0, y = 0, z = 0, ry = 0) => {
+      const m = shadowed(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat));
+      m.position.set(x, y, z);
+      m.rotation.y = ry;
+      return m;
+    };
+    const cyl = (rTop, rBot, h, mat, x = 0, y = 0, z = 0, seg = 8) => shadowed(new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, h, seg), mat)).translateX(x).translateY(y).translateZ(z);
+
+    // A round post with a little lean, the way a post set by hand stands.
+    const post = (h, r, x, z, seedN) => {
+      const p = cyl(r * 0.9, r, h, pole, x, h / 2, z);
+      p.rotation.z = (hash2(seedN, 1, 7) - 0.5) * 0.06;
+      p.rotation.x = (hash2(seedN, 2, 7) - 0.5) * 0.06;
+      return p;
+    };
+
+    // A ridge tent: canvas over a ridge pole, pegged out. `open` darkens the doorway.
+    const tent = (open) => {
+      const g = new THREE.Group();
+      const len = 2.6;
+      const halfW = 0.95;
+      const h = 1.45;
+      const sheet = new THREE.BufferGeometry();
+      // Two sloping panels and two end triangles, written out by hand so the canvas has
+      // no thickness and no bottom face.
+      const v = [];
+      const push = (...xs) => v.push(...xs);
+      for (const s of [-1, 1]) push(0, h, -len / 2, 0, h, len / 2, s * halfW, 0, len / 2, 0, h, -len / 2, s * halfW, 0, len / 2, s * halfW, 0, -len / 2);
+      push(0, h, -len / 2, -halfW, 0, -len / 2, halfW, 0, -len / 2); // the back wall
+      sheet.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+      sheet.computeVertexNormals();
+      const skin = shadowed(new THREE.Mesh(sheet, canvasMat));
+      g.add(skin);
+      g.add(cyl(0.035, 0.035, len + 0.3, pole, 0, h, 0).rotateX(Math.PI / 2));
+      for (const s of [-1, 1]) g.add(post(h + 0.1, 0.04, 0, (s * (len + 0.25)) / 2, s + 3));
+      if (open) {
+        const mouth = new THREE.Mesh(new THREE.BufferGeometry(), charcoal);
+        mouth.geometry.setAttribute('position', new THREE.Float32BufferAttribute([0, h - 0.06, len / 2 + 0.01, -halfW + 0.12, 0.02, len / 2 + 0.01, halfW - 0.12, 0.02, len / 2 + 0.01], 3));
+        mouth.geometry.computeVertexNormals();
+        g.add(mouth);
+      }
+      return g;
+    };
+
+    // A timber cabin: boarded walls, a pitched shingle roof with an overhang, a doorway.
+    const cabin = (w, d, h) => {
+      const g = new THREE.Group();
+      g.add(box(w, h, d, timber, 0, h / 2, 0));
+      const pitch = 0.62;
+      for (const s of [-1, 1]) {
+        const slope = box(w + 0.45, 0.1, Math.hypot(d / 2 + 0.3, pitch) * 1.04, weathered, 0, h + pitch / 2, (s * (d / 4 + 0.12)) / 1);
+        slope.rotation.x = s * -Math.atan2(pitch, d / 2 + 0.3);
+        g.add(slope);
+      }
+      // The gable ends fill the triangle the roof leaves open.
+      for (const s of [-1, 1]) {
+        const gable = new THREE.Mesh(new THREE.BufferGeometry(), timber);
+        gable.geometry.setAttribute('position', new THREE.Float32BufferAttribute([-w / 2, h, (s * d) / 2, w / 2, h, (s * d) / 2, 0, h + pitch, (s * d) / 2], 3));
+        gable.geometry.computeVertexNormals();
+        shadowed(gable);
+        g.add(gable);
+      }
+      g.add(box(0.72, 1.55, 0.06, charcoal, 0, 0.78, d / 2 + 0.01)); // the doorway
+      g.add(box(0.86, 0.12, 0.1, weathered, 0, 1.62, d / 2 + 0.03)); // its lintel
+      return g;
+    };
+
+    // A ring of stones round a bed of ash, with burnt logs leaning in.
+    const campfire = () => {
+      const g = new THREE.Group();
+      const ring = 0.62;
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2 + hash2(i, 5, 11) * 0.3;
+        const r = 0.11 + hash2(i, 6, 11) * 0.07;
+        const s = shadowed(new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), stone));
+        s.position.set(Math.cos(a) * ring, r * 0.65, Math.sin(a) * ring);
+        s.rotation.set(hash2(i, 7, 11) * 3, hash2(i, 8, 11) * 3, hash2(i, 9, 11) * 3);
+        s.scale.y = 0.8;
+        g.add(s);
+      }
+      const ash = new THREE.Mesh(new THREE.CircleGeometry(ring * 0.9, 16), new THREE.MeshStandardMaterial({ color: 0x4a443f, roughness: 1 }));
+      ash.rotation.x = -Math.PI / 2;
+      ash.position.y = 0.02;
+      ash.receiveShadow = true;
+      g.add(ash);
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + 0.6;
+        const log = cyl(0.045, 0.06, 0.9, charcoal, Math.cos(a) * 0.22, 0.2, Math.sin(a) * 0.22);
+        log.rotation.set(Math.PI / 2.6, a, 0);
+        g.add(log);
+      }
+      return g;
+    };
+
+    // A signpost: a leaning round post with one or two boards bolted across it.
+    const signpost = (boards = 1) => {
+      const g = new THREE.Group();
+      g.add(post(2.0, 0.07, 0, 0, 21));
+      for (let i = 0; i < boards; i++) {
+        const b = box(1.05, 0.26, 0.05, timber, 0.32, 1.72 - i * 0.34, 0, i ? -0.25 : 0.06);
+        g.add(b);
+      }
+      return g;
+    };
+
+    const crate = (s = 0.72) => {
+      const g = new THREE.Group();
+      g.add(box(s, s, s, timber, 0, s / 2, 0));
+      for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) g.add(box(0.06, s, 0.06, weathered, (x * s) / 2, s / 2, (z * s) / 2));
+      return g;
+    };
+
+    const chest = () => {
+      const g = new THREE.Group();
+      g.add(box(1.05, 0.52, 0.66, timber, 0, 0.26, 0));
+      const lid = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 1.05, 12, 1, false, 0, Math.PI), timber));
+      lid.rotation.z = Math.PI / 2;
+      lid.position.y = 0.52;
+      g.add(lid);
+      for (const x of [-0.32, 0.32]) g.add(box(0.07, 0.56, 0.68, iron, x, 0.28, 0));
+      return g;
+    };
+
+    const logs = () => {
+      const g = new THREE.Group();
+      for (let i = 0; i < 3; i++) {
+        const l = cyl(0.11, 0.12, 1.5, pole, (i - 1) * 0.26, 0.12 + (i === 1 ? 0.22 : 0), i === 1 ? 0.1 : 0);
+        l.rotation.z = Math.PI / 2;
+        l.rotation.y = (hash2(i, 2, 31) - 0.5) * 0.3;
+        g.add(l);
+      }
+      return g;
+    };
+
+    // Fences: posts with two rails. A gate is two tall posts and a lintel.
+    const fence = (spans = 2) => {
+      const g = new THREE.Group();
+      const step = 1.7;
+      for (let i = 0; i <= spans; i++) g.add(post(1.15, 0.065, (i - spans / 2) * step, 0, 40 + i));
+      for (const y of [0.52, 0.95]) g.add(box(step * spans, 0.09, 0.05, timber, 0, y, 0));
+      return g;
+    };
+    const gateway = () => {
+      const g = new THREE.Group();
+      for (const s of [-1, 1]) g.add(post(2.35, 0.1, s * 1.35, 0, 51 + s));
+      g.add(box(3.1, 0.18, 0.12, timber, 0, 2.38, 0));
+      g.add(box(2.6, 0.12, 0.08, weathered, 0, 2.18, 0));
+      return g;
+    };
+
+    props.structure = cabin(3.4, 2.8, 2.3);
+    props.tent = tent(false);
+    props.tentOpen = tent(true);
+    props.campfire = campfire();
+    props.signpost = signpost(1);
+    props.crate = crate();
+    props.logs = logs();
+    props.fenceSimple = fence(2);
+    props.fenceGate = gateway();
+    props.doorway = gateway();
+    props.fence = fence(2);
+    props.chest = chest();
+    props.sign = signpost(2);
+  }
+
   async function loadKit() {
     const tryLoad = async (p) => {
       try {
@@ -548,11 +751,42 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
         o.userData.farColor = 0x4e7034;
       }
     }
-    for (const [k, p] of Object.entries(ASSETS.station)) kit.station[k] = await tryLoad(p);
-    for (const [k, p] of Object.entries(ASSETS.gate)) kit.gate[k] = await tryLoad(p);
-    for (const [k, p] of Object.entries(ASSETS.fixtures)) kit.fixtures[k] = await tryLoad(p);
+    // The built pieces: they need the bark and stone maps above, so they come last.
+    await tryStep('built pieces', async () => {
+      buildProps();
+      kit.station = { structure: props.structure, tent: props.tent, tentOpen: props.tentOpen, campfire: props.campfire, signpost: props.signpost, crate: props.crate, logs: props.logs, fenceGate: props.fenceGate, fenceSimple: props.fenceSimple };
+      kit.gate = { doorway: props.doorway, fence: props.fence, signpost: props.signpost };
+      kit.fixtures = { trailhead_sign: props.sign, supply_cache: props.chest };
+    });
     status.assets = status.problems.length ? 'partial' : 'ready';
     report();
+  }
+
+  // The crew's skin came off a bright cartoon character sheet, and a figure in primary
+  // colours standing in a photographic park is the first thing the eye picks out as
+  // wrong. Pulled most of the way to its own luminance and warmed a little, the same
+  // figure reads as somebody in work clothes (D166). The role tint still multiplies on
+  // top, so the Chief is still the Chief.
+  function muted(tex, { toward = 0.62, warm = [1.03, 1.0, 0.9] } = {}) {
+    const img = tex.image;
+    if (!img || !img.width) return tex;
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(img, 0, 0);
+    const d = cx.getImageData(0, 0, c.width, c.height);
+    for (let i = 0; i < d.data.length; i += 4) {
+      const [r, g, b] = [d.data[i], d.data[i + 1], d.data[i + 2]];
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      d.data[i] = Math.min(255, (r + (lum - r) * toward) * warm[0]);
+      d.data[i + 1] = Math.min(255, (g + (lum - g) * toward) * warm[1]);
+      d.data[i + 2] = Math.min(255, (b + (lum - b) * toward) * warm[2]);
+    }
+    cx.putImageData(d, 0, 0);
+    const out = new THREE.CanvasTexture(c);
+    out.anisotropy = Math.min(8, maxAniso);
+    return out;
   }
 
   // ---- Rangers: one rigged template, cloned per agent (phase 2 step 7) ----
@@ -562,7 +796,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   async function loadRanger() {
     try {
       const body = await loadFbx(ASSETS.ranger.body);
-      const skin = await loadTex(ASSETS.ranger.skin);
+      const skin = muted(await loadTex(ASSETS.ranger.skin));
       skin.colorSpace = THREE.SRGBColorSpace;
       skin.flipY = false;
       body.traverse((o) => {
@@ -784,17 +1018,34 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     return mesh;
   }
 
-  function buildWater() {
+  function buildWater(m) {
     // One physically-based surface on both renderer paths (D166): the environment map
     // supplies the sun glints, the scrolling three.js water normal map the ripples. The
     // old GLSL/TSL twin shaders are gone — the same material runs under WebGL2 and WebGPU.
-    const geo = new THREE.PlaneGeometry(TERRAIN.size, TERRAIN.size, 1, 1);
+    // Depth on the vertices: water over a shallow bank is pale and sandy, water over the
+    // channel is dark. A flat sheet of one blue is the thing that reads as plastic.
+    const seg = 96;
+    const geo = new THREE.PlaneGeometry(TERRAIN.size, TERRAIN.size, seg, seg);
+    geo.rotateX(-Math.PI / 2);
+    const wpos = geo.attributes.position;
+    const wcol = new Float32Array(wpos.count * 3);
+    const shallow = new THREE.Color(0x6f8f82).convertSRGBToLinear();
+    const deep = new THREE.Color(0x14323f).convertSRGBToLinear();
+    const c = new THREE.Color();
+    for (let i = 0; i < wpos.count; i++) {
+      const depth = TERRAIN.waterLevel - m.heightAt(wpos.getX(i), wpos.getZ(i));
+      c.copy(shallow).lerp(deep, Math.min(1, Math.max(0, depth / 3.2)));
+      wcol[i * 3] = c.r;
+      wcol[i * 3 + 1] = c.g;
+      wcol[i * 3 + 2] = c.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(wcol, 3));
     const mat = new THREE.MeshStandardMaterial({
-      color: 0x2c5d74,
-      roughness: 0.08,
-      metalness: 0,
+      vertexColors: true,
+      roughness: 0.06,
+      metalness: 0.1,
       transparent: true,
-      opacity: 0.86,
+      opacity: 0.88,
       depthWrite: false,
     });
     if (surfaces.waterNormals) {
@@ -806,8 +1057,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       if (!mat.normalMap) return;
       mat.normalMap.offset.set((t * 0.015) % 1, (t * 0.011) % 1);
     };
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = TERRAIN.waterLevel;
+    mesh.position.y = TERRAIN.waterLevel; // the plane is already laid flat by the geometry
     return mesh;
   }
 
@@ -932,15 +1182,15 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       sign.scale.set(6, 1.5, 1);
       g.add(sign);
     } else if (c.kind === 'peak') {
-      if (kit.station.structure) g.add(place(kit.station.structure.clone(), c.x, y, c.z - 1.5, { rotation: Math.PI / 5, scale: 3.4 }));
-      if (kit.station.signpost) g.add(place(kit.station.signpost.clone(), c.x + 4, y, c.z + 3, { rotation: Math.PI / 3, scale: 3 }));
-      if (kit.station.campfire) g.add(place(kit.station.campfire.clone(), c.x - 3.5, y, c.z + 2.5, { scale: 2.4 }));
+      if (kit.station.structure) g.add(place(kit.station.structure.clone(), c.x, y, c.z - 1.5, { rotation: Math.PI / 5, scale: 1.3 }));
+      if (kit.station.signpost) g.add(place(kit.station.signpost.clone(), c.x + 4, y, c.z + 3, { rotation: Math.PI / 3, scale: 1 }));
+      if (kit.station.campfire) g.add(place(kit.station.campfire.clone(), c.x - 3.5, y, c.z + 2.5, { scale: 1 }));
     } else {
-      if (kit.gate.doorway) g.add(place(kit.gate.doorway.clone(), c.x, y, c.z, { scale: 4 }));
+      if (kit.gate.doorway) g.add(place(kit.gate.doorway.clone(), c.x, y, c.z, { scale: 1 }));
       if (kit.gate.fence) {
-        for (const side of [-1, 1]) for (let k = 1; k <= 2; k++) g.add(place(kit.gate.fence.clone(), c.x + side * k * 5.2, y, c.z, { scale: 4 }));
+        for (const side of [-1, 1]) for (let k = 1; k <= 2; k++) g.add(place(kit.gate.fence.clone(), c.x + side * (1.35 + (k - 0.5) * 3.4), y, c.z, { scale: 1 }));
       }
-      if (kit.gate.signpost) g.add(place(kit.gate.signpost.clone(), c.x + 5.5, y, c.z + 3.5, { rotation: Math.PI, scale: 3 }));
+      if (kit.gate.signpost) g.add(place(kit.gate.signpost.clone(), c.x + 5.5, y, c.z + 3.5, { rotation: Math.PI, scale: 1 }));
     }
     g.traverse((o) => {
       if (o.isMesh && !o.userData.pick) o.userData.pick = disc.userData.pick;
@@ -1131,7 +1381,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     terrain.userData.static = true;
     world.add(terrain);
     pickables.push(terrain);
-    water = buildWater();
+    water = buildWater(model);
     water.userData.static = true;
     world.add(water);
     for (const t of model.trails) {
@@ -1346,7 +1596,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       if (dynamic.fixtures.has(f.id)) continue;
       const proto = kit.fixtures[f.kind];
       const obj = proto ? proto.clone() : f.kind === 'radio_tower' ? makeTower() : f.kind === 'field_office' ? makeFieldOffice() : f.kind === 'outpost' ? makeOutpost() : f.kind === 'ledger_desk' ? makeLedgerDesk() : f.kind === 'control_desk' ? makeControlDesk() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
-      place(obj, f.x, f.y, f.z, { scale: proto ? 3.2 : 1 });
+      place(obj, f.x, f.y, f.z, { scale: 1 });
       obj.userData.pick = { type: 'object', id: f.id };
       obj.traverse((o) => (o.userData.pick = obj.userData.pick));
       world.add(obj);

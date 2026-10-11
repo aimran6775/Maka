@@ -35,8 +35,6 @@ not required.
 
 | Pack | Author | License | Source | Used |
 | --- | --- | --- | --- | --- |
-| Nature Kit | Kenney | CC0-1.0 (License.txt in archive) | https://kenney.nl/assets/nature-kit | trees, rocks, sign, campfire, fences, tent (`frontend/assets/nature-kit/`) |
-| Survival Kit | Kenney | CC0-1.0 (License.txt in archive) | https://kenney.nl/assets/survival-kit | station structure, tent, campfire pit, signpost, chest, box, fence pieces and their colormap (`frontend/assets/survival-kit/`) |
 | Animated Characters Protagonists | Kenney | CC0-1.0 (License.txt in archive) | https://kenney.nl/assets/animated-characters-protagonists | the Ranger body, idle and run clips, skater skin (`frontend/assets/characters/`) |
 | Animated Characters Survivors | Kenney | CC0-1.0 (License.txt in archive) | https://kenney.nl/assets/animated-characters-survivors | pinned and verified, nothing extracted yet |
 | Ultimate Platformer Pack | Quaternius | CC0-1.0 (itch.io listing) | https://quaternius.itch.io/ultimate-platformer-pack | not fetched: itch.io has no stable direct URL to pin; listed as the brief's fallback rig |
@@ -58,6 +56,11 @@ example textures.
 The brief's "Animated Characters 1 and 3" correspond to Kenney's current pack names
 Protagonists and Survivors; both ship binary FBX (model plus separate animation files), not
 glTF, which is why FBXLoader is vendored.
+
+Kenney's Nature Kit and Survival Kit were vendored for the park's first look and removed
+with it (D166): every station, gate and fixture piece is now built from primitives in
+`frontend/park/render.js` at real size, in timber, canvas and stone, so there is nothing
+to attribute for them. The crew still comes from Kenney's character packs.
 
 The 2D pixel-art packs vendored for the superseded 2D park (Kenney Tiny Town, Shade Puny
 Characters) were removed with that park.
