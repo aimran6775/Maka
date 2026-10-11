@@ -67,7 +67,7 @@ test('stdio client against the fake server: initialize, paged and sanitised tool
   assert.deepEqual(init.serverInfo, { name: 'fake-mcp', version: '0.1' });
   assert.equal(init.protocolVersion, PROTOCOL_VERSION);
   const { tools, dropped } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name), ['echo', 'send_note', 'pay', 'verbose', 'env_check'], 'two pages, the bad name dropped');
+  assert.deepEqual(tools.map((t) => t.name), ['echo', 'send_note', 'pay', 'verbose', 'argv', 'env_check'], 'two pages, the bad name dropped');
   assert.equal(dropped, 1);
   assert.equal(tools.find((t) => t.name === 'verbose').description.length, MAX_DESCRIPTION);
   assert.equal(tools[0].annotations.readOnlyHint, true);
@@ -219,7 +219,7 @@ test('the manager: a server is added through the Gate (reject stores nothing; ap
     await waitUntil(() => h.mcp.status('fake') && h.mcp.status('fake').status === 'connected');
     const row = h.mcp.status('fake');
     assert.deepEqual([row.transport, row.secretEnv, row.env, row.serverInfo.name], ['stdio', ['FAKE_SECRET'], ['PATH'], 'fake-mcp']);
-    assert.deepEqual(row.tools.map((t) => [t.name, t.domain, t.readOnly]), [['echo', 'research', true], ['send_note', 'outbound_messages', false], ['pay', 'outbound_messages', false], ['verbose', 'research', true], ['env_check', 'research', true]]);
+    assert.deepEqual(row.tools.map((t) => [t.name, t.domain, t.readOnly]), [['echo', 'research', true], ['send_note', 'outbound_messages', false], ['pay', 'outbound_messages', false], ['verbose', 'research', true], ['argv', 'research', true], ['env_check', 'research', true]]);
     assert.equal(row.dropped, 1);
     assert.equal(row.tools.find((t) => t.name === 'verbose').truncated, true);
     const saved = JSON.parse(await fsp.readFile(path.join(h.home, 'mcp-servers.json'), 'utf8'));
@@ -227,8 +227,8 @@ test('the manager: a server is added through the Gate (reject stores nothing; ap
     assert.equal(await resolveKey('mcp.fake.FAKE_SECRET', { env: {}, keystorePath: h.keystorePath }), 'hush');
     assert.equal((await fsp.stat(h.keystorePath)).mode & 0o777, 0o600);
     assert.deepEqual(h.ofType('mcp.server').filter((p) => p.server === 'fake').map((p) => p.status), ['refused', 'configured', 'connected']);
-    assert.equal(h.ofType('mcp.server').at(-1).tools, 5);
-    assert.deepEqual(Object.keys(h.registry).sort(), ['mcp.fake.echo', 'mcp.fake.env_check', 'mcp.fake.pay', 'mcp.fake.send_note', 'mcp.fake.verbose']);
+    assert.equal(h.ofType('mcp.server').at(-1).tools, 6);
+    assert.deepEqual(Object.keys(h.registry).sort(), ['mcp.fake.argv', 'mcp.fake.echo', 'mcp.fake.env_check', 'mcp.fake.pay', 'mcp.fake.send_note', 'mcp.fake.verbose']);
     assert.match(h.registry['mcp.fake.echo'].description, /^\[Fake MCP via MCP\] Echoes the text back\./);
     const env = JSON.parse((await h.registry['mcp.fake.env_check'].run({}, {})).output);
     assert.equal(env.FAKE_SECRET, 'hush');
@@ -253,7 +253,7 @@ test('the manager: a server is added through the Gate (reject stores nothing; ap
     assert.equal(placed.server, 'fake');
     assert.equal(h.ofType('object.place').at(-1).server, 'fake');
     const layout = h.layoutState.get();
-    assert.deepEqual(h.mcp.grantsFor(layout, 'ranger'), ['mcp.fake.echo', 'mcp.fake.env_check', 'mcp.fake.pay', 'mcp.fake.send_note', 'mcp.fake.verbose']);
+    assert.deepEqual(h.mcp.grantsFor(layout, 'ranger'), ['mcp.fake.argv', 'mcp.fake.echo', 'mcp.fake.env_check', 'mcp.fake.pay', 'mcp.fake.send_note', 'mcp.fake.verbose']);
     assert.deepEqual(h.mcp.grantsFor(layout, 'chief-ranger'), []);
     const edited = { ...layout, objects: [...layout.objects, { id: 'peak-outpost', kind: 'outpost', roomId: 'mountain-peak', x: 23, y: 3, server: 'fake' }] };
     assert.deepEqual(h.mcp.grantsFor(edited, 'chief-ranger'), [], 'a hand-edited Outpost at the Peak grants the Chief nothing');
@@ -274,7 +274,8 @@ test('the manager: a server is added through the Gate (reject stores nothing; ap
     // Removal through the Gate forgets config, secrets and tools.
     await again.remove('fake');
     await h.approveNext('mcp.remove');
-    await waitUntil(() => again.list().length === 0);
+    await waitUntil(() => h.ofType('mcp.server').some((p) => p.status === 'removed'));
+    assert.equal(again.list().length, 0);
     assert.equal(await resolveKey('mcp.fake.FAKE_SECRET', { env: {}, keystorePath: h.keystorePath }), null);
     assert.deepEqual(Object.keys(h.registry), []);
     assert.equal(h.ofType('mcp.server').at(-1).status, 'removed');
@@ -296,7 +297,7 @@ test('MCP tools through the capability gate: a read-only tool runs as research, 
     await h.leashState.update((l) => ({ ...l, domains: { ...l.domains, money_out: { level: 'act_capped', dailyCapUsd: 50 } } }));
     const grants = (l, a) => [...grantsForRun(l, a), ...h.mcp.grantsFor(l, a)];
     const gate = createToolGate({ getLayout: h.layoutState.get, agentId: 'ranger', workspaceDir: path.join(h.dir, 'ws'), registry: h.registry, grants, toolContext: { mcp: h.mcp }, getLeash: () => h.leashState.get(), ledger: h.ledger, submit: { submit: (item) => h.gateQueue.submit({ ...item, runId: 'run-1', agentId: 'ranger' }), log: (item) => h.gateQueue.log({ ...item, runId: 'run-1', agentId: 'ranger' }) } });
-    assert.deepEqual(gate.definitions().map((d) => d.name), ['mcp.fake.echo', 'mcp.fake.env_check', 'mcp.fake.pay', 'mcp.fake.send_note', 'mcp.fake.verbose']);
+    assert.deepEqual(gate.definitions().map((d) => d.name), ['mcp.fake.argv', 'mcp.fake.echo', 'mcp.fake.env_check', 'mcp.fake.pay', 'mcp.fake.send_note', 'mcp.fake.verbose']);
     assert.equal(gate.definitions()[0].description.length <= 400, true);
     const echo = await gate.execute({ id: 'c1', name: 'mcp.fake.echo', input: { text: 'hi' } }, { runId: 'run-1', turn: 1 });
     assert.deepEqual(echo, { ok: true, output: 'echo: hi' });
@@ -402,7 +403,7 @@ test('through the sidecar: the routes keep the boot token, a server through the 
     await srv.post(`/api/gate/${added.body.itemId}`, { decision: 'approve' });
     await sse.waitFor((e) => e.type === 'mcp.server' && e.payload.status === 'connected');
     const row = (await srv.get('/api/mcp/servers/fake')).body;
-    assert.equal(row.tools.length, 5);
+    assert.equal(row.tools.length, 6);
     assert.equal((await srv.put('/api/mcp/servers/fake/leash', { tool: 'pay', domain: 'money_out' })).body.code, 'AMOUNT_REQUIRED');
     assert.equal((await srv.put('/api/mcp/servers/fake/leash', { tool: 'pay', domain: 'money_out', amount: { field: 'amount' } })).status, 200);
     // An Outpost without a server, at the Peak, and in the station.

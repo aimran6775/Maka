@@ -1239,3 +1239,18 @@ in the app); the config file keeps the names only. The child gets exactly the va
 the config names plus PATH and HOME, never the sidecar's environment with every provider
 key in it. OAuth tokens for HTTP servers are keystore entries too, with the token URL and
 client id beside them so they refresh without a second discovery.
+
+## D135. The catalog is data, proposes leashes but never money, and pins nothing by itself
+
+The catalog is a JSON file of seven official servers (the MCP project's reference servers,
+Notion's hosted server) with their source URL and licence, so a vetting is a line one can
+check, not a claim. It proposes a leash domain per tool where the server's own hints are
+missing or too loose (the reference servers carry no `readOnlyHint`, so their reads are
+mapped to research by name; writes to publishing; a new repository to account_creation;
+a file move to data_deletion) and never a money domain: a money mapping needs an amount
+reading the owner decides (D133). Package versions default to `latest` because a pin the
+catalog invented would be a version nobody here tested; the version is a parameter the
+owner sets once a server has run. A secret that a server takes as an argument (the
+Postgres URL) is written as `$SECRET:NAME` and filled from the keystore when the child
+starts, so no secret value ever reaches `mcp-servers.json`. One click fills the config;
+the Gate still approves it, like a server typed by hand.

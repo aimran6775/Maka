@@ -422,11 +422,51 @@ export function createInspect({ parent, getState, api, x, y, w }) {
           el('button', { class: 'btn small', text: 'Remove (via the Gate)', disabled: Boolean(srv.pendingItemId), onclick: () => mcpAct('Remove', () => api.post(`/api/mcp/servers/${encodeURIComponent(srv.id)}/remove`, {})) }),
         ),
       )),
+      ...catalogSection(s, mcpAct),
       el('div', { class: 'row' },
         el('button', { class: 'btn small primary', text: 'Add a stdio server (via the Gate)', onclick: () => { const label = window.prompt('Server name (shown on cards):', ''); if (!label) return; const cmd = window.prompt('Command and arguments (e.g. npx -y @modelcontextprotocol/server-filesystem /path):', ''); if (!cmd) return; const [command, ...args] = cmd.trim().split(/\s+/); const secret = window.prompt('Secret environment variable as NAME=value (stored in the keystore), or leave empty:', ''); const id = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'server'; const body = { id, label, transport: 'stdio', command, args }; if (secret && secret.includes('=')) { const i = secret.indexOf('='); body.secrets = { [secret.slice(0, i).trim()]: secret.slice(i + 1) }; } mcpAct('Add', () => api.post('/api/mcp/servers', body)); } }),
         el('button', { class: 'btn small primary', text: 'Add an HTTP server (via the Gate)', onclick: () => { const label = window.prompt('Server name (shown on cards):', ''); if (!label) return; const url = window.prompt('Server URL (https://…/mcp):', ''); if (!url) return; const id = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'server'; mcpAct('Add', () => api.post('/api/mcp/servers', { id, label, transport: 'http', url })); } }),
       ),
       mcpNotice.text ? el('div', { class: 'notice', text: mcpNotice.text }) : null,
+    ];
+  }
+
+  // The curated catalog (phase 4 step 5): fetched once per Peak visit; one click fills a
+  // server from its entry (params and secrets asked for) and parks it at the Gate.
+  const catalogCache = { rows: null, loading: false, open: false };
+  async function loadCatalog() {
+    if (catalogCache.rows || catalogCache.loading) return;
+    catalogCache.loading = true;
+    try {
+      const r = await api.get('/api/mcp/catalog');
+      catalogCache.rows = r.ok ? r.body : [];
+    } finally {
+      catalogCache.loading = false;
+      selectionRefresh && selectionRefresh();
+    }
+  }
+  function catalogSection(s, mcpAct) {
+    if (!s.mcp) return [];
+    if (!catalogCache.open) return [el('div', { class: 'row' }, el('button', { class: 'btn small', text: 'Catalog (vetted servers)', onclick: () => { catalogCache.open = true; loadCatalog(); selectionRefresh && selectionRefresh(); } }))];
+    loadCatalog();
+    const rows = catalogCache.rows || [];
+    return [
+      el('div', { class: 'k', text: 'catalog: vetted MCP servers (one click fills the config; the Gate approves it; the leash mapping below is proposed, editable after)' }),
+      ...rows.map((c) => el('div', { class: 'connector-row' },
+        el('div', { class: 'kv' }, el('span', { class: 'k', text: c.label }), el('span', { class: 'v', text: `${c.description} · ${c.transport}${c.package ? ` · ${c.package}` : c.url ? ` · ${c.url}` : ''} · ${c.license || ''}${c.installed ? ' · added' : ''}` })),
+        el('div', { class: 'small muted', text: `${c.notes || ''}${Object.keys(c.leash || {}).length ? ` Proposed leash: ${Object.entries(c.leash).map(([t, d]) => `${t}=${d}`).join(', ')}.` : ' No leash proposals: defaults apply (read-only tools research, the rest outbound messages).'}` }),
+        el('a', { class: 'small', href: c.source, target: '_blank', rel: 'noopener', text: 'source' }),
+        el('div', { class: 'row' }, el('button', { class: 'btn small primary', text: c.installed ? 'Add again (via the Gate)' : 'Add (via the Gate)', onclick: () => {
+          const params = {};
+          for (const p of c.params) { const v = window.prompt(`${c.label}: ${p.label}${p.hint ? `\n${p.hint}` : ''}${p.required ? '' : ' (optional)'}`, p.default || ''); if (v === null) return; if (v) params[p.name] = v; }
+          const secrets = {};
+          for (const sec of c.secrets) { const v = window.prompt(`${c.label}: ${sec.label} (stored in the keystore after your approval)${sec.hint ? `\n${sec.hint}` : ''}`, ''); if (!v) return; secrets[sec.name] = v; }
+          const body = { params, secrets };
+          if (c.installed) { const id = window.prompt('A second copy needs its own id (lowercase, digits, dashes):', `${c.id}-2`); if (!id) return; body.id = id; body.label = `${c.label} (${id})`; }
+          mcpAct(`Add ${c.label}`, () => api.post(`/api/mcp/catalog/${encodeURIComponent(c.id)}`, body));
+        } })),
+      )),
+      el('div', { class: 'row' }, el('button', { class: 'btn small', text: 'Hide catalog', onclick: () => { catalogCache.open = false; selectionRefresh && selectionRefresh(); } })),
     ];
   }
 

@@ -217,6 +217,9 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   `needs_auth`; "Sign in (via the Gate)" → approve → open the link → the row turns
   `connected` and the token is in the keystore under `mcp.<id>`.
 - Try `http://127.0.0.1:…/mcp`: the add is refused by the outbound guard (NET_GUARD).
+- Peak → Catalog → Brave Search → Add: paste the key; the Gate item names `npx -y
+  @modelcontextprotocol/server-brave-search@latest` and the key is nowhere in it; approve;
+  `brave_web_search` lands as research as the catalog proposed.
 
 ## Cleaning up
 

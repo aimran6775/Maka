@@ -81,6 +81,14 @@ placed in their zone for one server; an Outpost at the Peak is refused and grant
 (safety L5). HTTP servers that answer 401 sign in with OAuth 2.1 + PKCE after a Gate
 approval (metadata discovery, dynamic client registration, the resource indicator).
 
+Step 5 done: the curated catalog (`sidecar/mcp/catalog.json`), seven vetted servers with
+what each needs and the leash domain Maka proposes per tool (reads research, writes
+publishing, a new repository account creation, a file move data deletion, never a money
+domain). One click at the Peak asks for the params and secrets, builds the `npx` command
+or the hosted URL and parks it at the Gate like any server; a secret that must travel as an
+argument (the Postgres URL) is filled from the keystore when the child starts and never
+written to the config. Part B of phase 4 is done.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

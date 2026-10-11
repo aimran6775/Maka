@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "note": "A small vetted list of MCP servers (phase 4 step 5). Each entry names the official package or endpoint, what it needs, and the leash domain Maka proposes per tool. Nothing here is a secret: secret values are typed once when the server is added and go to the keystore. `{param}` in args is filled from the params; `$SECRET:NAME` in args is filled from the keystore when the server starts.",
+  "entries": [
+    {
+      "id": "filesystem",
+      "label": "Filesystem",
+      "description": "Read, search and write files under one directory you name. The reference server from the MCP project.",
+      "source": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+      "license": "MIT",
+      "transport": "stdio",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "args": ["{path}"],
+      "params": [
+        { "name": "path", "label": "Directory the server may access", "required": true, "kind": "path", "hint": "Pick a directory outside your Rangers' workspaces only if they should write there; every write still passes the leash." },
+        { "name": "version", "label": "Package version", "required": false, "default": "latest", "hint": "Pin a version once you have tested one." }
+      ],
+      "secrets": [],
+      "env": {},
+      "leash": {
+        "read_file": "research", "read_text_file": "research", "read_media_file": "research", "read_multiple_files": "research", "list_directory": "research", "list_directory_with_sizes": "research", "directory_tree": "research", "search_files": "research", "get_file_info": "research", "list_allowed_directories": "research",
+        "write_file": "publishing", "edit_file": "publishing", "create_directory": "publishing", "move_file": "data_deletion"
+      },
+      "notes": "Writes fall under publishing (a file appears or changes on this machine); moving a file can remove it from where it was, so it is data_deletion."
+    },
+    {
+      "id": "github",
+      "label": "GitHub",
+      "description": "Repositories, issues, pull requests and code search with a personal access token. The reference server from the MCP project.",
+      "source": "https://github.com/modelcontextprotocol/servers-archived/tree/main/src/github",
+      "license": "MIT",
+      "transport": "stdio",
+      "package": "@modelcontextprotocol/server-github",
+      "args": [],
+      "params": [{ "name": "version", "label": "Package version", "required": false, "default": "latest" }],
+      "secrets": [{ "name": "GITHUB_PERSONAL_ACCESS_TOKEN", "label": "GitHub personal access token", "hint": "A fine-grained token scoped to the repositories the Rangers may touch." }],
+      "env": {},
+      "leash": {
+        "search_repositories": "research", "get_file_contents": "research", "list_commits": "research", "list_issues": "research", "search_code": "research", "search_issues": "research", "search_users": "research", "get_issue": "research", "get_pull_request": "research", "list_pull_requests": "research", "get_pull_request_files": "research", "get_pull_request_status": "research", "get_pull_request_comments": "research", "get_pull_request_reviews": "research",
+        "create_or_update_file": "publishing", "push_files": "publishing", "create_issue": "publishing", "create_pull_request": "publishing", "update_issue": "publishing", "add_issue_comment": "publishing", "create_branch": "publishing", "create_pull_request_review": "publishing", "update_pull_request_branch": "publishing", "merge_pull_request": "publishing",
+        "create_repository": "account_creation", "fork_repository": "account_creation"
+      },
+      "notes": "Public writes (files, issues, pull requests, comments) are publishing; a new repository or a fork is account_creation."
+    },
+    {
+      "id": "gdrive",
+      "label": "Google Drive",
+      "description": "Search and read files in a Google Drive. The reference server from the MCP project; it needs a Google Cloud OAuth client and a one-time sign-in run outside Maka.",
+      "source": "https://github.com/modelcontextprotocol/servers-archived/tree/main/src/gdrive",
+      "license": "MIT",
+      "transport": "stdio",
+      "package": "@modelcontextprotocol/server-gdrive",
+      "args": [],
+      "params": [
+        { "name": "credentialsPath", "label": "Path of the saved Google credentials file", "required": true, "kind": "path", "env": "GDRIVE_CREDENTIALS_PATH", "hint": "Produced by the server's own `auth` step (see its README); the file stays on this machine." },
+        { "name": "version", "label": "Package version", "required": false, "default": "latest" }
+      ],
+      "secrets": [],
+      "env": {},
+      "leash": { "search": "research" },
+      "notes": "Read-only: files are read as resources. The credentials file is yours to protect; Maka never copies it."
+    },
+    {
+      "id": "notion",
+      "label": "Notion",
+      "description": "Notion's own hosted MCP server over streamable HTTP; sign in with OAuth from the Peak after adding it.",
+      "source": "https://developers.notion.com/docs/mcp",
+      "license": "Notion's terms",
+      "transport": "http",
+      "url": "https://mcp.notion.com/mcp",
+      "params": [],
+      "secrets": [],
+      "env": {},
+      "leash": {},
+      "notes": "Notion's server names its read tools read-only, so they land in research by default; every other tool is outbound_messages until you map it. The sign-in is a Gate item."
+    },
+    {
+      "id": "slack",
+      "label": "Slack (workspace tools)",
+      "description": "Post and read in Slack channels with a bot token. The reference server from the MCP project. Distinct from Maka's own Slack owner channel.",
+      "source": "https://github.com/modelcontextprotocol/servers-archived/tree/main/src/slack",
+      "license": "MIT",
+      "transport": "stdio",
+      "package": "@modelcontextprotocol/server-slack",
+      "args": [],
+      "params": [
+        { "name": "teamId", "label": "Slack team id (T…)", "required": true, "env": "SLACK_TEAM_ID" },
+        { "name": "version", "label": "Package version", "required": false, "default": "latest" }
+      ],
+      "secrets": [{ "name": "SLACK_BOT_TOKEN", "label": "Slack bot token (xoxb-…)", "hint": "A bot token for the workspace the Rangers may post in; not the token Maka's owner channel uses." }],
+      "env": {},
+      "leash": {
+        "slack_list_channels": "research", "slack_get_channel_history": "research", "slack_get_thread_replies": "research", "slack_get_users": "research", "slack_get_user_profile": "research",
+        "slack_post_message": "outbound_messages", "slack_reply_to_thread": "outbound_messages", "slack_add_reaction": "outbound_messages"
+      },
+      "notes": "Posting is outbound_messages (the default); the reads are mapped to research explicitly because the reference server carries no read-only hints."
+    },
+    {
+      "id": "postgres",
+      "label": "Postgres (read-only)",
+      "description": "Run read-only SQL against one database. The reference server from the MCP project; it opens READ ONLY transactions.",
+      "source": "https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres",
+      "license": "MIT",
+      "transport": "stdio",
+      "package": "@modelcontextprotocol/server-postgres",
+      "args": ["$SECRET:DATABASE_URL"],
+      "params": [{ "name": "version", "label": "Package version", "required": false, "default": "latest" }],
+      "secrets": [{ "name": "DATABASE_URL", "label": "Connection URL (postgresql://user:password@host/db)", "hint": "Use a read-only role. The URL carries the password, so it lives in the keystore and is handed to the server as an argument only when it starts." }],
+      "env": {},
+      "leash": { "query": "research" },
+      "notes": "The server itself refuses writes (read-only transactions); `query` is mapped to research for that reason."
+    },
+    {
+      "id": "brave-search",
+      "label": "Brave Search",
+      "description": "Web and local search through the Brave Search API. The reference server from the MCP project.",
+      "source": "https://github.com/modelcontextprotocol/servers-archived/tree/main/src/brave-search",
+      "license": "MIT",
+      "transport": "stdio",
+      "package": "@modelcontextprotocol/server-brave-search",
+      "args": [],
+      "params": [{ "name": "version", "label": "Package version", "required": false, "default": "latest" }],
+      "secrets": [{ "name": "BRAVE_API_KEY", "label": "Brave Search API key", "hint": "The same key the Scout's web.search can use (BRAVE_SEARCH_API_KEY); this server is an alternative, not a requirement." }],
+      "env": {},
+      "leash": { "brave_web_search": "research", "brave_local_search": "research" },
+      "notes": "Read-only lookups of public results: research."
+    }
+  ]
+}

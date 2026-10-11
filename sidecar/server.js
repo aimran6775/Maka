@@ -75,6 +75,7 @@
 //   POST /api/mcp/servers      { id, label, transport, command?, args?, env?, secrets?, url?, headers?, clientId?, scopes?, leash?, amounts? } → a Gate item; 202
 //   POST /api/mcp/servers/:id/remove | connect | disconnect | auth   (remove and auth are Gate items; 202)
 //   PUT  /api/mcp/servers/:id/leash   { tool, domain, amount? } → the per-tool leash mapping
+//   GET  /api/mcp/catalog      the curated catalog (phase 4 step 5); POST /api/mcp/catalog/:id { params, secrets, id?, label? } → a Gate item; 202
 //   GET  /api/browser          chromium found?, headless, open sessions, pending handoffs
 //   GET  /api/browser/handoffs recent BROWSER HANDOFFs, oldest first
 //   POST /api/browser/handoff/:id/return   { notes? } the Superintendent hands the page back
@@ -673,6 +674,15 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/mcp' && method === 'GET') {
       if (!mcp) throw new HttpError(404, 'no MCP manager');
       return sendJson(res, 200, mcp.list());
+    }
+    if (p === '/api/mcp/catalog' && method === 'GET') {
+      if (!mcp) throw new HttpError(404, 'no MCP manager');
+      return sendJson(res, 200, mcp.catalog());
+    }
+    if (p.startsWith('/api/mcp/catalog/') && method === 'POST') {
+      if (!mcp) throw new HttpError(404, 'no MCP manager');
+      const entryId = decodeURIComponent(p.slice('/api/mcp/catalog/'.length));
+      return sendJson(res, 202, await rethrow(async () => mcp.addFromCatalog(entryId, await readJsonBody(req))));
     }
     if (p === '/api/mcp/servers' && method === 'POST') {
       if (!mcp) throw new HttpError(404, 'no MCP manager');

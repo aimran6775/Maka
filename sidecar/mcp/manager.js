@@ -28,6 +28,8 @@
 // in the config, secret values from the keystore), never the sidecar's own.
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { makeEvent } from '../../shared/events.js';
 import { validate } from '../../shared/schema.js';
 import { DOMAINS, MONEY_DOMAINS } from '../../shared/leash.js';
@@ -42,6 +44,74 @@ export const TOOL_PREFIX = 'mcp';
 export const DEFAULT_DOMAIN = 'outbound_messages';
 export const READ_ONLY_DOMAIN = 'research';
 export const AMOUNT_UNITS = Object.freeze(['usd', 'cents']);
+export const SECRET_ARG_PREFIX = '$SECRET:';
+export const CATALOG_PATH = fileURLToPath(new URL('./catalog.json', import.meta.url));
+
+// The curated catalog (phase 4 step 5): read once, validated, never carrying a value.
+export function loadCatalog(path = CATALOG_PATH) {
+  const data = JSON.parse(readFileSync(path, 'utf8'));
+  if (!data || data.version !== 1 || !Array.isArray(data.entries)) throw new Error('catalog.json must be { version: 1, entries: [] }');
+  for (const e of data.entries) validateCatalogEntry(e);
+  return data;
+}
+
+export function validateCatalogEntry(e) {
+  const problem = (m) => { throw new Error(`catalog entry ${e && e.id ? e.id : '?'}: ${m}`); };
+  if (!e || typeof e !== 'object') problem('not an object');
+  if (!new RegExp(SERVER_ID_RE).test(e.id || '')) problem('bad id');
+  if (typeof e.label !== 'string' || !e.label) problem('needs a label');
+  if (typeof e.description !== 'string' || !e.description) problem('needs a description');
+  if (typeof e.source !== 'string' || !/^https:\/\//.test(e.source)) problem('needs an https source');
+  if (!['stdio', 'http'].includes(e.transport)) problem('transport must be stdio or http');
+  if (e.transport === 'stdio' && (typeof e.package !== 'string' || !/^(@[a-z0-9-]+\/)?[a-z0-9._-]+$/.test(e.package))) problem('a stdio entry needs an npm package name');
+  if (e.transport === 'http' && (typeof e.url !== 'string' || !/^https:\/\//.test(e.url))) problem('an http entry needs an https url');
+  if (!Array.isArray(e.params) || !Array.isArray(e.secrets) || !Array.isArray(e.args || [])) problem('params, secrets and args are arrays');
+  for (const p of e.params) if (!p || !/^[a-zA-Z][a-zA-Z0-9]{0,30}$/.test(p.name || '') || typeof p.label !== 'string') problem(`bad param ${p && p.name}`);
+  for (const p of e.params) if (p.env !== undefined && !new RegExp(ENV_NAME_RE).test(p.env)) problem(`param ${p.name} names a bad env variable`);
+  for (const s of e.secrets) {
+    if (!s || !new RegExp(ENV_NAME_RE).test(s.name || '') || typeof s.label !== 'string') problem(`bad secret ${s && s.name}`);
+    for (const k of Object.keys(s)) if (!['name', 'label', 'hint'].includes(k)) problem(`secret ${s.name} carries a field other than name / label / hint (${k})`);
+  }
+  const secretNames = new Set(e.secrets.map((s) => s.name));
+  for (const a of e.args || []) {
+    if (typeof a !== 'string') problem('args are strings');
+    if (a.startsWith(SECRET_ARG_PREFIX) && !secretNames.has(a.slice(SECRET_ARG_PREFIX.length))) problem(`arg ${a} names an undeclared secret`);
+    const m = /^\{([a-zA-Z0-9]+)\}$/.exec(a);
+    if (m && !e.params.some((p) => p.name === m[1])) problem(`arg ${a} names an unknown param`);
+  }
+  for (const [tool, domain] of Object.entries(e.leash || {})) {
+    if (!DOMAINS.includes(domain)) problem(`${tool} → unknown domain ${domain}`);
+    if (MONEY_DOMAINS.includes(domain)) problem(`${tool} → ${domain}: the catalog proposes no money mapping; the owner sets those with an amount reading`);
+  }
+  for (const v of Object.values(e.env || {})) if (typeof v !== 'string') problem('env values are strings');
+  return e;
+}
+
+// Builds a server spec from a catalog entry and the owner's params / secrets (values of
+// the secrets are returned apart, for the keystore).
+export function specFromCatalog(entry, { params = {}, secrets = {}, id = null, label = null } = {}) {
+  const fill = (s) => s.replace(/\{([a-zA-Z0-9]+)\}/g, (_, k) => String(params[k] !== undefined ? params[k] : ''));
+  for (const p of entry.params) {
+    const v = params[p.name] !== undefined && params[p.name] !== '' ? params[p.name] : p.default;
+    if (p.required && (v === undefined || v === '')) throw fail('BAD_REQUEST', `${entry.label} needs ${p.label} (${p.name})`);
+    if (v !== undefined && typeof v !== 'string') throw fail('BAD_REQUEST', `${p.name} must be a string`);
+    if (v !== undefined) params = { ...params, [p.name]: v };
+  }
+  for (const s of entry.secrets) if (typeof secrets[s.name] !== 'string' || !secrets[s.name]) throw fail('BAD_REQUEST', `${entry.label} needs ${s.label} (${s.name})`);
+  for (const k of Object.keys(secrets)) if (!entry.secrets.some((s) => s.name === k)) throw fail('BAD_REQUEST', `${entry.label} takes no secret named ${k}`);
+  const env = { ...(entry.env || {}) };
+  for (const p of entry.params) if (p.env && params[p.name] !== undefined) env[p.env] = params[p.name];
+  const spec = { id: id || entry.id, label: label || entry.label, transport: entry.transport, leash: { ...(entry.leash || {}) }, source: `catalog:${entry.id}` };
+  if (entry.transport === 'stdio') {
+    spec.command = 'npx';
+    spec.args = ['-y', `${entry.package}@${params.version || 'latest'}`, ...(entry.args || []).map((a) => (a.startsWith(SECRET_ARG_PREFIX) ? a : fill(a)))];
+    spec.env = env;
+    spec.secretEnv = entry.secrets.map((s) => s.name);
+  } else {
+    spec.url = entry.url;
+  }
+  return { spec, secrets };
+}
 
 const envName = { type: 'string', pattern: ENV_NAME_RE };
 export const SERVER_SCHEMA = Object.freeze({
@@ -81,6 +151,7 @@ export function validateServerSpec(spec) {
   for (const k of Object.keys(spec.env || {})) if (!new RegExp(ENV_NAME_RE).test(k)) throw fail('BAD_REQUEST', `MCP server invalid: env name "${k}" is not an environment variable name`);
   for (const k of Object.keys(spec.headers || {})) if (!/^[A-Za-z0-9-]{1,80}$/.test(k) || /^(authorization|cookie)$/i.test(k)) throw fail('BAD_REQUEST', `MCP server invalid: header "${k}" is not allowed (tokens go through the sign-in)`);
   if (spec.transport === 'stdio' && !spec.command) throw fail('BAD_REQUEST', 'a stdio MCP server needs a command');
+  for (const a of spec.args || []) if (a.startsWith(SECRET_ARG_PREFIX) && !(spec.secretEnv || []).includes(a.slice(SECRET_ARG_PREFIX.length))) throw fail('BAD_REQUEST', `MCP server invalid: arg ${a} names a secret that is not declared in secretEnv`);
   if (spec.transport === 'http') {
     if (!spec.url) throw fail('BAD_REQUEST', 'an HTTP MCP server needs a url');
     let u;
@@ -116,8 +187,9 @@ export function amountFor(server, tool, input) {
   return cfg.unit === 'cents' ? n / 100 : n;
 }
 
-export function createMcpManager({ bus, store, gateQueue = null, env = process.env, keystorePath, netGuard = defaultNetGuard(), registry = {}, getLayout = () => null, clock = { now: () => Date.now() }, spawn = undefined, fetch: fetchImpl = globalThis.fetch, oauthPort = DEFAULT_OAUTH_PORT, log = console } = {}) {
+export function createMcpManager({ bus, store, gateQueue = null, env = process.env, keystorePath, netGuard = defaultNetGuard(), registry = {}, getLayout = () => null, clock = { now: () => Date.now() }, spawn = undefined, fetch: fetchImpl = globalThis.fetch, oauthPort = DEFAULT_OAUTH_PORT, catalog = null, log = console } = {}) {
   if (!bus || !store) throw new TypeError('createMcpManager needs bus and store');
+  const catalogData = catalog || loadCatalog();
   let servers = {}; // id -> record (SERVER_SCHEMA shape, no secret values)
   const runtime = new Map(); // id -> { client, transport, status, tools, lastError, pendingItem, flow, authorizeUrl, serverInfo, connectedAt, dropped }
   let saving = Promise.resolve();
@@ -152,6 +224,21 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
     // A child needs PATH to find its runtime and nothing else of the sidecar's environment.
     if (!out.PATH && env.PATH) out.PATH = env.PATH;
     if (!out.HOME && env.HOME) out.HOME = env.HOME;
+    return out;
+  }
+
+  // `$SECRET:NAME` in an arg is filled from the keystore when the child starts (a connection
+  // URL with a password, say), so the config file never holds the value.
+  async function childArgs(server) {
+    const out = [];
+    for (const a of server.args || []) {
+      if (typeof a === 'string' && a.startsWith(SECRET_ARG_PREFIX)) {
+        const name = a.slice(SECRET_ARG_PREFIX.length);
+        const v = await resolveKey(keyName(server.id, name), { env: {}, keystorePath, warn: (p) => log.warn && log.warn(p) });
+        if (!v) throw fail('SECRET_MISSING', `${server.label} needs the secret ${name} in the keystore`);
+        out.push(v);
+      } else out.push(a);
+    }
     return out;
   }
 
@@ -224,7 +311,7 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
     if (r.client) await disconnect(id, { quiet: true });
     try {
       let transport;
-      if (server.transport === 'stdio') transport = createStdioTransport({ command: server.command, args: server.args, env: await childEnv(server), spawn, log });
+      if (server.transport === 'stdio') transport = createStdioTransport({ command: server.command, args: await childArgs(server), env: await childEnv(server), spawn, log });
       else {
         const token = await tokenFor(server);
         transport = createHttpTransport({ url: server.url, headers: server.headers, token: token ? token.accessToken : null, fetch: fetchImpl, netGuard, log });
@@ -402,7 +489,7 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
       if (spec.transport === 'http') await netGuard.assert(spec.url);
       const evidence = [
         { kind: 'input', text: spec.transport === 'stdio' ? `stdio: ${spec.command} ${spec.args.join(' ')}`.trim() : `http: ${spec.url}` },
-        { kind: 'input', text: `env: ${Object.keys(spec.env).join(', ') || 'none'}; secrets: ${spec.secretEnv.join(', ') || 'none'}${spec.source ? `; from the ${spec.source} catalog` : ''}` },
+        { kind: 'input', text: `env: ${Object.keys(spec.env).join(', ') || 'none'}; secrets: ${spec.secretEnv.join(', ') || 'none'}${spec.source ? `; ${spec.source.startsWith('catalog:') ? `from the catalog (${spec.source.slice(8)})` : spec.source}` : ''}` },
         { kind: 'input', text: `leash: read-only tools → ${READ_ONLY_DOMAIN}, others → ${DEFAULT_DOMAIN}${Object.keys(spec.leash).length ? `; overrides ${Object.entries(spec.leash).map(([t, d]) => `${t}=${d}`).join(', ')}` : ''}` },
       ];
       return gated(spec.id, {
@@ -418,6 +505,15 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
           await connect(spec.id);
         },
       });
+    },
+    // The curated catalog: entries with what each needs; `addFromCatalog` builds the spec
+    // (secret values go to the keystore on approval) and parks it at the Gate like add().
+    catalog: () => catalogData.entries.map((e) => ({ id: e.id, label: e.label, description: e.description, source: e.source, license: e.license || null, transport: e.transport, package: e.package || null, url: e.url || null, params: e.params, secrets: e.secrets.map((s) => ({ name: s.name, label: s.label, hint: s.hint || '' })), leash: e.leash || {}, notes: e.notes || '', installed: Object.values(servers).some((s) => s.source === `catalog:${e.id}`) })),
+    async addFromCatalog(entryId, { params = {}, secrets = {}, id = null, label = null } = {}) {
+      const entry = catalogData.entries.find((e) => e.id === entryId);
+      if (!entry) throw fail('UNKNOWN_ENTRY', `no catalog entry "${entryId}"`, 404);
+      const built = specFromCatalog(entry, { params, secrets, id, label });
+      return api.add({ ...built.spec, secrets: built.secrets });
     },
     async remove(id) {
       const server = servers[id];
