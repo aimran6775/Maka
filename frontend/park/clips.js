@@ -75,3 +75,19 @@ export function badgeFor(agentState, { paused = false } = {}) {
   if (paused) return 'paused';
   return { thinking: 'thinking', 'tool-running': 'tool', waiting: 'gate', error: 'error', done: 'done' }[agentState] || null;
 }
+
+// Phase 4 step 3: a Radio tower standing at the Mountain Peak carries one lamp per owner
+// channel (Telegram, Discord, Slack). The lamp says only what channel.connect proved:
+// lit green when the channel is up, red when it failed, dark when it is not wired or
+// down; with no channel registry there are no lamps. Towers in the camps show none.
+export const LAMP_LOOK = Object.freeze({
+  up: { color: 0x3ddc84, emissive: 0x1f9d55, intensity: 1.2 },
+  error: { color: 0xd94b3d, emissive: 0x8a2a20, intensity: 0.9 },
+  down: { color: 0x4a4f55, emissive: 0x000000, intensity: 0 },
+  not_wired: { color: 0x4a4f55, emissive: 0x000000, intensity: 0 },
+});
+
+export function lampsFor(channels, { atPeak = true } = {}) {
+  if (!atPeak || !channels || !Array.isArray(channels.adapters)) return [];
+  return channels.adapters.map((c) => ({ name: c.name, label: c.label || c.name, status: LAMP_LOOK[c.status] ? c.status : 'down', look: LAMP_LOOK[LAMP_LOOK[c.status] ? c.status : 'down'], paired: Array.isArray(c.paired) ? c.paired.length : 0 }));
+}

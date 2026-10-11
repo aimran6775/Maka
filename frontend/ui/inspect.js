@@ -266,9 +266,13 @@ export function createInspect({ parent, getState, api, x, y, w }) {
     const def = s.objectKinds[obj.kind] || { label: obj.kind, grants: [], hint: '' };
     setTitle(`INSPECT · ${def.label}`);
     const uses = toolUses(s, def.grants || []);
+    const room = s.layout.rooms.find((r) => r.id === obj.roomId) || {};
+    const atPeak = obj.kind === 'radio_tower' && room.kind === 'mountain_peak';
     return [
       row('grants', (def.grants || []).join(', ')),
-      row('zone', (s.layout.rooms.find((r) => r.id === obj.roomId) || {}).name || obj.roomId),
+      row('zone', room.name || obj.roomId),
+      atPeak ? row('channels', s.channels && s.channels.adapters && s.channels.adapters.length ? s.channels.adapters.map((c) => `${c.label}: ${c.status === 'up' ? 'up' : c.status === 'not_wired' ? 'not wired' : c.status} · ${(c.paired || []).length} paired`).join('; ') : 'no channel registry') : null,
+      atPeak ? el('div', { class: 'muted small', text: 'The lamps on this tower show the owner channels: green up, red failed, dark not wired. Pair a chat at the Peak card.' }) : null,
       el('div', { class: 'muted small', text: def.hint || '' }),
       el('div', { class: 'k', text: `tool calls through it this session: ${uses.length}` }),
       ...uses.slice(-20).reverse().map((u) => el('div', { class: `use ${u.ok === null ? 'running' : u.ok ? 'ok' : 'failed'}`, text: `${u.name} · ${u.ok === null ? 'running' : u.ok ? 'ok' : 'failed'} · ${JSON.stringify(u.input).slice(0, 60)}` })),

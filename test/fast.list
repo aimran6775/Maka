@@ -39,3 +39,4 @@ test/release.test.js
 test/safety.test.js
 test/channels.test.js
 test/telegram.test.js
+test/discord-slack.test.js

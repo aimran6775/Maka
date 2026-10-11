@@ -57,7 +57,13 @@ refused and logged. Bot tokens live in the keystore or the Keychain, reach the a
 (`sidecar/channels/telegram.js`), the Bot API over long polling with core `fetch` through
 the outbound guard: Gate cards with inline Approve / Revise / Reject buttons, every press
 answered, the offset kept so a restart replays nothing, the token verified with `getMe`
-and never in an event or a message. Discord and Slack are step 3.
+and never in an event or a message. Step 3 done: Discord (the
+gateway over a guarded WebSocket with the DM intent only, button presses acknowledged,
+REST for what Maka sends) and Slack (Socket Mode with the app-level token, the Web API
+with the bot token, every envelope acknowledged, `mrkdwn` off), both reconnecting with
+backoff, both registered at boot and shown on the Peak with their pairing state; a Radio
+tower placed at the Peak carries one lamp per channel, lit only by what `channel.connect`
+proved. That completes Part A of phase 4 (`docs/PHASE4_BRIEF.md`).
 
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`

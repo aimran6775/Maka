@@ -296,7 +296,10 @@ can do nothing but pair, and every attempt is logged. Bot tokens come from
 `TELEGRAM_BOT_TOKEN` / `DISCORD_BOT_TOKEN` / `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN`, or
 from "Connect" at the Peak through the Gate into the keystore. Step 2, Telegram: set `TELEGRAM_BOT_TOKEN`
 (a bot from @BotFather) or Connect at the Peak; the sidecar long-polls the Bot API, so no
-public endpoint is needed. Discord and Slack are step 3.
+public endpoint is needed. Step 3, Discord and Slack: `DISCORD_BOT_TOKEN` (the bot's DMs only, over the gateway)
+and `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` (Socket Mode); both need no public endpoint,
+both pair the same way, and the Peak lists every channel with its paired chats. Place a
+Radio tower at the Peak (BUILD) and its lamps show which channels are up.
 
 ## License
 

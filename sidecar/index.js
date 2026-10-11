@@ -41,6 +41,8 @@ import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { createResearch } from './research/index.js';
 import { createChannels } from './channels/registry.js';
 import { createTelegramAdapter } from './channels/telegram.js';
+import { createDiscordAdapter } from './channels/discord.js';
+import { createSlackAdapter } from './channels/slack.js';
 import { createOllama } from './ollama.js';
 import { createSetup } from './setup.js';
 import { createBackup } from './backup/index.js';
@@ -127,6 +129,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   // as they arrive; a channel whose token is not wired says so at the Peak.
   const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, log }).init();
   channels.register(createTelegramAdapter({ netGuard, log })); // step 2: TELEGRAM_BOT_TOKEN or the keystore
+  channels.register(createDiscordAdapter({ netGuard, log })); // step 3: DISCORD_BOT_TOKEN
+  channels.register(createSlackAdapter({ netGuard, log })); // step 3: SLACK_BOT_TOKEN + SLACK_APP_TOKEN
   await channels.start();
   Object.assign(registry, research.tools);
   toolContext.judge = judge;

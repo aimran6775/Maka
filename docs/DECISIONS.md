@@ -1183,3 +1183,23 @@ into a failed delivery. Every inline button press is answered at once so the pho
 spinning even when the registry refuses the press (unpaired, already decided). The token
 rides in the Bot API's URL by that API's design; the adapter strips it from every error
 it raises, and the registry never puts an error with a URL in an event.
+
+## D130. Discord reads DMs only; Slack runs in Socket Mode; both reconnect, neither listens
+
+Discord's gateway is identified with the DIRECT_MESSAGES intent and nothing else: the
+owner's chat with the bot is a DM, no guild message is read, and the privileged message
+content intent is not requested. Slack uses Socket Mode (an app-level token opens the
+socket, the bot token signs the Web API) because the Mac at home has no public endpoint
+(D64); the Events API over HTTP would need one. Both adapters open their sockets only
+after the outbound guard passed the gateway URL (safety H1 holds for WebSockets too), both
+acknowledge every press or envelope before the registry decides, and both reconnect with
+backoff until stopped; a token that fails verification fails `start()` plainly. Cards
+are plain text on every platform (Discord content, Slack `plain_text` blocks with
+`mrkdwn` off) so a Ranger's words are never formatting or a mention.
+
+## D131. The Peak tower's lamps show channel state and nothing else
+
+A Radio tower is the mail fixture (D69); placed at the Peak it also carries one lamp per
+registered channel, lit green by a `channel.connect { up }`, red by an error, dark when
+not wired or down. The lamp is a reading of the registry's rows, not a signal of its own,
+so nothing animates on a timer and a tower in a camp shows no lamps at all.

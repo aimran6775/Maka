@@ -253,3 +253,15 @@ test('park-check cleanup: the profile removal is forced, recursive and retried; 
   }
   assert.match(warned[0], /could not be removed \(ENOTEMPTY\)/);
 });
+
+test('phase 4 step 3 lamps: a Peak tower shows one lamp per owner channel from channel.connect state only; a camp tower and a park without the registry show none', async () => {
+  const { lampsFor, LAMP_LOOK } = await import('../frontend/park/clips.js');
+  const channels = { adapters: [{ name: 'telegram', label: 'Telegram', status: 'up', paired: [{ chatId: '1' }] }, { name: 'discord', label: 'Discord', status: 'error', paired: [] }, { name: 'slack', label: 'Slack', status: 'not_wired', paired: [] }, { name: 'other', label: 'Other', status: 'weird', paired: [] }] };
+  const lamps = lampsFor(channels);
+  assert.deepEqual(lamps.map((l) => [l.name, l.status, l.paired]), [['telegram', 'up', 1], ['discord', 'error', 0], ['slack', 'not_wired', 0], ['other', 'down', 0]]);
+  assert.equal(lamps[0].look, LAMP_LOOK.up);
+  assert.equal(lamps[2].look.intensity, 0, 'not wired is dark');
+  assert.deepEqual(lampsFor(channels, { atPeak: false }), []);
+  assert.deepEqual(lampsFor(null), []);
+  assert.deepEqual(lampsFor({}), []);
+});

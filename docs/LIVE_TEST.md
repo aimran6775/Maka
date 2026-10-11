@@ -189,6 +189,20 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 - Write a question: a Chief run with no tools (`agent.run.start` lists `tools: []`),
   the answer in the chat with `Evidence: run <id>`, counted in the judge's day.
 
+## 17. Discord and Slack (phase 4)
+
+- Discord: an application with a bot, the bot token in `DISCORD_BOT_TOKEN`; no privileged
+  intent is needed (DMs only). Open a DM with the bot, send the pairing code from the Peak;
+  the Gate card arrives with Approve / Revise / Reject buttons; a press is acknowledged
+  at once and `channel.inbound` records the decision.
+- Slack: an app with Socket Mode on, a bot token (`chat:write`, `im:history`,
+  `im:read`) in `SLACK_BOT_TOKEN` and an app-level token with `connections:write` in
+  `SLACK_APP_TOKEN`; the Events API subscription `message.im`. The boot log says `Slack up
+  (env, socket mode as <bot> in <team>)`; with only one of the two tokens it says `not
+  wired (SLACK_APP_TOKEN)`. Pair from a DM with the app and repeat the card step.
+- BUILD → place a Radio tower in the Mountain Peak zone: its lamps are green for every
+  channel that is up and dark for the rest; click it for the list.
+
 ## Cleaning up
 
 Disconnect connectors at the Peak (Gate items), remove the test campaign, product and

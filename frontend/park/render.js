@@ -18,7 +18,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { buildParkModel } from './placement.js';
 import { TERRAIN } from './terrain.js';
 import { pointAtFraction } from './spline.js';
-import { clipFor, placeFor, badgeFor, lookFor } from './clips.js';
+import { clipFor, placeFor, badgeFor, lookFor, lampsFor } from './clips.js';
 import { sunFor } from './sun.js';
 
 export const CAMERA_MODES = Object.freeze(['orbit', 'fly', 'follow']);
@@ -594,7 +594,37 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), red);
     beacon.position.y = 7.1;
     g.add(beacon);
+    // Channel lamps (phase 4 step 3): one per owner channel when the tower stands at the
+    // Peak, lit only by what channel.connect proved. Hidden until syncLamps shows them.
+    g.userData.lamps = [];
+    for (let i = 0; i < 4; i++) {
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), new THREE.MeshStandardMaterial({ color: 0x4a4f55, emissive: 0x000000, emissiveIntensity: 0 }));
+      lamp.position.set(Math.cos((i / 4) * Math.PI * 2) * 0.75, 4.6, Math.sin((i / 4) * Math.PI * 2) * 0.75);
+      lamp.visible = false;
+      g.add(lamp);
+      g.userData.lamps.push(lamp);
+    }
     return g;
+  }
+
+  // The lamps on a Peak tower follow the channel registry's rows; a camp tower shows none.
+  function syncLamps(state) {
+    if (!model) return;
+    const peakRooms = new Set(state.layout.rooms.filter((r) => r.kind === 'mountain_peak').map((r) => r.id));
+    for (const f of model.fixtures) {
+      if (f.kind !== 'radio_tower') continue;
+      const obj = dynamic.fixtures.get(f.id);
+      if (!obj || !obj.userData.lamps) continue;
+      const lamps = lampsFor(state.channels, { atPeak: peakRooms.has(f.roomId) });
+      obj.userData.lamps.forEach((lamp, i) => {
+        const l = lamps[i];
+        lamp.visible = Boolean(l);
+        if (!l) return;
+        lamp.material.color.setHex(l.look.color);
+        lamp.material.emissive.setHex(l.look.emissive);
+        lamp.material.emissiveIntensity = l.look.intensity;
+      });
+    }
   }
 
   // Field office (step 13): a small cabin with a lit screen, built from primitives.
@@ -810,6 +840,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     const state = getState();
     rebuild(state);
     syncFixtures(state);
+    syncLamps(state);
     syncBodies(state);
     applySun();
     if (water) water.material.uniforms.uTime.value = t;
