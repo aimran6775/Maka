@@ -194,13 +194,18 @@ export function createReflect({
     if (event.type === 'agent.run.start') runIdAgent.set(event.payload.runId, event.payload.agentId);
   });
 
-  // Everything the reflection may know, from persisted facts only.
-  async function gather() {
+  // Everything the reflection may know, from persisted facts only. A reflection rolls the
+  // day up first (phase 4 step 9), so it reads the same figures the Peak shows; a question
+  // for the Peak reads the same figures computed in memory and changes nothing (safety
+  // 2026-10-11 L6: `rollup: false` persists no day rows and emits no results.rollup).
+  async function gather({ rollup = true } = {}) {
     const st = chief.state();
-    // Phase 4 step 9: the results engine rolls the day up first, so the reflection reads
-    // the same figures the Peak shows (nulls are "no data", never zero).
     const results = typeof getResults === 'function' ? getResults() : null;
-    const rolled = results ? await results.rollup({ reason: 'reflection' }).catch((err) => { log.error('results rollup failed:', err); return null; }) : null;
+    const rolled = results
+      ? rollup
+        ? await results.rollup({ reason: 'reflection' }).catch((err) => { log.error('results rollup failed:', err); return null; })
+        : (() => { try { return results.compute(); } catch (err) { log.error('results compute failed:', err); return null; } })()
+      : null;
     const resultsFor = (vid) => (rolled ? rolled.ventures.find((v) => v.id === vid) || null : null);
     const layout = getLayout();
     const allRuns = await store.listRuns();

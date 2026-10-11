@@ -461,7 +461,7 @@ test('M1: the tools listed when a server is approved are the accepted snapshot; 
   const h = await mcpHarness();
   let again = null;
   try {
-    await h.mcp.add({ id: 'fake', label: 'Fake MCP', transport: 'stdio', command: process.execPath, args: [FAKE_MCP], env: { PATH: process.env.PATH, FAKE_MCP_TOOLS_FILE: h.toolsFile } });
+    await h.mcp.add({ id: 'fake', label: 'Fake MCP', transport: 'stdio', command: process.execPath, args: [FAKE_MCP], env: { FAKE_MCP_TOOLS_FILE: h.toolsFile } }); // no PATH in a spec (L3): the node binary is absolute
     const addItem = await h.nextItem('mcp.add');
     assert.ok(addItem.evidence.some((e) => /become the accepted set/.test(e.text)), 'the add card says the first list is what is accepted');
     await h.gateQueue.resolve(addItem.itemId, { decision: 'approve' });
@@ -1088,4 +1088,36 @@ test('L5: the kill rule needs orders known to be zero; a week of spend with reve
   // Nor does a scale come from unknown orders.
   const scaleUnknown = proposeFor(v, days(7, { revenue: 100, orders: null, refunds: 0, fees: 0, adSpend: 1, modelSpend: 0.1 }));
   assert.notEqual(scaleUnknown.verdict, 'scale');
+});
+
+
+// ---------------------------------------------------------------------------------------
+// L6: a question for the Peak reads; it does not roll the day up.
+// ---------------------------------------------------------------------------------------
+
+test('L6: "ask the Peak" gathers read-only: no results.rollup event, no day rows persisted, lastRollup unchanged; a reflection still rolls up', async () => {
+  const worker = fakeProvider(Array(6).fill([text('The park sold nothing yet; evidence: the results table.'), end()]));
+  const srv = await startTestServer({ withChief: true, makeProvider: async () => ({ provider: worker, model: 'm', price: null }) });
+  const events = [];
+  srv.bus.listen((e) => events.push(e));
+  try {
+    const before = (await srv.get('/api/results')).body;
+    assert.equal(before.lastRollup, null, 'nothing rolled up yet');
+    const gathered = await srv.reflect.gather({ rollup: false });
+    assert.ok(gathered && typeof gathered === 'object');
+    assert.equal(events.filter((e) => e.type === 'results.rollup').length, 0, 'a read-only gather emits no rollup');
+    assert.equal((await srv.get('/api/results')).body.lastRollup, null);
+    const asked = await srv.post('/api/peak/ask', { question: 'How are we doing?' });
+    assert.equal(asked.status, 200, JSON.stringify(asked.body));
+    await srv.runs.waitForIdle();
+    assert.equal(events.filter((e) => e.type === 'results.rollup').length, 0, 'a question rolls nothing up');
+    assert.equal((await srv.get('/api/results')).body.lastRollup, null);
+    assert.ok(!(await fsp.readFile(path.join(srv.home, 'results.json'), 'utf8').catch(() => '{"days":{}}')).includes('"lastRollup":{'), 'nothing persisted as a rollup');
+    // The reflection's own gather still rolls the day up, as step 9 asks.
+    await srv.reflect.gather();
+    assert.equal(events.filter((e) => e.type === 'results.rollup').length, 1);
+    assert.ok((await srv.get('/api/results')).body.lastRollup);
+  } finally {
+    await srv.close();
+  }
 });

@@ -1792,3 +1792,13 @@ window whose order count was unknown counted as zero orders and could kill a ven
 had sold. The results engine's own law (D139: absent data shows "no data", never zero) now
 holds in the rule as well: a kill needs orders known to be zero, a scale needs a known
 count, and unknown orders leave the verdict at hold with "orders unknown" in the reasons.
+
+## D164. A question reads; only a reflection writes the day
+
+The second safety review (L6) noted that every Peak question called `reflect.gather()`,
+which rolls the day up (persists the rows, emits `results.rollup`) as a side effect, so
+a chatty owner changed the ledger of days and fired events the park reacts to. The
+gather now takes `rollup: false`: the same document from the same engine, computed in
+memory, with nothing written and nothing emitted; the ask route and the owner channels use
+it. A reflection keeps the rollup, because its document is the one the Peak's table must
+match and the rows it writes are the record of that day.

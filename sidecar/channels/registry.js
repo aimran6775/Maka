@@ -288,7 +288,7 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
     }
     let started;
     try {
-      started = await chief.ask({ question: clip(question, MAX_QUESTION), context: reflect ? await reflect.gather().catch(() => null) : null, by: `channel:${name}` });
+      started = await chief.ask({ question: clip(question, MAX_QUESTION), context: reflect ? await reflect.gather({ rollup: false }).catch(() => null) : null, by: `channel:${name}` }); // read-only: a question rolls nothing up (safety 2026-10-11 L6)
     } catch (err) {
       emit('channel.inbound', { ...base, outcome: `refused: ${err.code || err.message}` });
       return send(name, chatId, { kind: 'notice', text: `The Peak cannot answer now: ${err.message}` });

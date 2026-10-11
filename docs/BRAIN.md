@@ -438,6 +438,8 @@ redirect what a runtime loads (PATH, NODE_OPTIONS, DYLD_*, LD_* and kin) are ref
 L4 done: a hosted call (an image, a transcription, a hosted turn) is reserved against the
 day's cap in one step before it is made, so concurrent calls at cap−1 let one through.
 L5 done: the Chief's kill rule reads unknown orders as no data, never as zero.
+L6 done: a question for the Peak reads the results in memory and rolls nothing up; only a
+reflection writes the day's rows.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

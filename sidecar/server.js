@@ -714,7 +714,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/peak/ask' && method === 'POST') {
       if (!chief || typeof chief.ask !== 'function') throw new HttpError(404, 'no Chief');
       const body = await readJsonBody(req);
-      const context = reflect && typeof reflect.gather === 'function' ? await reflect.gather() : null;
+      const context = reflect && typeof reflect.gather === 'function' ? await reflect.gather({ rollup: false }) : null; // a question reads, never rolls the day up (safety 2026-10-11 L6)
       const r = await rethrow(() => chief.ask({ question: body.question, context, by: 'superintendent' }));
       const answered = await r.answer;
       return sendJson(res, 200, { runId: r.runId, answer: answered && typeof answered === 'object' ? answered.text || answered.answer || '' : String(answered || ''), evidence: answered && typeof answered === 'object' ? answered.evidence || answered.refs || null : null });
