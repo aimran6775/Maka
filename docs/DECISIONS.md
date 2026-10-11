@@ -1759,3 +1759,16 @@ secret-looking names would always be one name short, so every header value must 
 value goes to the keystore on the add's approval and is filled in when the server
 connects, and the Gate card shows the header name and the secret's name only. A plain
 non-secret header, should one exist, costs the owner a keystore entry; the file stays clean.
+
+## D161. A stdio server's environment is shown whole, and the loader knobs are not the owner's to set
+
+The second safety review (L3) noted the Gate card for a stdio MCP server listed its env
+names only, so a `PATH` or `NODE_OPTIONS` entry could send `npx` to another binary with
+nothing visible. The review offered showing the values or refusing those names; both are
+done. The card now shows every plain env entry with its value (secrets by name only, as
+before), and a fixed list of names that change what a runtime loads before the server's
+own code runs (PATH, NODE_OPTIONS, NODE_PATH, the npm config family, DYLD_*, LD_*, the
+Python, Perl and Ruby load paths, BASH_ENV, HOME and a few more) is refused as an env
+name and as a secret name, because a value shown on a card is not the whole truth when
+it rewrites the loader: the sidecar passes its own PATH and HOME to the child and nothing
+else of its environment, as D134 already had it.

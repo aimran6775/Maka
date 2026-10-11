@@ -55,6 +55,10 @@ export const DEFAULT_DOMAIN = 'outbound_messages';
 export const READ_ONLY_DOMAIN = 'research';
 export const AMOUNT_UNITS = Object.freeze(['usd', 'cents']);
 export const SECRET_ARG_PREFIX = '$SECRET:';
+// Environment names a stdio server's config may not set (safety 2026-10-11 L3): each one
+// redirects what `npx` or the runtime loads before the server's own code runs, so a value
+// shown on a Gate card would still not be the whole truth.
+export const FORBIDDEN_ENV_RE = /^(PATH|NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_TLS_REJECT_UNAUTHORIZED|NPM_CONFIG_.*|npm_config_.*|DYLD_.*|LD_.*|PYTHON(PATH|STARTUP|HOME)|PERL5(LIB|OPT)|RUBY(OPT|LIB)|BASH_ENV|ENV|SHELLOPTS|GCONV_PATH|IFS|PROMPT_COMMAND|HOME|TMPDIR)$/;
 export const CATALOG_PATH = fileURLToPath(new URL('./catalog.json', import.meta.url));
 
 // The curated catalog (phase 4 step 5): read once, validated, never carrying a value.
@@ -168,7 +172,11 @@ function fail(code, message, status = 400) {
 export function validateServerSpec(spec) {
   const r = validate(SERVER_SCHEMA, spec);
   if (!r.ok) throw fail('BAD_REQUEST', `MCP server invalid: ${r.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`);
-  for (const k of Object.keys(spec.env || {})) if (!new RegExp(ENV_NAME_RE).test(k)) throw fail('BAD_REQUEST', `MCP server invalid: env name "${k}" is not an environment variable name`);
+  for (const k of Object.keys(spec.env || {})) {
+    if (!new RegExp(ENV_NAME_RE).test(k)) throw fail('BAD_REQUEST', `MCP server invalid: env name "${k}" is not an environment variable name`);
+    if (FORBIDDEN_ENV_RE.test(k)) throw fail('BAD_REQUEST', `MCP server invalid: env "${k}" is not allowed (it would redirect what the runtime loads before the server runs; the sidecar passes its own PATH and HOME)`);
+  }
+  for (const k of spec.secretEnv || []) if (FORBIDDEN_ENV_RE.test(k)) throw fail('BAD_REQUEST', `MCP server invalid: secret env "${k}" is not allowed (it would redirect what the runtime loads before the server runs)`);
   for (const [k, v] of Object.entries(spec.headers || {})) {
     if (!/^[A-Za-z0-9-]{1,80}$/.test(k) || /^(authorization|cookie)$/i.test(k)) throw fail('BAD_REQUEST', `MCP server invalid: header "${k}" is not allowed (tokens go through the sign-in)`);
     // Safety 2026-10-11 L2: a header value is a secret by default (an API key most of the
@@ -631,7 +639,9 @@ export function createMcpManager({ bus, store, gateQueue = null, env = process.e
       if (spec.transport === 'http') await netGuard.assert(spec.url);
       const evidence = [
         { kind: 'input', text: spec.transport === 'stdio' ? `stdio: ${spec.command} ${spec.args.join(' ')}`.trim() : `http: ${spec.url}${Object.keys(spec.headers).length ? `; headers ${Object.entries(spec.headers).map(([k, v]) => `${k}: ${v}`).join(', ')} (values from the keystore)` : ''}` },
-        { kind: 'input', text: `env: ${Object.keys(spec.env).join(', ') || 'none'}; secrets: ${spec.secretEnv.join(', ') || 'none'}${spec.source ? `; ${spec.source.startsWith('catalog:') ? `from the catalog (${spec.source.slice(8)})` : spec.source}` : ''}` },
+        // The plain env with its values (L3: a name alone hides what the child is told), the
+        // secrets by name only.
+        { kind: 'input', text: `env: ${Object.entries(spec.env).map(([k, v]) => `${k}=${v.length > 120 ? `${v.slice(0, 119)}…` : v}`).join(', ') || 'none'}; secrets (values in the keystore): ${spec.secretEnv.join(', ') || 'none'}${spec.source ? `; ${spec.source.startsWith('catalog:') ? `from the catalog (${spec.source.slice(8)})` : spec.source}` : ''}` },
         { kind: 'input', text: `leash: read-only tools → ${READ_ONLY_DOMAIN}, others → ${DEFAULT_DOMAIN}${Object.keys(spec.leash).length ? `; overrides ${Object.entries(spec.leash).map(([t, d]) => `${t}=${d}`).join(', ')}` : ''}` },
         { kind: 'input', text: 'the tools it lists on this first connect become the accepted set (shown at the Peak); a tool that is new or changed on a later connect waits at the Gate until you accept it' },
       ];

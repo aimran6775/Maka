@@ -433,6 +433,8 @@ session id, api keys) to the host the request was made to and to no redirect hop
 another host.
 L2 done: an HTTP MCP server's header values are keystore secrets by name, never plaintext in
 `mcp-servers.json`.
+L3 done: a stdio server's plain env is on its Gate card with the values, and the names that
+redirect what a runtime loads (PATH, NODE_OPTIONS, DYLD_*, LD_* and kin) are refused.
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

@@ -33,7 +33,7 @@ import { fakeBrowserDriver, SUPPLIER } from './helpers/fake-browser-driver.js';
 import { fileURLToPath } from 'node:url';
 import { createLayoutState } from '../sidecar/server.js';
 import { createToolGate } from '../sidecar/capability/gate.js';
-import { createMcpManager, domainFor, toolFingerprint, classifyTools, validateServerSpec } from '../sidecar/mcp/manager.js';
+import { createMcpManager, domainFor, toolFingerprint, classifyTools, validateServerSpec, FORBIDDEN_ENV_RE } from '../sidecar/mcp/manager.js';
 import { startFakeMcpHttp } from './helpers/fake-mcp-http.js';
 import { grantsForRun } from '../sidecar/runs.js';
 import { createPurchases } from '../sidecar/purchases.js';
@@ -978,5 +978,32 @@ test('L2: an HTTP MCP server\'s header values must be $SECRET: names declared in
   } finally {
     await h.cleanup();
     await fake.close();
+  }
+});
+
+// ---------------------------------------------------------------------------------------
+// L3: a stdio server's env is shown with its values, and the loader-redirecting names are refused.
+// ---------------------------------------------------------------------------------------
+
+test('L3: PATH, NODE_OPTIONS, NODE_PATH, DYLD_* and LD_* are refused in a stdio server\'s env (and as secret names); the add card shows the plain env values', async () => {
+  const base = { id: 'fake', label: 'Fake', transport: 'stdio', command: process.execPath, args: [FAKE_MCP] };
+  for (const name of ['PATH', 'NODE_OPTIONS', 'NODE_PATH', 'DYLD_INSERT_LIBRARIES', 'LD_PRELOAD', 'PYTHONPATH', 'BASH_ENV', 'HOME', 'NPM_CONFIG_PREFIX']) {
+    assert.throws(() => validateServerSpec({ ...base, env: { [name]: '/tmp/evil' } }), (e) => e.code === 'BAD_REQUEST' && /is not allowed/.test(e.message), name);
+    assert.throws(() => validateServerSpec({ ...base, secretEnv: [name] }), (e) => e.code === 'BAD_REQUEST', `secret ${name}`);
+    assert.ok(FORBIDDEN_ENV_RE.test(name));
+  }
+  assert.ok(!FORBIDDEN_ENV_RE.test('FAKE_SECRET') && !FORBIDDEN_ENV_RE.test('WORKSPACE_DIR'));
+  const h = await mcpHarness();
+  try {
+    await h.mcp.add({ ...base, env: { WORKSPACE_DIR: '/Users/owner/Maka/workspace', MODE: 'read-only' }, secrets: { FAKE_SECRET: 'hush-hush' } });
+    const item = await h.nextItem('mcp.add');
+    const line = item.evidence.find((e) => /^env:/.test(e.text));
+    assert.ok(line, JSON.stringify(item.evidence));
+    assert.match(line.text, /env: WORKSPACE_DIR=\/Users\/owner\/Maka\/workspace, MODE=read-only; secrets \(values in the keystore\): FAKE_SECRET/);
+    assert.ok(!JSON.stringify(item.evidence).includes('hush-hush'), 'a secret value is never on the card');
+    await h.gateQueue.resolve(item.itemId, { decision: 'reject' });
+    await waitUntil(() => h.ofType('mcp.server').some((p) => p.status === 'refused'));
+  } finally {
+    await h.cleanup();
   }
 });

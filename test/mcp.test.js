@@ -199,7 +199,7 @@ async function harness({ env = {}, oauthPort } = {}) {
 }
 
 test('the manager: a server is added through the Gate (reject stores nothing; approve stores the config, the secret into the 0600 keystore, connects and registers sanitised tools), leash defaults and overrides, Outposts grant per zone and nothing at the Peak, placement checks, persistence, removal', async () => {
-  const h = await harness();
+  const h = await harness({ env: { PATH: process.env.PATH } });
   try {
     assert.deepEqual(h.mcp.list(), []);
     // Reject: nothing stored.
@@ -214,11 +214,11 @@ test('the manager: a server is added through the Gate (reject stores nothing; ap
     assert.deepEqual(h.mcp.list(), []);
     assert.equal(await h.store.loadMcpServers(null), null);
     // Approve with a secret env value: config written without it, keystore holds it, the child sees it.
-    await h.mcp.add(stdioSpec({ env: { PATH: process.env.PATH }, secrets: { FAKE_SECRET: 'hush' } }));
+    await h.mcp.add(stdioSpec({ secrets: { FAKE_SECRET: 'hush' } })); // PATH comes from the sidecar's own environment (safety 2026-10-11 L3 refuses it in a spec)
     await h.approveNext('mcp.add');
     await waitUntil(() => h.mcp.status('fake') && h.mcp.status('fake').status === 'connected');
     const row = h.mcp.status('fake');
-    assert.deepEqual([row.transport, row.secretEnv, row.env, row.serverInfo.name], ['stdio', ['FAKE_SECRET'], ['PATH'], 'fake-mcp']);
+    assert.deepEqual([row.transport, row.secretEnv, row.env, row.serverInfo.name], ['stdio', ['FAKE_SECRET'], [], 'fake-mcp']);
     assert.deepEqual(row.tools.map((t) => [t.name, t.domain, t.readOnly]), [['echo', 'research', true], ['send_note', 'outbound_messages', false], ['pay', 'outbound_messages', false], ['verbose', 'research', true], ['argv', 'research', true], ['env_check', 'research', true]]);
     assert.equal(row.dropped, 1);
     assert.equal(row.tools.find((t) => t.name === 'verbose').truncated, true);
@@ -288,9 +288,9 @@ test('the manager: a server is added through the Gate (reject stores nothing; ap
 });
 
 test('MCP tools through the capability gate: a read-only tool runs as research, a default tool waits at the Gate under outbound_messages, a money_out tool carries its amount and an unreadable amount is unknown at every level', async () => {
-  const h = await harness();
+  const h = await harness({ env: { PATH: process.env.PATH } });
   try {
-    await h.mcp.add(stdioSpec({ env: { PATH: process.env.PATH }, leash: { pay: 'money_out' }, amounts: { pay: { field: 'amount', unit: 'usd' } } }));
+    await h.mcp.add(stdioSpec({ leash: { pay: 'money_out' }, amounts: { pay: { field: 'amount', unit: 'usd' } } }));
     await h.approveNext('mcp.add');
     await waitUntil(() => h.mcp.status('fake').status === 'connected');
     await h.layoutState.place({ kind: 'outpost', roomId: 'ranger-station', x: 5, y: 5, server: 'fake' });
@@ -396,7 +396,7 @@ test('through the sidecar: the routes keep the boot token, a server through the 
     const bare = await fetch(`${srv.url}/api/mcp/servers`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(stdioSpec()) });
     assert.equal(bare.status, 403);
     assert.equal((await srv.post('/api/mcp/servers', stdioSpec({ id: 'Bad' }))).status, 400);
-    const added = await srv.post('/api/mcp/servers', stdioSpec({ env: { PATH: process.env.PATH } }));
+    const added = await srv.post('/api/mcp/servers', stdioSpec());
     assert.equal(added.status, 202);
     assert.ok(added.body.itemId);
     assert.equal((await srv.get('/api/mcp/servers/fake')).status, 404, 'not configured until approved');

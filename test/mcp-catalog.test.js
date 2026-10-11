@@ -82,8 +82,8 @@ test('addFromCatalog through the Gate with a test catalog pointing at the fake s
   const keystorePath = path.join(home, 'keystore.json');
   const registry = {};
   // A test catalog whose "package" is the fake server run by node: npx is replaced by the node binary through the entry's args.
-  const catalog = { version: 1, entries: [{ id: 'fakecat', label: 'Fake Catalog Server', description: 'the fake', source: 'https://example.test/fake', license: 'MIT', transport: 'stdio', package: 'fake-pkg', args: ['{flag}', '$SECRET:DB_URL'], params: [{ name: 'flag', label: 'A flag', required: true }], secrets: [{ name: 'DB_URL', label: 'A connection URL', hint: 'has a password' }], env: { PATH: process.env.PATH }, leash: { send_note: 'publishing', echo: 'research' }, notes: 'test only' }] };
-  const mcp = await createMcpManager({ bus, store, gateQueue, env: {}, keystorePath, netGuard: local, registry, getLayout: layoutState.get, clock, catalog, log: quiet }).init();
+  const catalog = { version: 1, entries: [{ id: 'fakecat', label: 'Fake Catalog Server', description: 'the fake', source: 'https://example.test/fake', license: 'MIT', transport: 'stdio', package: 'fake-pkg', args: ['{flag}', '$SECRET:DB_URL'], params: [{ name: 'flag', label: 'A flag', required: true }], secrets: [{ name: 'DB_URL', label: 'A connection URL', hint: 'has a password' }], env: {}, leash: { send_note: 'publishing', echo: 'research' }, notes: 'test only' }] };
+  const mcp = await createMcpManager({ bus, store, gateQueue, env: { PATH: process.env.PATH }, keystorePath, netGuard: local, registry, getLayout: layoutState.get, clock, catalog, log: quiet }).init(); // PATH from the sidecar's environment, never a spec (safety 2026-10-11 L3)
   try {
     assert.deepEqual(mcp.catalog().map((c) => [c.id, c.installed]), [['fakecat', false]]);
     await assert.rejects(mcp.addFromCatalog('nope', {}), (e) => e.code === 'UNKNOWN_ENTRY');
@@ -94,7 +94,7 @@ test('addFromCatalog through the Gate with a test catalog pointing at the fake s
     await mcp.addFromCatalog('fakecat', { params: { flag: '--flagged' }, secrets: { DB_URL: 'postgresql://u:secret-pw@h/db' } });
     const item = gateQueue.pending()[0];
     assert.equal(item.tool, 'mcp.add');
-    assert.match(item.evidence[1].text, /secrets: DB_URL; from the catalog \(fakecat\)/);
+    assert.match(item.evidence[1].text, /secrets \(values in the keystore\): DB_URL; from the catalog \(fakecat\)/);
     assert.match(item.evidence[2].text, /overrides send_note=publishing, echo=research/);
     assert.equal(JSON.stringify(item).includes('secret-pw'), false);
     await gateQueue.resolve(item.itemId, { decision: 'approve' });
