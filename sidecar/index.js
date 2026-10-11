@@ -68,6 +68,7 @@ import { defaultLeash, validateLeash } from '../shared/leash.js';
 import { defaultPolicy, validatePolicy } from './router.js';
 import { validate } from '../shared/schema.js';
 import { readJson } from './store.js';
+import { startOrphanWatch } from './orphan.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, '..');
@@ -345,6 +346,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   // The entry point can restart the sidecar in-process (the first-run flow's workspace
   // change): close everything, boot again on the same port, keep the process and its
   // environment (the shell's credential broker handle included).
+  startOrphanWatch();
   let app = null;
   let restarting = false;
   const restart = () => {
