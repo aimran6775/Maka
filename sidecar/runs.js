@@ -310,7 +310,7 @@ export function createRunManager({
           fetch: fetchImpl,
           ask,
           registry,
-          grants: typeof grants === 'function' ? grants : grantsForRun,
+          grants: typeof grants === 'function' ? grants : (l, a) => [...grantsForRun(l, a), ...(toolContext.mcp && typeof toolContext.mcp.grantsFor === 'function' ? toolContext.mcp.grantsFor(l, a) : [])],
           toolContext: { agents, runs: api, ...toolContext },
           getLeash: currentLeash,
           ledger,

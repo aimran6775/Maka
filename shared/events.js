@@ -154,6 +154,7 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     roomId: nonEmpty,
     x: int0,
     y: int0,
+    server: nonEmpty, // phase 4 step 4 (optional): the MCP server an Outpost grants
   }),
   // An object was removed from a room. The matching grant ends.
   'object.reclaim': payload(['objectId', 'roomId'], { objectId: nonEmpty, roomId: nonEmpty }),
@@ -459,6 +460,18 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     into: str,
     files: int0,
     error: str,
+  }),
+  // Added v1 (phase 4 step 4): an MCP server's state. 'configured' when its record was
+  // written (added, or a leash mapping changed), 'connected' with its tool count,
+  // 'needs_auth' when it answered 401, 'authorizing' with the sign-in URL, 'disconnected',
+  // 'error' with the message, 'refused' when the Gate declined, 'removed'.
+  'mcp.server': payload(['server', 'status'], {
+    server: nonEmpty,
+    status: { type: 'string', enum: ['configured', 'connected', 'needs_auth', 'authorizing', 'disconnected', 'error', 'refused', 'removed'] },
+    transport: { type: 'string', enum: ['stdio', 'http'] },
+    tools: int0,
+    message: str,
+    authorizeUrl: str,
   }),
   // Added v1 (phase 4 step 1): a message arrived on an owner channel (Telegram, Discord,
   // Slack). `action` is what Maka made of it: 'pair' (the pairing code), 'gate' (a decision

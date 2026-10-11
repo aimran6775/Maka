@@ -28,7 +28,7 @@ const ASSETS = {
   rock: ['nature-kit/rock_largeA.glb', 'nature-kit/rock_largeB.glb', 'nature-kit/rock_smallA.glb'],
   station: { structure: 'survival-kit/structure.glb', tent: 'survival-kit/tent.glb', campfire: 'survival-kit/campfire-pit.glb', signpost: 'survival-kit/signpost.glb', tentOpen: 'nature-kit/tent_detailedOpen.glb', crate: 'survival-kit/box.glb', logs: 'nature-kit/campfire_logs.glb', fenceGate: 'nature-kit/fence_gate.glb', fenceSimple: 'nature-kit/fence_simple.glb' },
   gate: { doorway: 'survival-kit/fence-doorway.glb', fence: 'survival-kit/fence.glb', signpost: 'survival-kit/signpost.glb' },
-  fixtures: { trailhead_sign: 'nature-kit/sign.glb', supply_cache: 'survival-kit/chest.glb' }, // radio_tower and field_office are built in code (makeTower, makeFieldOffice)
+  fixtures: { trailhead_sign: 'nature-kit/sign.glb', supply_cache: 'survival-kit/chest.glb' }, // radio_tower, field_office and outpost are built in code (makeTower, makeFieldOffice, makeOutpost)
   ranger: { body: 'characters/characterMedium.fbx', skin: 'characters/skaterMaleA.png', clips: { idle: 'characters/idle.fbx', run: 'characters/run.fbx' } },
 };
 
@@ -651,6 +651,24 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     return g;
   }
 
+  // Outpost (phase 4 step 4): a crate under a pennant pole, built from primitives.
+  function makeOutpost() {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.9 });
+    const cloth = new THREE.MeshStandardMaterial({ color: 0x3a7bd5, roughness: 0.8, side: THREE.DoubleSide });
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.0, 1.4), wood);
+    crate.position.y = 0.5;
+    crate.castShadow = true;
+    g.add(crate);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 4.2, 6), new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 0.4 }));
+    pole.position.set(0.5, 2.1, -0.5);
+    g.add(pole);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.7), cloth);
+    flag.position.set(1.15, 3.8, -0.5);
+    g.add(flag);
+    return g;
+  }
+
   function syncFixtures(state) {
     if (!model) return;
     const wanted = new Map(model.fixtures.map((f) => [f.id, f]));
@@ -665,7 +683,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     for (const f of model.fixtures) {
       if (dynamic.fixtures.has(f.id)) continue;
       const proto = kit.fixtures[f.kind];
-      const obj = proto ? proto.clone() : f.kind === 'radio_tower' ? makeTower() : f.kind === 'field_office' ? makeFieldOffice() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+      const obj = proto ? proto.clone() : f.kind === 'radio_tower' ? makeTower() : f.kind === 'field_office' ? makeFieldOffice() : f.kind === 'outpost' ? makeOutpost() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
       place(obj, f.x, f.y, f.z, { scale: proto ? 3.2 : 1 });
       obj.userData.pick = { type: 'object', id: f.id };
       obj.traverse((o) => (o.userData.pick = obj.userData.pick));

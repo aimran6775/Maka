@@ -43,6 +43,7 @@ import { createChannels } from './channels/registry.js';
 import { createTelegramAdapter } from './channels/telegram.js';
 import { createDiscordAdapter } from './channels/discord.js';
 import { createSlackAdapter } from './channels/slack.js';
+import { createMcpManager } from './mcp/manager.js';
 import { createOllama } from './ollama.js';
 import { createSetup } from './setup.js';
 import { createBackup } from './backup/index.js';
@@ -125,6 +126,11 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   Object.assign(registry, connectors.tools);
   toolContext.connectors = connectors;
   const research = createResearch({ env, keystorePath, judge, workspaceRoot });
+  // Phase 4 step 4: MCP servers configured at the Peak; their tools reach Rangers through
+  // Outposts. HTTP servers go through the outbound guard like every other network path.
+  const mcp = await createMcpManager({ bus, store, gateQueue, env, keystorePath, netGuard, registry, getLayout: layoutState.get, oauthPort: (config.connectors && config.connectors.oauthPort) || undefined, log }).init();
+  toolContext.mcp = mcp;
+  layoutState.setObjectCheck((o) => mcp.checkPlacement(o));
   // Phase 4 step 1: the owner channels. Adapters (Telegram, Discord, Slack) register here
   // as they arrive; a channel whose token is not wired says so at the Peak.
   const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, log }).init();
@@ -163,6 +169,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     browser,
     connectors,
     channels,
+    mcp,
     research,
     setup,
     ollama,
@@ -202,6 +209,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const mailSys = await mail.status();
   const connectorRows = connectors.list();
   log.info(`  connectors: ${connectorRows.length ? connectorRows.map((c) => `${c.label} ${c.connected ? `connected (${c.by})` : 'not connected'}`).join(' · ') : 'none defined yet'}`);
+  const mcpRows = mcp.list();
+  log.info(`  mcp: ${mcpRows.length ? mcpRows.map((s) => `${s.label} ${s.status}${s.status === 'connected' ? ` (${s.tools.length} tool(s))` : ''}`).join(' · ') : 'no servers configured (add one at the Peak)'}`);
   const channelRows = channels.list();
   log.info(`  channels: ${channelRows.length ? channelRows.map((c) => `${c.label} ${c.status === 'up' ? `up (${c.by}${c.detail ? `, ${c.detail}` : ''})` : c.status === 'not_wired' ? `not wired (${c.missing.join(', ')})` : c.status}, ${c.paired.length} paired chat(s)`).join(' · ') : 'none registered yet'}`);
   const researchStatus = await research.status();
@@ -221,6 +230,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await browser.close();
     await connectors.close();
     await channels.close();
+    await mcp.close();
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
@@ -230,7 +240,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const setupState = await setup.state();
   log.info(`  first run: ${setupState.firstRun ? 'yes (the park shows the first-run card)' : `done ${new Date(setupState.completedAt).toISOString()}${setupState.skipped ? ' (skipped)' : ''}`} · worker ${ollama.summary().worker}`);
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, research, setup, ollama, backup, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, setup, ollama, backup, close };
 }
 
 function validateConfig(data) {

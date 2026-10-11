@@ -65,6 +65,22 @@ backoff, both registered at boot and shown on the Peak with their pairing state;
 tower placed at the Peak carries one lamp per channel, lit only by what `channel.connect`
 proved. That completes Part A of phase 4 (`docs/PHASE4_BRIEF.md`).
 
+Part B step 4 done: MCP (`sidecar/mcp/`). The client speaks JSON-RPC to a spawned server
+over stdio or to a remote one over streamable HTTP (through the outbound guard, so a
+server on this machine is refused unless a test says otherwise); every tool it lists is
+sanitised before the model or the gate sees it: names must be identifiers, descriptions
+are clipped and cleaned, schemas rebuilt from the keywords Maka validates. The manager
+keeps the servers the Superintendent configures at the Peak (each added, removed or
+signed in through a Gate item; secret environment values in the keystore, never in the
+config file), registers their tools as `mcp.<server>.<tool>` and maps each to a leash
+domain: research when the server marks it read-only, outbound messages otherwise, both
+overridable per tool, and a money domain only with an explicit amount reading, so a money
+call whose amount cannot be read is unknown-amount and waits at the Gate at every level
+(safety H2 holds for foreign tools too). Tools reach Rangers only through an Outpost
+placed in their zone for one server; an Outpost at the Peak is refused and grants nothing
+(safety L5). HTTP servers that answer 401 sign in with OAuth 2.1 + PKCE after a Gate
+approval (metadata discovery, dynamic client registration, the resource indicator).
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

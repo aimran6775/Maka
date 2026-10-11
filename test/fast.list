@@ -40,3 +40,4 @@ test/safety.test.js
 test/channels.test.js
 test/telegram.test.js
 test/discord-slack.test.js
+test/mcp.test.js

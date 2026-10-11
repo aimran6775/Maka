@@ -1203,3 +1203,39 @@ A Radio tower is the mail fixture (D69); placed at the Peak it also carries one 
 registered channel, lit green by a `channel.connect { up }`, red by an error, dark when
 not wired or down. The lamp is a reading of the registry's rows, not a signal of its own,
 so nothing animates on a timer and a tower in a camp shows no lamps at all.
+
+## D132. An MCP server is a Gate decision, its tools are sanitised, and only an Outpost grants them
+
+Adding an MCP server starts a process on the owner's machine or opens a network path, so
+it is a Gate item in `account_settings` like a connector key (D75), and so are its removal
+and its sign-in; a plain connect / disconnect of an approved server is the owner's click.
+Everything a server says about its tools is bounded before the model sees it: a name must
+be a plain identifier, a description is clipped to 300 characters with control and
+zero-width characters removed, a schema is rebuilt from the keywords Maka's validator
+knows (so the gate validates every call's input), and the Superintendent sees those same
+descriptions when placing the Outpost. The tools reach a Ranger only through an Outpost
+placed in its zone for one named server (layout is permission), the Outpost is refused at
+the Peak and grants the Chief nothing even in a hand-edited layout (D123 extended), and a
+stopped or removed server's tools leave the registry at once.
+
+## D133. MCP leash mapping: read-only is research, everything else is outbound, money needs a figure
+
+A server's `readOnlyHint` is the one machine-readable statement of what a tool does, so a
+tool that carries it is research and every other tool is `outbound_messages`, the
+tightest default short of Observe that still lets a Ranger use a tool at Draft. The
+Superintendent may move a tool to any domain; moving it to money_out or money_in needs an
+explicit amount reading (which input field, usd or cents) or the mapping is refused,
+because an unknown-amount money action is the Gate's at every level (D112) and a tool
+that would always land there is better said so at configuration. A call whose configured
+field cannot be read is unknown-amount all the same and waits at the Gate; nothing is
+invented. Server-initiated requests (sampling, roots, elicitation) are declined: Maka's
+models and files are not a server's to drive.
+
+## D134. MCP secrets and tokens live in the keystore; stdio children get a built environment
+
+A stdio server's secret variables (an API token for a GitHub server, say) are given once
+when the server is added and stored under `mcp.<id>.<VAR>` through `keys.js` (the Keychain
+in the app); the config file keeps the names only. The child gets exactly the variables
+the config names plus PATH and HOME, never the sidecar's environment with every provider
+key in it. OAuth tokens for HTTP servers are keystore entries too, with the token URL and
+client id beside them so they refresh without a second discovery.

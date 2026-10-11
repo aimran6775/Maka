@@ -71,6 +71,10 @@
 //   POST /api/channels/:name/unpair     { chatId }
 //   POST /api/channels/:name/connect    { token } → a Gate item (account_settings); 202
 //   POST /api/channels/:name/disconnect → a Gate item; 202
+//   GET  /api/mcp              MCP servers (phase 4 step 4): one row per server with status and tools
+//   POST /api/mcp/servers      { id, label, transport, command?, args?, env?, secrets?, url?, headers?, clientId?, scopes?, leash?, amounts? } → a Gate item; 202
+//   POST /api/mcp/servers/:id/remove | connect | disconnect | auth   (remove and auth are Gate items; 202)
+//   PUT  /api/mcp/servers/:id/leash   { tool, domain, amount? } → the per-tool leash mapping
 //   GET  /api/browser          chromium found?, headless, open sessions, pending handoffs
 //   GET  /api/browser/handoffs recent BROWSER HANDOFFs, oldest first
 //   POST /api/browser/handoff/:id/return   { notes? } the Superintendent hands the page back
@@ -224,8 +228,9 @@ function sendJson(res, status, data) {
   res.end(body);
 }
 
-export function createLayoutState({ initial, store, bus, clock = { now: () => Date.now() } }) {
+export function createLayoutState({ initial, store, bus, clock = { now: () => Date.now() }, objectCheck = null }) {
   let layout = initial;
+  let checkObject = objectCheck; // phase 4 step 4: the MCP manager refuses an Outpost without a known server
   const emit = (type, payload) => bus.emit(makeEvent(type, payload, { ts: clock.now() }));
 
   return {
@@ -239,7 +244,10 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
       await store.saveLayout(layout);
       return layout;
     },
-    async place({ kind, roomId, x, y, objectId }) {
+    setObjectCheck(fn) {
+      checkObject = typeof fn === 'function' ? fn : null;
+    },
+    async place({ kind, roomId, x, y, objectId, server }) {
       if (!OBJECT_KINDS[kind]) throw new HttpError(400, `unknown object kind "${kind}"`);
       const room = roomOf(layout, roomId);
       if (!room) throw new HttpError(400, `unknown room "${roomId}"`);
@@ -250,9 +258,21 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
       if (occupied) throw new HttpError(409, 'tile is occupied');
       const id = objectId || `obj-${randomUUID().slice(0, 8)}`;
       if (layout.objects.some((o) => o.id === id)) throw new HttpError(409, `object "${id}" already exists`);
+      const obj = { id, kind, roomId, x, y };
+      if (server !== undefined && server !== null) {
+        if (typeof server !== 'string' || !server) throw new HttpError(400, 'server must be a non-empty string');
+        obj.server = server;
+      }
+      if (checkObject) {
+        try {
+          checkObject(obj);
+        } catch (err) {
+          throw new HttpError(err.status || 400, err.message, err.code);
+        }
+      }
       // makeEvent validates the payload; a bad id or coordinate throws before any change.
-      const event = makeEvent('object.place', { objectId: id, kind, roomId, x, y }, { ts: clock.now() });
-      layout = { ...layout, objects: [...layout.objects, { id, kind, roomId, x, y }] };
+      const event = makeEvent('object.place', { objectId: id, kind, roomId, x, y, ...(obj.server ? { server: obj.server } : {}) }, { ts: clock.now() });
+      layout = { ...layout, objects: [...layout.objects, obj] };
       await store.saveLayout(layout);
       bus.emit(event);
       return layout.objects.at(-1);
@@ -278,7 +298,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, research = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -354,6 +374,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         browser: browser ? await browser.status() : null,
         connectors: connectors ? connectors.list() : null,
         channels: channels ? { adapters: channels.list(), pairing: channels.pairing() } : null,
+        mcp: mcp ? mcp.list() : null,
         research: research ? await research.status() : null,
         setup: setup ? await setup.state() : null,
         ollama: ollama ? ollama.summary() : null,
@@ -648,6 +669,37 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
           throw err;
         }
       }
+    }
+    if (p === '/api/mcp' && method === 'GET') {
+      if (!mcp) throw new HttpError(404, 'no MCP manager');
+      return sendJson(res, 200, mcp.list());
+    }
+    if (p === '/api/mcp/servers' && method === 'POST') {
+      if (!mcp) throw new HttpError(404, 'no MCP manager');
+      return sendJson(res, 202, await rethrow(async () => mcp.add(await readJsonBody(req))));
+    }
+    if (p.startsWith('/api/mcp/servers/')) {
+      if (!mcp) throw new HttpError(404, 'no MCP manager');
+      const [id, action] = p.slice('/api/mcp/servers/'.length).split('/').map(decodeURIComponent);
+      if (method === 'GET' && !action) {
+        const row = mcp.status(id);
+        if (!row) throw new HttpError(404, `no MCP server "${id}"`);
+        return sendJson(res, 200, row);
+      }
+      if (method === 'PUT' && action === 'leash') return sendJson(res, 200, await rethrow(async () => mcp.setLeash(id, await readJsonBody(req))));
+      if (method === 'POST' && ['remove', 'connect', 'disconnect', 'auth'].includes(action)) {
+        await readJsonBody(req);
+        try {
+          if (action === 'remove') return sendJson(res, 202, await mcp.remove(id));
+          if (action === 'auth') return sendJson(res, 202, await mcp.auth(id));
+          if (action === 'connect') return sendJson(res, 200, (await mcp.connect(id), mcp.status(id)));
+          return sendJson(res, 200, (await mcp.disconnect(id), mcp.status(id)));
+        } catch (err) {
+          if (err.status) throw new HttpError(err.status, err.message, err.code);
+          throw err;
+        }
+      }
+      throw new HttpError(404, 'no such route');
     }
     if (p === '/api/channels' && method === 'GET') {
       if (!channels) throw new HttpError(404, 'no channels');

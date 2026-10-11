@@ -4,6 +4,7 @@
 import { el, createWindow, setChildren } from './windows.js';
 
 export function createBuild({ parent, getState, world, x, y, w }) {
+  let activeServer = null; // phase 4 step 4: the MCP server an Outpost is placed for
   const { body } = createWindow({ id: 'build', title: 'BUILD', x, y, w, parent });
   const palette = el('div', { class: 'palette' });
   const hint = el('div', { class: 'muted small', text: 'Pick a fixture, then click a spot inside a zone clearing in the park. Click a placed fixture to reclaim it. A placed fixture is a real tool grant for every Ranger in that zone.' });
@@ -12,7 +13,20 @@ export function createBuild({ parent, getState, world, x, y, w }) {
   let active = null;
 
   function select(kind) {
+    if (kind === 'outpost' && active !== 'outpost') {
+      // An Outpost grants one MCP server's tools: pick it, with the sanitised descriptions
+      // in front of you (the brief's "shown to the Superintendent at placement").
+      const s = getState();
+      const servers = (s.mcp || []).filter((m) => m.status === 'connected');
+      if (!servers.length) { hint.textContent = 'No connected MCP server: add one at the Mountain Peak first.'; return; }
+      const lines = servers.map((m, i) => `${i + 1}. ${m.label} (${m.transport}) — ${(m.tools || []).map((t) => `${t.name} [${t.domain}]: ${t.description}`).join('; ') || 'no tools'}`);
+      const pick = window.prompt(`Which MCP server does this Outpost grant? Its tools and leash domains:\n\n${lines.join('\n\n')}\n\nEnter the number:`, '1');
+      const chosen = servers[Number(pick) - 1];
+      if (!chosen) return;
+      activeServer = chosen.id;
+    }
     active = active === kind ? null : kind;
+    if (active !== 'outpost') activeServer = null;
     world.setBuild(active);
     render();
   }
@@ -27,11 +41,11 @@ export function createBuild({ parent, getState, world, x, y, w }) {
     );
     setChildren(placed,
       ...(s.layout.objects.length ? s.layout.objects : []).map((o) =>
-        el('div', { class: 'placed-row' }, `${(s.objectKinds[o.kind] || {}).label || o.kind} @ ${o.x},${o.y}`, ' ', el('span', { class: 'muted', text: `grants ${((s.objectKinds[o.kind] || {}).grants || ['?']).join(', ')}` })),
+        el('div', { class: 'placed-row' }, `${(s.objectKinds[o.kind] || {}).label || o.kind}${o.server ? ` (${o.server})` : ''} @ ${o.x},${o.y}`, ' ', el('span', { class: 'muted', text: o.kind === 'outpost' ? `grants the tools of MCP server ${o.server || '?'}` : `grants ${((s.objectKinds[o.kind] || {}).grants || ['?']).join(', ')}` })),
       ),
       s.layout.objects.length ? null : el('div', { class: 'muted', text: 'Nothing placed. The Ranger has no tools.' }),
     );
   }
 
-  return { render, isActive: () => active !== null, activeKind: () => active };
+  return { render, isActive: () => active !== null, activeKind: () => active, activeServer: () => activeServer };
 }

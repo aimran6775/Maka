@@ -265,11 +265,15 @@ export function createInspect({ parent, getState, api, x, y, w }) {
   function renderObject(s, obj) {
     const def = s.objectKinds[obj.kind] || { label: obj.kind, grants: [], hint: '' };
     setTitle(`INSPECT · ${def.label}`);
-    const uses = toolUses(s, def.grants || []);
+    const uses = toolUses(s, obj.kind === 'outpost' ? (((s.mcp || []).find((m) => m.id === obj.server) || {}).tools || []).map((t) => t.toolName) : (def.grants || []));
     const room = s.layout.rooms.find((r) => r.id === obj.roomId) || {};
     const atPeak = obj.kind === 'radio_tower' && room.kind === 'mountain_peak';
+    const outpostServer = obj.kind === 'outpost' ? (s.mcp || []).find((m) => m.id === obj.server) || null : null;
+    const outpostTools = outpostServer && outpostServer.status === 'connected' ? (outpostServer.tools || []).map((t) => t.toolName) : [];
     return [
-      row('grants', (def.grants || []).join(', ')),
+      obj.kind === 'outpost' ? row('server', outpostServer ? `${outpostServer.label} (${obj.server}) · ${outpostServer.status}` : `${obj.server || '?'}: not configured (grants nothing)`) : null,
+      row('grants', obj.kind === 'outpost' ? (outpostTools.length ? outpostTools.join(', ') : 'nothing while the server is not connected') : (def.grants || []).join(', ')),
+      ...(outpostServer ? (outpostServer.tools || []).map((t) => el('div', { class: 'small muted', text: `${t.name} → ${t.domain}${t.amount ? ` (amount = ${t.amount.field})` : ''}: ${t.description}` })) : []),
       row('zone', room.name || obj.roomId),
       atPeak ? row('channels', s.channels && s.channels.adapters && s.channels.adapters.length ? s.channels.adapters.map((c) => `${c.label}: ${c.status === 'up' ? 'up' : c.status === 'not_wired' ? 'not wired' : c.status} · ${(c.paired || []).length} paired`).join('; ') : 'no channel registry') : null,
       atPeak ? el('div', { class: 'muted small', text: 'The lamps on this tower show the owner channels: green up, red failed, dark not wired. Pair a chat at the Peak card.' }) : null,
@@ -366,6 +370,63 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ) : null,
       ...recent.map((e) => el('div', { class: `use ${e.type === 'channel.delivery' ? (e.status === 'sent' ? 'ok' : 'failed') : e.paired === false ? 'failed' : ''}`, text: e.type === 'channel.delivery' ? `${new Date(e.ts).toLocaleTimeString()} · ${e.channel} → ${e.chatId}: ${e.kind} ${e.status}${e.error ? ` (${e.error})` : ''}` : e.type === 'channel.inbound' ? `${new Date(e.ts).toLocaleTimeString()} · ${e.channel} ← ${e.chatId}: ${e.action}${e.decision ? ` ${e.decision} ${e.itemId}` : ''} · ${e.outcome}` : `${new Date(e.ts).toLocaleTimeString()} · ${e.channel}: ${e.status}${e.message ? ` (${e.message})` : ''}` })),
       channelNotice.text ? el('div', { class: 'notice', text: channelNotice.text }) : null,
+    ];
+  }
+
+  // MCP servers (phase 4 step 4): configured at the Peak, granted through Outposts. Rows
+  // come from the snapshot; an mcp.server event marks a row stale until /api/mcp is re-read.
+  const mcpCache = { key: null, rows: null, loading: false };
+  const mcpNotice = { text: '' };
+  async function loadMcp(s) {
+    const stale = (s.mcp || []).some((r) => r.stale);
+    const key = `${s.mcpEvents.length}`;
+    if (!stale || mcpCache.key === key || mcpCache.loading) return;
+    mcpCache.loading = true;
+    try {
+      const r = await api.get('/api/mcp');
+      mcpCache.rows = r.ok ? r.body : null;
+      mcpCache.key = key;
+    } finally {
+      mcpCache.loading = false;
+      selectionRefresh && selectionRefresh();
+    }
+  }
+  function mcpRows(s) {
+    if (!s.mcp) return null;
+    if (mcpCache.rows && mcpCache.key === `${s.mcpEvents.length}`) return mcpCache.rows;
+    loadMcp(s);
+    return s.mcp;
+  }
+  function mcpSection(s) {
+    const rows = mcpRows(s);
+    if (!rows) return [];
+    const mcpAct = async (label, req) => { mcpNotice.text = `${label}…`; const r = await req(); mcpNotice.text = r.ok ? `${label}: ${r.body && r.body.itemId ? `waiting at the Gate (${r.body.itemId})` : r.body && r.body.status ? r.body.status : 'ok'}` : `${label}: ${r.body.code || r.status}: ${r.body.error || 'failed'}`; selectionRefresh && selectionRefresh(); };
+    return [
+      el('div', { class: 'k', text: 'MCP servers (Model Context Protocol; tools reach Rangers through an Outpost placed in their zone)' }),
+      rows.length ? null : el('div', { class: 'muted small', text: 'none configured: add one below (every server is approved at the Gate before it starts)' }),
+      ...rows.map((srv) => el('div', { class: 'connector-row' },
+        el('div', { class: 'kv' }, el('span', { class: 'k', text: srv.label }), el('span', { class: 'v', text: `${srv.transport}${srv.command ? ` · ${srv.command} ${(srv.args || []).join(' ')}` : srv.url ? ` · ${srv.url}` : ''} · ${srv.status}${srv.serverInfo && srv.serverInfo.name ? ` (${srv.serverInfo.name} ${srv.serverInfo.version || ''})` : ''}${srv.status === 'connected' ? ` · ${(srv.tools || []).length} tool(s)${srv.dropped ? `, ${srv.dropped} dropped for an unusable name` : ''}` : ''}${srv.pendingItemId ? ` · waiting at the Gate (${srv.pendingItemId})` : ''}${srv.lastError ? ` · ${srv.lastError.stage || 'error'}: ${srv.lastError.message}` : ''}${(srv.env || []).length || (srv.secretEnv || []).length ? ` · env ${[...(srv.env || []), ...(srv.secretEnv || []).map((k) => `${k} (secret)`)].join(', ')}` : ''}` })),
+        srv.authorizeUrl ? el('a', { class: 'small', href: srv.authorizeUrl, target: '_blank', rel: 'noopener', text: `Sign in to ${srv.label} (opens the server's authorization page)` }) : null,
+        ...(srv.tools || []).map((t) => el('div', { class: 'row small' },
+          el('span', { class: 'mono', text: t.name }),
+          el('span', { class: 'muted', text: `${t.readOnly ? 'read-only · ' : ''}${t.destructive ? 'destructive · ' : ''}${t.description}${t.truncated ? ' (description clipped)' : ''}` }),
+          el('select', { class: 'sel small', onchange: (e) => { const domain = e.target.value === 'default' ? null : e.target.value; const amount = ['money_out', 'money_in'].includes(domain) ? (() => { const f = window.prompt(`${t.name} → ${domain}: which input field carries the amount? (unit usd; append " cents" for cents)`, t.amount ? `${t.amount.field}${t.amount.unit === 'cents' ? ' cents' : ''}` : ''); if (!f) return undefined; const [field, unit] = f.trim().split(/\s+/); return { field, unit: unit === 'cents' ? 'cents' : 'usd' }; })() : undefined; if (['money_out', 'money_in'].includes(domain) && !amount) { e.target.value = t.domain; return; } mcpAct(`${t.name} leash`, () => api.put(`/api/mcp/servers/${encodeURIComponent(srv.id)}/leash`, { tool: t.name, domain, ...(amount ? { amount } : {}) })); } },
+            el('option', { value: 'default', selected: t.override ? null : '', text: `default (${t.readOnly ? 'research' : 'outbound_messages'})` }),
+            ...DOMAINS.map((d) => el('option', { value: d, selected: t.override && t.domain === d ? '' : null, text: d })),
+          ),
+          t.amount ? el('span', { class: 'muted', text: `amount = ${t.amount.field} (${t.amount.unit})` }) : ['money_out', 'money_in'].includes(t.domain) ? el('span', { class: 'warn', text: 'no amount reading: unknown amount → the Gate' }) : null,
+        )),
+        el('div', { class: 'row' },
+          srv.status === 'connected' || srv.status === 'authorizing' ? el('button', { class: 'btn small', text: 'Disconnect', onclick: () => mcpAct('Disconnect', () => api.post(`/api/mcp/servers/${encodeURIComponent(srv.id)}/disconnect`, {})) }) : el('button', { class: 'btn small', text: 'Connect', disabled: Boolean(srv.pendingItemId), onclick: () => mcpAct('Connect', () => api.post(`/api/mcp/servers/${encodeURIComponent(srv.id)}/connect`, {})) }),
+          srv.status === 'needs_auth' || (srv.transport === 'http' && srv.status === 'error') ? el('button', { class: 'btn small primary', text: 'Sign in (via the Gate)', disabled: Boolean(srv.pendingItemId), onclick: () => mcpAct('Sign in', () => api.post(`/api/mcp/servers/${encodeURIComponent(srv.id)}/auth`, {})) }) : null,
+          el('button', { class: 'btn small', text: 'Remove (via the Gate)', disabled: Boolean(srv.pendingItemId), onclick: () => mcpAct('Remove', () => api.post(`/api/mcp/servers/${encodeURIComponent(srv.id)}/remove`, {})) }),
+        ),
+      )),
+      el('div', { class: 'row' },
+        el('button', { class: 'btn small primary', text: 'Add a stdio server (via the Gate)', onclick: () => { const label = window.prompt('Server name (shown on cards):', ''); if (!label) return; const cmd = window.prompt('Command and arguments (e.g. npx -y @modelcontextprotocol/server-filesystem /path):', ''); if (!cmd) return; const [command, ...args] = cmd.trim().split(/\s+/); const secret = window.prompt('Secret environment variable as NAME=value (stored in the keystore), or leave empty:', ''); const id = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'server'; const body = { id, label, transport: 'stdio', command, args }; if (secret && secret.includes('=')) { const i = secret.indexOf('='); body.secrets = { [secret.slice(0, i).trim()]: secret.slice(i + 1) }; } mcpAct('Add', () => api.post('/api/mcp/servers', body)); } }),
+        el('button', { class: 'btn small primary', text: 'Add an HTTP server (via the Gate)', onclick: () => { const label = window.prompt('Server name (shown on cards):', ''); if (!label) return; const url = window.prompt('Server URL (https://…/mcp):', ''); if (!url) return; const id = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'server'; mcpAct('Add', () => api.post('/api/mcp/servers', { id, label, transport: 'http', url })); } }),
+      ),
+      mcpNotice.text ? el('div', { class: 'notice', text: mcpNotice.text }) : null,
     ];
   }
 
@@ -482,6 +543,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ) : null,
       row('gate queue', `${pendingGate(s).length} waiting`),
       ...connectorsSection(s),
+      ...mcpSection(s),
       ...channelsSection(s),
       ...briefsSection(s),
       s.browser ? row('browser', `${s.browser.wired ? `${s.browser.chromium}${s.browser.headless ? ' (headless)' : ''}` : 'not wired: no Chromium found (browser.chromiumPath or CHROMIUM)'} · ${(s.browser.sessions || []).length} open · ${pendingHandoffs(s).length} handoff(s) waiting`) : null,

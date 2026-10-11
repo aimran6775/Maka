@@ -82,7 +82,7 @@ async function onPick(info) {
     if (!room) return flash('Place fixtures inside a zone clearing.', 'warn');
     const tile = tileFromPoint(room, info.point);
     if (!tile) return flash('No tile under that point. Click closer to the clearing centre.', 'warn');
-    const r = await api.post('/api/layout/place', { kind: build.activeKind(), roomId: room.id, x: tile.tx, y: tile.ty });
+    const r = await api.post('/api/layout/place', { kind: build.activeKind(), roomId: room.id, x: tile.tx, y: tile.ty, ...(build.activeKind() === 'outpost' && build.activeServer() ? { server: build.activeServer() } : {}) });
     return showError(r);
   }
   if (info && info.type === 'object' && build.activeKind()) {

@@ -301,6 +301,15 @@ and `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` (Socket Mode); both need no public end
 both pair the same way, and the Peak lists every channel with its paired chats. Place a
 Radio tower at the Peak (BUILD) and its lamps show which channels are up.
 
+Step 4, MCP: at the Peak, "Add a stdio server" (a command such as `npx -y
+@modelcontextprotocol/server-filesystem ~/Maka/workspace`, a secret environment variable
+goes to the keystore) or "Add an HTTP server" (a URL; a server that asks for a sign-in gets
+one through the Gate, OAuth 2.1 + PKCE). Each is approved at the Gate before it starts;
+its tools show with their clipped descriptions and a leash domain each (read-only tools
+are research, the rest outbound messages, editable; a money domain needs the amount
+field). In BUILD, place an Outpost in a camp and pick the server: its Rangers get those
+tools under the leash. Nothing MCP reaches the Chief.
+
 ## License
 
 MIT. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).

@@ -987,7 +987,7 @@ test('L4 delegate() caps the sub-run\'s budget at the delegator\'s remaining bud
 // ---------- L5: no connector fixture at the Mountain Peak, so the unjudged Chief never holds a money tool ----------
 
 test('L5 a connector fixture cannot be placed at the Peak (place, replace), and one that is there anyway grants the Chief nothing', async () => {
-  assert.deepEqual([...PEAK_REFUSED_KINDS], ['park_store', 'notice_board', 'fee_booth']);
+  assert.deepEqual([...PEAK_REFUSED_KINDS], ['park_store', 'notice_board', 'fee_booth', 'outpost']);
   const srv = await startTestServer({ makeProvider: async () => ({ provider: fakeProvider([[text('hi'), end()]]), model: 'fake-1', price: null }), withChief: true });
   try {
     const layout = srv.layoutState.get();

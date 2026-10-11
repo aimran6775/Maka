@@ -203,6 +203,21 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 - BUILD → place a Radio tower in the Mountain Peak zone: its lamps are green for every
   channel that is up and dark for the rest; click it for the list.
 
+## 18. MCP (phase 4)
+
+- Peak → "Add a stdio server": name `files`, command `npx -y
+  @modelcontextprotocol/server-filesystem <a scratch directory>`. The Gate item names the
+  command; approve it. `mcp.server { configured }` then `{ connected, tools: N }`; the row
+  lists the tools with clipped descriptions, `read_file` and friends as research (read-only
+  hint) and the writes as outbound_messages.
+- BUILD → Outpost in the Research camp → pick `files` (the prompt lists every tool and
+  domain). Brief the Scout to list that directory: `agent.run.start` lists
+  `mcp.files.list_directory`, the call runs as research; a write waits at the Gate.
+- Peak → "Add an HTTP server" with a remote server that requires OAuth: the row says
+  `needs_auth`; "Sign in (via the Gate)" → approve → open the link → the row turns
+  `connected` and the token is in the keystore under `mcp.<id>`.
+- Try `http://127.0.0.1:…/mcp`: the add is refused by the outbound guard (NET_GUARD).
+
 ## Cleaning up
 
 Disconnect connectors at the Peak (Gate items), remove the test campaign, product and

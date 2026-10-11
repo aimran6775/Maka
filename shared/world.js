@@ -31,6 +31,10 @@ export const OBJECT_KINDS = deepFreeze({
   notice_board: { label: 'Notice board', grants: ['connector.status', 'connector.sync', 'meta_ads.campaigns', 'meta_ads.insights', 'meta_ads.create_campaign', 'meta_ads.set_budget', 'meta_ads.set_status', 'google_ads.campaigns', 'google_ads.metrics', 'google_ads.create_campaign', 'google_ads.set_budget', 'google_ads.set_status'], hint: 'Rangers in this zone read the Meta Ads and Google Ads campaigns, spend and results from the last sync; a new campaign (paused), a budget change or an activation is money out with the daily budget as the amount, under the leash and its daily cap.' },
   // Phase 2 step 15: payments (Stripe). Reads are research; a refund is money_out.
   fee_booth: { label: 'Fee booth', grants: ['connector.status', 'connector.sync', 'stripe.balance', 'stripe.charges', 'stripe.payouts', 'stripe.refunds', 'stripe.refund'], hint: 'Rangers in this zone read the Stripe balance, charges, payouts and refunds from the last sync, and can refund a charge under the money_out leash and its daily cap.' },
+  // Phase 4 step 4: an Outpost grants the tools of one MCP server (named by the object's
+  // `server`) to the Rangers in its zone; the grant list is dynamic (sidecar/mcp/manager.js
+  // supplies it), so `grants` is empty here and `dynamic` says where it comes from.
+  outpost: { label: 'Outpost', grants: [], dynamic: 'mcp', hint: 'Rangers in this zone can use the tools of one MCP server configured at the Peak (pick the server when placing). Read-only tools are research; every other tool falls under the leash domain set at the Peak (outbound messages by default); money domains need an amount reading.' },
   field_office: { label: 'Field office', grants: ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.download', 'browser.screenshot'], hint: 'Rangers in this zone drive a real browser with their own profile (open, read, click, type, upload, download, screenshot) under the browser_control leash; a login, code, captcha or payment page is handed to you.' },
 });
 
@@ -39,7 +43,7 @@ export const OBJECT_KIND_NAMES = deepFreeze(Object.keys(OBJECT_KINDS));
 // Safety review L5: the Chief Ranger at the Mountain Peak is unjudged by design (D51), so
 // no connector fixture (money tools) may stand there. Placement refuses them, a layout
 // holding one is invalid, and the run manager grants nothing from one that is there anyway.
-export const PEAK_REFUSED_KINDS = deepFreeze(['park_store', 'notice_board', 'fee_booth']);
+export const PEAK_REFUSED_KINDS = deepFreeze(['park_store', 'notice_board', 'fee_booth', 'outpost']);
 
 // The first object that is a refused fixture in a mountain_peak room, or null.
 export function peakConnectorProblem(layout) {
@@ -163,7 +167,8 @@ export const LAYOUT_SCHEMA = deepFreeze({
         type: 'object',
         required: ['id', 'kind', 'roomId', 'x', 'y'],
         additionalProperties: false,
-        properties: { id, kind: { type: 'string', enum: OBJECT_KIND_NAMES }, roomId: id, x: int0, y: int0 },
+        // `server` (phase 4 step 4, optional): the MCP server an Outpost grants.
+        properties: { id, kind: { type: 'string', enum: OBJECT_KIND_NAMES }, roomId: id, x: int0, y: int0, server: { type: 'string', minLength: 1, maxLength: 40 } },
       },
     },
     agents: {

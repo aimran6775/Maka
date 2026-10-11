@@ -403,3 +403,28 @@ test('owner channels (phase 4 step 1): the snapshot seeds the rows and the pairi
   assert.equal(none.channels, null);
   assert.equal(none.channelEvents.length, 1);
 });
+
+test('MCP (phase 4 step 4): the snapshot seeds the server rows; mcp.server events patch status, mark rows stale for a re-read, add a configured server and drop a removed one; object.place carries the Outpost\'s server', () => {
+  seq = 0;
+  let s = applySnapshot(initialState(), snapshot({ mcp: [{ id: 'fake', label: 'Fake', transport: 'stdio', status: 'connected', tools: [{ name: 'echo', toolName: 'mcp.fake.echo', domain: 'research' }] }] }));
+  assert.equal(s.mcp[0].status, 'connected');
+  s = reduce(s, [ev('mcp.server', { server: 'fake', status: 'error', message: 'the server exited' })]);
+  assert.deepEqual([s.mcp[0].status, s.mcp[0].lastError.message, s.mcp[0].stale], ['error', 'the server exited', undefined]);
+  s = reduce(s, [ev('mcp.server', { server: 'fake', status: 'connected', tools: 5 })]);
+  assert.deepEqual([s.mcp[0].status, s.mcp[0].stale, s.mcp[0].lastError.message], ['connected', true, 'the server exited']);
+  s = reduce(s, [ev('mcp.server', { server: 'notes', status: 'configured', transport: 'http' })]);
+  assert.deepEqual(s.mcp.map((m) => m.id), ['fake', 'notes']);
+  s = reduce(s, [ev('mcp.server', { server: 'notes', status: 'authorizing', authorizeUrl: 'https://x/authorize?x=1' })]);
+  assert.equal(s.mcp[1].authorizeUrl, 'https://x/authorize?x=1');
+  s = reduce(s, [ev('mcp.server', { server: 'ghost', status: 'refused', message: 'rejected at the Gate' })]);
+  assert.equal(s.mcp.length, 2, 'a refused server was never configured');
+  s = reduce(s, [ev('mcp.server', { server: 'fake', status: 'removed' })]);
+  assert.deepEqual(s.mcp.map((m) => m.id), ['notes']);
+  assert.equal(s.mcpEvents.length, 6);
+  s = reduce(s, [ev('object.place', { objectId: 'o1', kind: 'outpost', roomId: 'ranger-station', x: 2, y: 2, server: 'notes' })]);
+  assert.deepEqual(s.layout.objects.at(-1), { id: 'o1', kind: 'outpost', roomId: 'ranger-station', x: 2, y: 2, server: 'notes' });
+  s = reduce(s, [ev('object.place', { objectId: 'o2', kind: 'supply_cache', roomId: 'ranger-station', x: 3, y: 2 })]);
+  assert.equal('server' in s.layout.objects.at(-1), false);
+  const none = reduce(applySnapshot(initialState(), snapshot()), [ev('mcp.server', { server: 'x', status: 'connected' })]);
+  assert.equal(none.mcp, null);
+});

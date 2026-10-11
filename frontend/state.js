@@ -33,6 +33,8 @@ export function initialState() {
     research: null, // { search, searchKey, trends, judge } from the snapshot
     channels: null, // { adapters: [row per channel], pairing } from the snapshot; channel.connect patches rows (phase 4 step 1)
     channelEvents: [], // channel.inbound / channel.delivery payloads this session, oldest first (bounded)
+    mcp: null, // MCP server rows from the snapshot (/api/mcp shape); mcp.server events patch status (phase 4 step 4)
+    mcpEvents: [], // mcp.server payloads this session, oldest first (bounded)
     setup: null, // the first-run flow from the snapshot (/api/setup shape); setup.changed asks for a re-read
     setupChanges: [], // setup.changed payloads this session, oldest first
     ollama: null, // the local worker summary from the snapshot (/api/ollama shape without a fresh probe)
@@ -108,6 +110,7 @@ export function applySnapshot(state, snap) {
   next.connectors = Array.isArray(snap.connectors) ? snap.connectors : [];
   next.research = snap.research || null;
   next.channels = snap.channels || null;
+  next.mcp = Array.isArray(snap.mcp) ? snap.mcp : null;
   next.setup = snap.setup || null;
   next.ollama = snap.ollama || null;
   next.backup = snap.backup || null;
@@ -309,12 +312,6 @@ export function applyEvent(state, event) {
       }
       break;
     }
-    case 'object.place': {
-      if (!next.layout.objects.some((o) => o.id === p.objectId)) {
-        next.layout = { ...next.layout, objects: [...next.layout.objects, { id: p.objectId, kind: p.kind, roomId: p.roomId, x: p.x, y: p.y }] };
-      }
-      break;
-    }
     case 'object.reclaim': {
       next.layout = { ...next.layout, objects: next.layout.objects.filter((o) => o.id !== p.objectId) };
       break;
@@ -402,6 +399,22 @@ export function applyEvent(state, event) {
         if (event.type === 'connector.error') return { ...c, lastError: { at: event.ts, stage: p.stage, message: p.message, code: p.code || '' } };
         return { ...c, connected: p.connected, auth: p.auth || c.auth, by: p.by || c.by, authorizeUrl: p.change === 'authorizing' ? p.authorizeUrl || null : null, pendingItemId: null };
       });
+      break;
+    }
+    case 'mcp.server': {
+      next.mcpEvents = [...next.mcpEvents, { ...p, ts: event.ts }].slice(-200);
+      if (next.mcp) {
+        if (p.status === 'removed') next.mcp = next.mcp.filter((s) => s.id !== p.server);
+        else if (p.status === 'refused') { /* nothing was configured */ }
+        else if (!next.mcp.some((s) => s.id === p.server)) next.mcp = [...next.mcp, { id: p.server, label: p.server, transport: p.transport || null, status: p.status, tools: [], stale: true }];
+        else next.mcp = next.mcp.map((s) => (s.id === p.server ? { ...s, status: p.status === 'configured' ? s.status : p.status, authorizeUrl: p.status === 'authorizing' ? p.authorizeUrl || null : p.status === 'connected' ? null : s.authorizeUrl, lastError: p.status === 'error' ? { at: event.ts, message: p.message || '' } : s.lastError, stale: p.status === 'connected' || p.status === 'configured' ? true : s.stale, pendingItemId: null } : s));
+      }
+      break;
+    }
+    case 'object.place': {
+      if (!next.layout.objects.some((o) => o.id === p.objectId)) {
+        next.layout = { ...next.layout, objects: [...next.layout.objects, { id: p.objectId, kind: p.kind, roomId: p.roomId, x: p.x, y: p.y, ...(p.server ? { server: p.server } : {}) }] };
+      }
       break;
     }
     case 'channel.connect': {
