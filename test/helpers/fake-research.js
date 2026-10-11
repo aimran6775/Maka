@@ -1,6 +1,7 @@
 // Fakes for the Scout's kit: a Brave Search API (x-subscription-token), a DuckDuckGo HTML
 // results page, Wikipedia's search API and Wikimedia's pageviews REST, the Algolia Hacker
-// News search, and an article site for web.read. One server, path-routed. Test-only.
+// News search, Reddit's public search listing and Etsy's active listings (x-api-key), and
+// an article site for web.read. One server, path-routed. Test-only.
 import http from 'node:http';
 
 export const ARTICLE_HTML = `<!doctype html><html><head><title>Paper lanterns are back · Trail Times</title>
@@ -20,8 +21,8 @@ export const ARTICLE_HTML = `<!doctype html><html><head><title>Paper lanterns ar
 <aside><p>Related: ten boots for autumn</p></aside>
 <footer><p>© Trail Times</p></footer></body></html>`;
 
-export async function startFakeResearch({ braveKey = 'brave-key', now = Date.now() } = {}) {
-  const state = { calls: [], braveResults: [{ title: 'Paper lantern trends 2026', url: 'https://trailtimes.example/lanterns', description: 'Why paper lanterns sell again', age: '2 weeks ago' }, { title: 'Handmade Market Report', url: 'https://stats.example/report-2026', description: 'Marketplace figures', page_age: '2026-09-01' }], failBrave: null, failWiki: null, failHn: null, wikiViews: null };
+export async function startFakeResearch({ braveKey = 'brave-key', etsyKey = 'etsy-keystring', now = Date.now() } = {}) {
+  const state = { calls: [], braveResults: [{ title: 'Paper lantern trends 2026', url: 'https://trailtimes.example/lanterns', description: 'Why paper lanterns sell again', age: '2 weeks ago' }, { title: 'Handmade Market Report', url: 'https://stats.example/report-2026', description: 'Marketplace figures', page_age: '2026-09-01' }], failBrave: null, failWiki: null, failHn: null, failReddit: null, failEtsy: null, wikiViews: null };
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     const chunks = [];
@@ -67,6 +68,31 @@ export async function startFakeResearch({ braveKey = 'brave-key', now = Date.now
       if (state.failHn) return send(state.failHn.status || 500, { error: state.failHn.message || 'down' });
       return send(200, { nbHits: 2, hits: [{ objectID: '1', title: 'Show HN: a paper lantern kit', url: 'https://lanternkit.example', points: 120, num_comments: 40, created_at: new Date(now - 3 * 86400e3).toISOString() }, { objectID: '2', title: 'Ask HN: handmade marketplaces in 2026?', points: 35, num_comments: 12, created_at: new Date(now - 10 * 86400e3).toISOString() }] });
     }
+    if (p === '/reddit/search.json') {
+      if (!/^[a-z]+:[\w.-]+:v[\d.]+ \(/.test(req.headers['user-agent'] || '')) return send(429, { message: 'Too Many Requests', error: 429 });
+      if (state.failReddit) {
+        if (state.failReddit.status === 429) res.setHeader('retry-after', '30');
+        return send(state.failReddit.status || 500, { message: state.failReddit.message || 'down', error: state.failReddit.status || 500 });
+      }
+      const q = url.searchParams.get('q') || '';
+      const children = q.toLowerCase().includes('nothing') ? [] : [
+        { kind: 't3', data: { title: 'I made 200 paper lanterns for a wedding', subreddit: 'crafts', score: 840, num_comments: 96, created_utc: Math.floor((now - 5 * 86400e3) / 1000), permalink: '/r/crafts/comments/abc/i_made_200_paper_lanterns/' } },
+        { kind: 't3', data: { title: 'Where do you source lantern paper?', subreddit: 'Etsy', score: 120, num_comments: 44, created_utc: Math.floor((now - 12 * 86400e3) / 1000), permalink: '/r/Etsy/comments/def/where_do_you_source/' } },
+        { kind: 't3', data: { title: 'Lantern festival photos', subreddit: 'crafts', score: 300, num_comments: 10, created_utc: Math.floor((now - 20 * 86400e3) / 1000), permalink: '/r/crafts/comments/ghi/lantern_festival/' } },
+      ];
+      return send(200, { kind: 'Listing', data: { dist: children.length, children } });
+    }
+    if (p === '/etsy/listings/active') {
+      if (req.headers['x-api-key'] !== etsyKey) return send(401, { error: 'Invalid API key' });
+      if (state.failEtsy) return send(state.failEtsy.status || 500, { error: state.failEtsy.message || 'down' });
+      const q = url.searchParams.get('keywords') || '';
+      const results = q.toLowerCase().includes('nothing') ? [] : [
+        { listing_id: 101, title: 'Handmade paper lantern, white', url: 'https://www.etsy.com/listing/101', price: { amount: 2500, divisor: 100, currency_code: 'USD' }, num_favorers: 410, views: 9000, shop_id: 7 },
+        { listing_id: 102, title: 'Paper lantern set of 10', url: 'https://www.etsy.com/listing/102', price: { amount: 4800, divisor: 100, currency_code: 'USD' }, num_favorers: 95, views: 2100, shop_id: 8 },
+        { listing_id: 103, title: 'Lanterne en papier', url: 'https://www.etsy.com/listing/103', price: { amount: 1900, divisor: 100, currency_code: 'EUR' }, num_favorers: 12, views: 300, shop_id: 9 },
+      ];
+      return send(200, { count: results.length ? 1234 : 0, results });
+    }
     if (p === '/site/lanterns') return send(200, ARTICLE_HTML, 'text/html; charset=utf-8');
     if (p === '/site/plain.txt') return send(200, 'just text\nline two', 'text/plain');
     if (p === '/site/missing') return send(404, '<html><body>no</body></html>', 'text/html');
@@ -78,7 +104,8 @@ export async function startFakeResearch({ braveKey = 'brave-key', now = Date.now
     url,
     braveKey,
     state,
-    endpoints: { braveBaseUrl: `${url}/brave`, duckBaseUrl: `${url}/duck/`, wikiApi: `${url}/wiki/api.php`, wikiRest: `${url}/wikirest`, hnApi: `${url}/hn` },
+    etsyKey,
+    endpoints: { braveBaseUrl: `${url}/brave`, duckBaseUrl: `${url}/duck/`, wikiApi: `${url}/wiki/api.php`, wikiRest: `${url}/wikirest`, hnApi: `${url}/hn`, redditApi: `${url}/reddit`, etsyApi: `${url}/etsy` },
     async close() {
       server.closeAllConnections();
       await new Promise((r) => server.close(r));

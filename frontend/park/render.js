@@ -862,6 +862,44 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     return g;
   }
 
+  // Ledger desk (phase 4 step 16): a writing desk with an open ledger and a lamp, built from
+  // primitives (no kit has one).
+  function makeLedgerDesk() {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x6e4b2e, roughness: 0.85 });
+    const paper = new THREE.MeshStandardMaterial({ color: 0xf1e9d2, roughness: 1 });
+    const leather = new THREE.MeshStandardMaterial({ color: 0x5a2d1a, roughness: 0.9 });
+    const brass = new THREE.MeshStandardMaterial({ color: 0xc9a85c, roughness: 0.4, metalness: 0.7 });
+    const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.12, 1.1), wood);
+    top.position.y = 1.05;
+    top.castShadow = true;
+    g.add(top);
+    for (const [x, z] of [[-0.9, -0.45], [0.9, -0.45], [-0.9, 0.45], [0.9, 0.45]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.1), wood);
+      leg.position.set(x, 0.5, z);
+      g.add(leg);
+    }
+    const cover = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.04, 0.6), leather);
+    cover.position.set(-0.2, 1.13, 0);
+    g.add(cover);
+    for (const side of [-1, 1]) {
+      const page = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.56), paper);
+      page.position.set(-0.2 + side * 0.22, 1.165, 0);
+      page.rotation.z = side * -0.08;
+      g.add(page);
+    }
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.6, 8), brass);
+    stem.position.set(0.7, 1.41, -0.3);
+    g.add(stem);
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.2, 12, 1, true), new THREE.MeshStandardMaterial({ color: 0x2f6b4f, roughness: 0.6, side: THREE.DoubleSide }));
+    shade.position.set(0.7, 1.78, -0.3);
+    g.add(shade);
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xffd27a, emissiveIntensity: 0.9 }));
+    glow.position.set(0.7, 1.7, -0.3);
+    g.add(glow);
+    return g;
+  }
+
   function syncFixtures(state) {
     if (!model) return;
     const wanted = new Map(model.fixtures.map((f) => [f.id, f]));
@@ -876,7 +914,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     for (const f of model.fixtures) {
       if (dynamic.fixtures.has(f.id)) continue;
       const proto = kit.fixtures[f.kind];
-      const obj = proto ? proto.clone() : f.kind === 'radio_tower' ? makeTower() : f.kind === 'field_office' ? makeFieldOffice() : f.kind === 'outpost' ? makeOutpost() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+      const obj = proto ? proto.clone() : f.kind === 'radio_tower' ? makeTower() : f.kind === 'field_office' ? makeFieldOffice() : f.kind === 'outpost' ? makeOutpost() : f.kind === 'ledger_desk' ? makeLedgerDesk() : new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
       place(obj, f.x, f.y, f.z, { scale: proto ? 3.2 : 1 });
       obj.userData.pick = { type: 'object', id: f.id };
       obj.traverse((o) => (o.userData.pick = obj.userData.pick));

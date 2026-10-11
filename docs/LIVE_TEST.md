@@ -300,6 +300,17 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 - On the Mac in the app: the same, in the Tauri webview; the 60 fps target is read from the
   overlay there (the runbook's renderer section), never from here.
 
+## 15k. The Ledger desk and the trend sources (phase 4)
+
+- Place a Ledger desk in the Finance camp (build palette): the Books Ranger's card lists
+  `ledger.read` under its grants; brief it "read the park's books for the last 7 days and
+  write what has no data": one `agent.tool_call ledger.read`, no Gate item, and the answer
+  names every null component as "no data".
+- Brief a Scout "look up interest in paper lanterns": the `web.trends` result carries a
+  `reddit` row (posts, score, top URLs) and an `etsy` row; without `ETSY_CLIENT_ID` the
+  Etsy row says not wired. Two lookups within a second: the second waits (the sidecar log
+  shows no 429); a 429 from Reddit appears in the row, not as a retry.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

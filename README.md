@@ -378,6 +378,12 @@ calls, triangles and the level-of-detail buckets. `npm run park:bench` measures 
 headless with LOD on and off; `node scripts/park-check.mjs --webgpu` exercises the WebGPU
 path and its fallback.
 
+Step 16, the Ledger desk and more trends: place a Ledger desk in the Finance camp and the
+Books Ranger can read the park's books (`ledger.read`: the results engine's rows for the
+park, a venture or a Ranger, with every missing figure named as "no data"). `web.trends`
+now also reports Reddit's top posts for the topic and, with `ETSY_CLIENT_ID` set, Etsy's
+active listings for the keywords sorted by Etsy's own score; Google Trends stays out.
+
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),
 so the camp card and a Ranger's mail.search show it.

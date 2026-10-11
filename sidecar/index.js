@@ -41,6 +41,7 @@ import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { createResearch } from './research/index.js';
 import { createCreative } from './creative/index.js';
 import { createResults } from './results.js';
+import { createLedgerDesk } from './ledger-desk.js';
 import { createScoutMemory } from './scout-memory.js';
 import { createMemory } from './memory/index.js';
 import { createRecipes } from './recipes/index.js';
@@ -129,6 +130,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   // Phase 4 step 9: the results engine reads the ledgers and the connector stores; the
   // reflection rolls it up first and reads the Chief rules' verdicts from it.
   const results = await createResults({ bus, store, agents, trails, chief, ledger, gateQueue, getConnectors: () => connectors, getMail: () => mail, getLayout: layoutState.get, log }).init();
+  // Phase 4 step 16: the Ledger desk grants ledger.read, a read of the engine's rows and today's ledger.
+  Object.assign(registry, createLedgerDesk({ results, ledger, getLayout: layoutState.get }).tools);
   const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router, scheduler, getLayout: layoutState.get, workspaceRoot, env, keystorePath, schedule: { daily: config.reflectAt || '07:00' }, getConnectors: () => connectors, getMail: () => mail, getResults: () => results, log }).init();
   scheduler.start();
   away = await createAway({ bus, store, gateQueue, workspaceRoot, log }).init();

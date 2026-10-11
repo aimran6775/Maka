@@ -245,6 +245,20 @@ between frames, 195 k against 348 k triangles). This Chromium cannot present Web
 canvas headless: `park-check --webgpu` verifies the path up to the first present and the
 fallback after it; a WebGPU frame is on the Mac's list in the runbook.
 
+Part E step 16 done: the Ledger desk and two more trend sources. A Ledger desk placed in a
+camp grants `ledger.read` to the Rangers there, which is how the Books Ranger reads the
+park's books: the results engine's own day rows for the park, a venture or a Ranger over the
+last N days with their unit economics, the components no source holds named under `noData`
+(null, never an estimate), which connectors are synced, the venture's budget and the Chief
+rules' proposal, and today's leash ledger (`sidecar/ledger-desk.js`; a read, research, no
+Gate item). The monthly books close recipe's second version needs the desk and reconciles
+the connector reads against the engine's rows. `web.trends` now asks four sources: Wikipedia
+and Hacker News as before, Reddit's public search listing under Reddit's rules (a
+descriptive User-Agent, one request per lookup, requests spaced a second apart, a 429
+reported and not retried) and Etsy's active listings for the keywords sorted by Etsy's own
+score through the Open API with the app keystring (not wired without it; Etsy's API has no
+separate trending list, and the row says so). Google Trends stays out (D86, D147).
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

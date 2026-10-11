@@ -1480,3 +1480,26 @@ SwiftShader numbers are labelled relative. This Chromium cannot present WebGPU t
 headless (the device is lost at the first `getCurrentTexture`, in the headless shell too), so
 `park-check --webgpu` verifies the path up to the first present and the fallback after it,
 and a WebGPU frame with draw calls is on the Mac's list in the runbook, as the voice is.
+
+## D147. Reddit under its rules, Etsy's score as the trend it offers, the books read from the engine
+
+The brief asks for "Reddit's public JSON listings under its rules and Etsy's own trending
+endpoints where the API offers them", and a Ledger desk that grants `ledger.read` for Books.
+Reddit's rules for its public JSON are a unique, descriptive User-Agent in the
+platform:app:version (contact) form, a rate of about one unauthenticated request a second,
+and no scraping of the HTML; the trends module keeps to one search request per lookup, sends
+that User-Agent, spaces Reddit requests at least 1.1 s apart in the process, reports a 429 as
+rate limited inside the answer and never retries in a loop. Etsy's Open API offers no
+"trending" list; the closest thing it offers is its active listings for keywords sorted by
+its own relevancy score, which needs the app keystring (`ETSY_CLIENT_ID`, already the Etsy
+connector's) as an API key and no OAuth, so that is what the Etsy row is, labelled as such
+("sortedBy"), and without the keystring the row says not wired rather than guessing. The
+answer fails only when all four sources fail; each failed source names its error in its row
+so the Scout cites what answered. The Ledger desk computes nothing: `ledger.read` returns
+the results engine's rows and economics (the same function the Peak's table uses) and the
+leash ledger's summary, with the components no source holds named under `noData`, because
+the Books Ranger's persona forbids estimates and the tool should make the honest sentence
+the easy one. It is a read, so it belongs to the research domain and may stand at the Peak,
+unlike the connector fixtures (L5). The starter recipe for the monthly close is bumped to a
+second version that needs the desk; the starter library copies in once, so an install that
+already holds the first version keeps it, as the recipe design says (D143).

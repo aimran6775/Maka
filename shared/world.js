@@ -9,13 +9,13 @@ import { deepFreeze } from './schema.js';
 // Ranger whose roomId is R. `label` and `hint` are shown in the build palette. Internally a
 // zone is still a "room" and a fixture an "object" (event and field names are frozen).
 //
-// Only fixtures whose tools exist in phase 1 are listed. The brief's other fixtures (radio
-// tower, park store, notice board, fee booth, ledger desk) arrive with their connectors in
-// phase 2 and are documented in CODE_MAP.md, not faked here.
+// Only fixtures whose tools exist are listed. The brief's other fixtures arrived with their
+// tools: the radio tower, park store, notice board and fee booth with their connectors in
+// phase 2, the field office and outpost in phases 2 and 4, the ledger desk in phase 4 step 16.
 export const OBJECT_KINDS = deepFreeze({
   // Phase 2 step 18: the Scout's research kit joins the Trailhead sign (all research; the
   // brief writes only to the workspace outbox).
-  trailhead_sign: { label: 'Trailhead sign', grants: ['web.fetch', 'web.search', 'web.read', 'web.trends', 'brief.submit'], hint: 'Rangers in this zone can fetch and read public web pages, search the web, look up interest in a topic (Wikipedia, Hacker News) and submit a venture brief for the judge and the Chief.' },
+  trailhead_sign: { label: 'Trailhead sign', grants: ['web.fetch', 'web.search', 'web.read', 'web.trends', 'brief.submit'], hint: 'Rangers in this zone can fetch and read public web pages, search the web, look up interest in a topic (Wikipedia, Hacker News, Reddit, and Etsy listings when ETSY_CLIENT_ID is set) and submit a venture brief for the judge and the Chief.' },
   supply_cache: { label: 'Supply cache', grants: ['fs.read', 'fs.write'], hint: 'Rangers in this zone can read and write files in their own workspace (writes ask you first at the Entrance Gate).' },
   // Phase 2 step 12: the station's mail. Reads are research; sends fall under
   // outbound_messages (replies, notifications) or publishing (campaigns); a new address is
@@ -40,6 +40,9 @@ export const OBJECT_KINDS = deepFreeze({
   // `server`) to the Rangers in its zone; the grant list is dynamic (sidecar/mcp/manager.js
   // supplies it), so `grants` is empty here and `dynamic` says where it comes from.
   outpost: { label: 'Outpost', grants: [], dynamic: 'mcp', hint: 'Rangers in this zone can use the tools of one MCP server configured at the Peak (pick the server when placing). Read-only tools are research; every other tool falls under the leash domain set at the Peak (outbound messages by default); money domains need an amount reading.' },
+  // Phase 4 step 16: the Books Ranger's desk. One read-only tool over the results engine's
+  // day rows and today's leash ledger; absent data reads "no data", never an estimate.
+  ledger_desk: { label: 'Ledger desk', grants: ['ledger.read'], hint: "Rangers in this zone (the Books Ranger) read the park's books: the day rows the results engine rolled up from the ledgers and the connector syncs (revenue, refunds, fees, ad spend, orders, model spend for the park, a venture or a Ranger), the unit economics, which connectors are synced, and today's leash ledger. Read only; a figure no source holds reads \"no data\"." },
   field_office: { label: 'Field office', grants: ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.download', 'browser.screenshot'], hint: 'Rangers in this zone drive a real browser with their own profile (open, read, click, type, upload, download, screenshot) under the browser_control leash; a login, code, captcha or payment page is handed to you.' },
 });
 
