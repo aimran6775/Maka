@@ -1615,3 +1615,25 @@ chat is. A paired chat that later reports a non-private type is refused the same
 Revise notes are bound to the chat and now, by the same check, to the user, so a bystander
 cannot supply them. No event field was added: the existing `userId` was already meant to
 be the sender and now always is. The Peak's unpair stays the only way to drop a pairing.
+
+## D153. A Ranger never drives Maka, a browser, or a window on a loopback host
+
+The second safety review (H2) found neither sensitive list named Maka: at Act with cap a
+Ranger could focus Maka, locate "Approve" and click its own Gate items. Maka's bundle id
+and name now lead both lists (`sidecar/computer/policy.js`, `src-tauri/src/computer_policy.rs`),
+so the app in front being Maka hands off like a bank would, and a second action in it is
+refused outright. Two wider choices were made with the review's fix. First, browsers are
+sensitive to computer control always, not only on purchase runs: the web is reachable
+through the browser tools, which carry the outbound guard (safety 2026-10-10 H1), the
+payment-page handoff (L1, D148) and the purchase rules, and a browser driven by clicks and
+keys would carry none of them, Maka's own park page included; the stricter reading costs a
+Ranger nothing it cannot do the safe way. Second, the window rule is loopback-wide rather
+than "the sidecar's host:port" alone: the shell reads the focused window's `AXTitle` and
+`AXDocument` and both sides refuse a title or URL naming 127.x, localhost, ::1, 0.0.0.0, a
+`.local` name, or one of the sidecar's own addresses (the shell learns its launch port,
+the sidecar its own host and port), because any local web UI driven by clicks is a
+privilege the leash model never granted. The window check is a handoff, not a plain
+refusal, so the Superintendent sees the attempt the same way as any sensitive app. The
+fake desktop in the tests moved from Safari to Notes as its ordinary app, and a test with
+a shell that does not know Maka proves the sidecar's list alone stops it, as the shell's
+own list alone would (host-tested in Rust).

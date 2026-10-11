@@ -154,7 +154,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const purchases = await createPurchases({ bus, store, trails, ledger, browser, getLayout: layoutState.get, getConnectors: () => connectors, knownVentures: () => (chief.state().plan ? chief.state().plan.ventures.map((v) => v.id) : []), netGuard, workspaceRoot, log }).init();
   Object.assign(registry, purchases.tools);
   // Phase 4 step 18: this Mac through the shell's socket; not wired without the app.
-  const computer = await createComputerControl({ bus, env, workspaceRoot, log }).init();
+  const computer = await createComputerControl({ bus, env, workspaceRoot, ownHosts: [`${host}:${port}`, `localhost:${port}`], log }).init();
   Object.assign(registry, computer.tools);
   // Phase 4 step 19: another agent's home (OpenClaw, Hermes) imported as a Ranger.
   const importer = createImporter({ agents, memory, getLayout: layoutState.get, workspaceRoot, bus, log });

@@ -9,9 +9,12 @@
 // judge reviews every action (it is never research) and the day's action cap holds.
 //
 // Every action: the frontmost app is asked for and checked against the sensitive list
-// (banking, password managers, System Settings, terminals: those always HAND OFF to the
-// Superintendent, who does the thing and hands back; the Ranger's action is then refused,
-// not retried), a screenshot is taken before, the action runs, a screenshot is taken after,
+// (Maka itself, browsers, banking, password managers, System Settings, terminals: those
+// always HAND OFF to the Superintendent, who does the thing and hands back; the Ranger's
+// action is then refused, not retried) and its front window against the loopback rule (a
+// title or URL naming 127.0.0.1 / localhost / the sidecar's own host:port is a local web
+// UI, Maka's own included, and hands off the same way: safety 2026-10-11 H2), a screenshot
+// is taken before, the action runs, a screenshot is taken after,
 // a trace line with both paths is written under `<root>/<agentId>/computer-trace/`, and a
 // `computer.action` event goes out. The first action of a run begins a session (the shell
 // shows its banner) and the run's end ends it. The halt hotkey (⌃⌥⌘H in the shell) or
@@ -40,7 +43,7 @@ function fail(code, message, status) {
   return err;
 }
 
-export function createComputerControl({ bus, env = process.env, workspaceRoot, clock = { now: () => Date.now() }, request = brokerRequest, broker = brokerFrom(env), log = console } = {}) {
+export function createComputerControl({ bus, env = process.env, workspaceRoot, clock = { now: () => Date.now() }, request = brokerRequest, broker = brokerFrom(env), ownHosts = [], log = console } = {}) {
   if (!bus) throw new TypeError('createComputerControl needs bus');
   if (!workspaceRoot) throw new TypeError('createComputerControl needs workspaceRoot');
   const sessions = new Map(); // runId -> { agentId, runId, since, actions, lastApp }
@@ -182,7 +185,7 @@ export function createComputerControl({ bus, env = process.env, workspaceRoot, c
     const app = front.result.app || {};
     const appLabel = app.name ? `${app.name}${app.bundleId ? ` (${app.bundleId})` : ''}` : app.bundleId || 'unknown app';
     entry.app = appLabel;
-    const sens = isSensitiveApp(app);
+    const sens = isSensitiveApp({ ...app, window: front.result.window || app.window || null }, { ownHosts });
     if (sens.sensitive || front.result.sensitive) {
       const why = sens.why || front.result.reason || `${appLabel} is an app a Ranger never drives`;
       if (session && session.handedOffApp === appLabel) {
@@ -288,7 +291,7 @@ export function createComputerControl({ bus, env = process.env, workspaceRoot, c
     'computer.click': { ...describe('computer.click', 'Click at screen coordinates (from computer.locate or a screenshot). button: left (default) or right; double: true for a double click.', { x: { type: 'number', minimum: 0 }, y: { type: 'number', minimum: 0 }, button: { type: 'string', enum: ['left', 'right'] }, double: { type: 'boolean' } }, ['x', 'y']), summarize: (input) => `click at ${input.x},${input.y} on the Mac`, run: run('click') },
     'computer.type': { ...describe('computer.type', `Type text into the focused element (printable text only, at most ${TYPE_MAX_CHARS} characters; keys go through computer.key).`, { text: { type: 'string', minLength: 1, maxLength: TYPE_MAX_CHARS } }, ['text']), summarize: (input) => `type ${String(input.text || '').length} character(s) on the Mac`, run: run('type') },
     'computer.key': { ...describe('computer.key', 'Press a key chord, like "cmd+s", "return", "cmd+shift+t", "escape".', { chord: { type: 'string', minLength: 1, maxLength: 40 } }, ['chord']), summarize: (input) => `press ${input.chord} on the Mac`, run: run('key') },
-    'computer.focus': { ...describe('computer.focus', 'Bring an app to the front by bundle id (com.apple.Safari) or name. Banking, password managers, System Settings and terminals are refused.', { bundleId: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 } }), summarize: (input) => `bring ${input.bundleId || input.name} to the front`, run: run('focus') },
+    'computer.focus': { ...describe('computer.focus', 'Bring an app to the front by bundle id (com.apple.Notes) or name. Maka itself, browsers (the web is driven with the browser tools), banking, password managers, System Settings and terminals are refused.', { bundleId: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 } }), summarize: (input) => `bring ${input.bundleId || input.name} to the front`, run: run('focus') },
     'computer.apps': { ...describe('computer.apps', 'The running apps (name, bundle id, whether in front) and which the policy marks sensitive.'), summarize: () => 'list the running apps on the Mac', run: run('apps') },
   });
   for (const name of COMPUTER_TOOL_NAMES) if (!tools[name]) throw new Error(`tool ${name} is missing`);

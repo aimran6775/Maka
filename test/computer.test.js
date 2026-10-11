@@ -71,7 +71,9 @@ test('policy: the sensitive list, key chords, the locate matcher and the wire fo
   assert.equal(isSensitiveApp({ bundleId: 'com.apple.Terminal', name: 'Terminal' }).sensitive, true);
   assert.equal(isSensitiveApp({ bundleId: 'com.1password.1password', name: '1Password' }).sensitive, true, 'a bundle id prefix');
   assert.equal(isSensitiveApp({ bundleId: 'com.example.mybank', name: 'My Bank' }).sensitive, true, 'a name word');
-  assert.equal(isSensitiveApp({ bundleId: 'com.apple.Safari', name: 'Safari' }).sensitive, false);
+  assert.equal(isSensitiveApp({ bundleId: 'com.apple.Safari', name: 'Safari' }).sensitive, true, 'a browser: the web is driven through the browser tools (safety 2026-10-11 H2)');
+  assert.equal(isSensitiveApp({ bundleId: 'com.makapark.maka', name: 'Maka' }).sensitive, true, 'Maka itself (safety 2026-10-11 H2)');
+  assert.equal(isSensitiveApp({ bundleId: 'com.apple.Notes', name: 'Notes' }).sensitive, false);
   assert.equal(isSensitiveApp({ bundleId: 'com.apple.finder', name: 'Finder' }).sensitive, false);
   assert.equal(isSensitiveApp({ bundleId: 'com.walletwise.notes', name: 'Walletwise Notes' }).sensitive, false, 'a word inside another word is not a match');
   assert.equal(isSensitiveApp({}).sensitive, false);
@@ -169,7 +171,7 @@ test('the leash: Observe refuses before the shell is asked; Draft waits at the G
     const out = JSON.parse(r1.output);
     assert.equal(out.matches.length, 1);
     assert.deepEqual(out.matches[0].centre, { x: 140, y: 215 });
-    assert.equal(out.app, 'Safari (com.apple.Safari)');
+    assert.equal(out.app, 'Notes (com.apple.Notes)');
     assert.match(out.before, new RegExp(`ranger/${TRACE_DIR}/\\d+-locate-before\\.png$`));
     assert.match(out.after, /locate-after\.png$/);
     assert.equal(shell.state.banner, true, 'the banner is up while the session lasts');
@@ -181,7 +183,7 @@ test('the leash: Observe refuses before the shell is asked; Draft waits at the G
     assert.equal(trace.length, 1);
     assert.equal(trace[0].action, 'locate');
     assert.equal(trace[0].ok, true);
-    assert.equal(trace[0].app, 'Safari (com.apple.Safari)');
+    assert.equal(trace[0].app, 'Notes (com.apple.Notes)');
     assert.deepEqual(trace[0].result, { matches: 1, scanned: 2 });
     const ev = a.ofType('computer.action');
     assert.deepEqual(ev.map((e) => e.status), ['session_start', 'done']);
@@ -243,14 +245,14 @@ test('a sensitive app in front hands off to the Superintendent and is never driv
     assert.equal(again.code, 'SENSITIVE_APP');
     assert.match(again.error, /already handled it/);
     assert.equal(h.computer.handoffs().length, 1, 'no second handoff for the same app');
-    shell.state.frontmost = { bundleId: 'com.apple.Safari', name: 'Safari', pid: 100 };
+    shell.state.frontmost = { bundleId: 'com.apple.Notes', name: 'Notes', pid: 100 };
     const focus = await gate.execute({ id: 'c3', name: 'computer.focus', input: { name: 'Terminal' } }, ctx);
     assert.equal(focus.code, 'BAD_INPUT');
     assert.match(focus.error, /never brings it to the front/);
     assert.ok(!shell.state.actions.some((x) => x.action === 'focus'), 'the shell was not asked to focus it');
     const ok = await gate.execute({ id: 'c4', name: 'computer.apps', input: {} }, ctx);
     assert.equal(ok.ok, true, ok.error);
-    assert.equal(JSON.parse(ok.output).apps.length, 3);
+    assert.equal(JSON.parse(ok.output).apps.length, 5);
     // An abandoned run abandons the handoff.
     const ac = new AbortController();
     shell.state.frontmost = { bundleId: 'com.1password.1password', name: '1Password', pid: 7 };

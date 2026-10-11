@@ -246,6 +246,8 @@ fn supervise(app: AppHandle, shell: ShellState) {
         Err(e) => return show_error(&app, &shell, &e, None),
     };
     *shell.home.lock().unwrap() = Some(launch.home.clone());
+    // The sidecar's own address: a front window naming it is Maka's UI, never driven (H2).
+    shell.computer.set_own_hosts(vec![format!("127.0.0.1:{}", launch.port), format!("localhost:{}", launch.port)]);
     launch.env.extend(crate::session_env(&app, &shell, &launch));
     let mut recent: Vec<Instant> = Vec::new();
     loop {

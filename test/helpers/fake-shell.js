@@ -18,8 +18,9 @@ export async function startFakeShell({ token = 'shell-token', sensitiveIds = ['c
   const state = {
     requests: [],
     actions: [],
-    frontmost: { bundleId: 'com.apple.Safari', name: 'Safari', pid: 100 },
-    apps: [{ bundleId: 'com.apple.Safari', name: 'Safari', pid: 100 }, { bundleId: 'com.apple.finder', name: 'Finder', pid: 90 }, { bundleId: 'com.apple.Terminal', name: 'Terminal', pid: 120 }],
+    frontmost: { bundleId: 'com.apple.Notes', name: 'Notes', pid: 100 },
+    window: null, // { title, url } of the front window when a test sets it (safety 2026-10-11 H2)
+    apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', pid: 100 }, { bundleId: 'com.apple.finder', name: 'Finder', pid: 90 }, { bundleId: 'com.apple.Terminal', name: 'Terminal', pid: 120 }, { bundleId: 'com.makapark.maka', name: 'Maka', pid: 50 }, { bundleId: 'com.apple.Safari', name: 'Safari', pid: 60 }],
     tree: [{ id: 'n1', role: 'AXButton', title: 'Save', x: 100, y: 200, w: 80, h: 30 }, { id: 'n2', role: 'AXTextField', title: 'Search', value: 'lanterns', x: 300, y: 40, w: 200, h: 24 }],
     permissions: { accessibility: true, screenRecording: true },
     halted: false,
@@ -41,7 +42,7 @@ export async function startFakeShell({ token = 'shell-token', sensitiveIds = ['c
     if (state.halted) return refuse('HALTED', 'halted by the hotkey');
     if (action === 'begin') { state.banner = true; state.sessions.push({ ...params, status: 'begun' }); return ok({ banner: true }); }
     if (action === 'end') { state.banner = false; state.sessions.push({ ...params, status: 'ended' }); return ok({ banner: false }); }
-    if (action === 'frontmost') return ok({ app: state.frontmost, sensitive: sensitiveIds.includes(state.frontmost.bundleId) });
+    if (action === 'frontmost') return ok({ app: state.frontmost, window: state.window, sensitive: sensitiveIds.includes(state.frontmost.bundleId) });
     if (action === 'apps') return ok({ apps: state.apps.map((a) => ({ ...a, front: a.bundleId === state.frontmost.bundleId, sensitive: sensitiveIds.includes(a.bundleId) })) });
     if (action === 'focus') {
       const app = state.apps.find((a) => a.bundleId === params.bundleId || (params.name && a.name.toLowerCase() === String(params.name).toLowerCase()));

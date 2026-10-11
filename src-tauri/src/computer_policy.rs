@@ -3,9 +3,30 @@
 //! virtual key codes and flags, and the accessibility-tree matcher. No frameworks here, so
 //! it runs as a unit test on any host (host-tests).
 
+/// Maka's own bundle id (tauri.conf.json): the first app a Ranger never drives, because a
+/// Ranger that could focus Maka could click its own Gate items (safety 2026-10-11 H2).
+pub const MAKA_BUNDLE_ID: &str = "com.makapark.maka";
+
 /// Bundle id prefixes of apps a Ranger never drives: the shell refuses to act in them even
-/// if the sidecar's list were ever out of step.
+/// if the sidecar's list were ever out of step. Browsers are on it: the web is driven
+/// through the sidecar's browser tools, which carry the outbound guard and the payment
+/// handoff; a browser driven by clicks and keys would carry neither (H2).
 pub const SENSITIVE_BUNDLE_IDS: &[&str] = &[
+    MAKA_BUNDLE_ID,
+    "com.apple.Safari",
+    "com.apple.SafariTechnologyPreview",
+    "com.google.Chrome",
+    "com.google.Chrome.canary",
+    "org.chromium.Chromium",
+    "org.mozilla.firefox",
+    "org.mozilla.firefoxdeveloperedition",
+    "com.microsoft.edgemac",
+    "com.brave.Browser",
+    "com.operasoftware.Opera",
+    "com.vivaldi.Vivaldi",
+    "company.thebrowser.Browser",
+    "com.kagi.kagimacOS",
+    "org.torproject.torbrowser",
     "com.apple.systempreferences",
     "com.apple.Terminal",
     "com.apple.keychainaccess",
@@ -40,6 +61,7 @@ pub const SENSITIVE_BUNDLE_IDS: &[&str] = &[
 
 /// Words in an app's name that mark it sensitive (matched as whole words, case-insensitive).
 pub const SENSITIVE_NAME_WORDS: &[&str] = &[
+    "maka", "safari", "chrome", "chromium", "firefox", "edge", "brave", "opera", "vivaldi", "arc", "orion", "tor browser",
     "system settings", "system preferences", "terminal", "iterm", "warp", "hyper", "wezterm", "kitty", "alacritty", "console", "keychain access", "passwords", "1password", "bitwarden", "lastpass", "dashlane", "keepass", "nordpass", "enpass", "wallet", "bank", "banking", "paypal", "venmo", "cash app", "coinbase", "binance", "robinhood", "revolut", "monzo", "wise",
 ];
 
@@ -57,6 +79,59 @@ pub fn sensitive_reason(bundle_id: &str, name: &str) -> Option<String> {
         if contains_word(&lower, word) {
             return Some(format!("{name} is on the list of apps a Ranger never drives ({word})"));
         }
+    }
+    None
+}
+
+/// Hosts a front window may never show: a title or URL naming one is a local web UI, which
+/// may be Maka's own (safety 2026-10-11 H2). The sidecar applies the same rule
+/// (policy.js namesLoopback) with its own host:port added.
+pub const LOOPBACK_HOSTS: &[&str] = &["127.0.0.1", "localhost", "0.0.0.0", "[::1]", "::1"];
+
+/// Does this window title or URL name a loopback host (or one of `own_hosts`, the
+/// sidecar's own host:port strings)? Returns the host that matched.
+pub fn loopback_host_in(text: &str, own_hosts: &[String]) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    if lower.is_empty() {
+        return None;
+    }
+    let boundary = |c: Option<char>| !matches!(c, Some(c) if c.is_ascii_alphanumeric() || c == '.' || c == '-');
+    for host in LOOPBACK_HOSTS {
+        let mut start = 0;
+        while let Some(pos) = lower[start..].find(host) {
+            let at = start + pos;
+            let end = at + host.len();
+            if boundary(lower[..at].chars().next_back()) && boundary(lower[end..].chars().next()) {
+                return Some((*host).to_string());
+            }
+            start = at + 1;
+        }
+    }
+    // 127.x.y.z beyond 127.0.0.1 and *.local names.
+    for token in lower.split(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '-')) {
+        if token.starts_with("127.") && token.split('.').count() == 4 && token.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())) {
+            return Some(token.to_string());
+        }
+        if token.len() > 6 && token.ends_with(".local") {
+            return Some(token.to_string());
+        }
+    }
+    for own in own_hosts {
+        if !own.is_empty() && lower.contains(&own.to_ascii_lowercase()) {
+            return Some(own.clone());
+        }
+    }
+    None
+}
+
+/// The reason a front window may not be driven, or None: a title or URL naming a loopback
+/// host (Maka's own UI, or any local web UI).
+pub fn loopback_window_reason(title: &str, url: &str, own_hosts: &[String]) -> Option<String> {
+    if let Some(h) = loopback_host_in(url, own_hosts) {
+        return Some(format!("the window in front (url names {h}) shows a local web UI, which may be Maka's own; a Ranger never drives it"));
+    }
+    if let Some(h) = loopback_host_in(title, own_hosts) {
+        return Some(format!("the window in front (title names {h}) shows a local web UI, which may be Maka's own; a Ranger never drives it"));
     }
     None
 }
@@ -194,10 +269,36 @@ mod tests {
         assert!(sensitive_reason("com.apple.systempreferences", "System Settings").is_some());
         assert!(sensitive_reason("com.1password.1password", "1Password").is_some());
         assert!(sensitive_reason("com.example.mybank", "My Bank").is_some());
-        assert!(sensitive_reason("com.apple.Safari", "Safari").is_none());
+        assert!(sensitive_reason("com.apple.Safari", "Safari").is_some(), "a browser is driven through the browser tools only (safety 2026-10-11 H2)");
+        assert!(sensitive_reason("com.google.Chrome", "Google Chrome").is_some());
+        assert!(sensitive_reason("com.apple.Notes", "Notes").is_none());
         assert!(sensitive_reason("com.walletwise.notes", "Walletwise Notes").is_none(), "a word inside a word is not a match");
         assert!(sensitive_reason("", "").is_none());
         assert_eq!(sensitive_reason("com.apple.Terminal", "Terminal").unwrap(), "Terminal (com.apple.Terminal) is on the list of apps a Ranger never drives");
+    }
+
+    #[test]
+    fn maka_itself_is_never_driven_and_nor_is_a_loopback_window() {
+        // Safety 2026-10-11 H2: a Ranger could otherwise focus Maka and click its own Gate items.
+        assert_eq!(MAKA_BUNDLE_ID, "com.makapark.maka");
+        assert_eq!(sensitive_reason("com.makapark.maka", "Maka").unwrap(), "Maka (com.makapark.maka) is on the list of apps a Ranger never drives");
+        assert!(sensitive_reason("com.makapark.maka.dev", "").is_some(), "a bundle id under Maka's");
+        assert!(sensitive_reason("com.example.other", "Maka").is_some(), "the name alone");
+        assert!(sensitive_reason("com.example.other", "Makaroni").is_none(), "a word inside a word is not a match");
+        let none: [String; 0] = [];
+        assert_eq!(loopback_host_in("Maka — 127.0.0.1:4777", &none).as_deref(), Some("127.0.0.1"));
+        assert_eq!(loopback_host_in("http://localhost:4777/park", &none).as_deref(), Some("localhost"));
+        assert_eq!(loopback_host_in("http://[::1]:4777/", &none).as_deref(), Some("[::1]"));
+        assert_eq!(loopback_host_in("http://127.1.2.3/", &none).as_deref(), Some("127.1.2.3"));
+        assert_eq!(loopback_host_in("http://studio.local/", &none).as_deref(), Some("studio.local"));
+        assert_eq!(loopback_host_in("https://example.com/localhosting", &none), None, "a word inside a word is not a host");
+        assert_eq!(loopback_host_in("Notes", &none), None);
+        assert_eq!(loopback_host_in("", &none), None);
+        let own = ["192.168.1.9:4777".to_string()];
+        assert_eq!(loopback_host_in("Maka 192.168.1.9:4777", &own).as_deref(), Some("192.168.1.9:4777"));
+        assert!(loopback_window_reason("Shopping list", "", &none).is_none());
+        assert!(loopback_window_reason("Maka", "http://127.0.0.1:4777/", &none).unwrap().contains("url names 127.0.0.1"));
+        assert!(loopback_window_reason("localhost:3000 — dashboard", "", &none).unwrap().contains("title names localhost"));
     }
 
     #[test]

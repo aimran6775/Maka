@@ -8,9 +8,13 @@
 //!   * the banner: a small always-on-top window ("A Maka Ranger is driving this Mac") shown
 //!     from `begin` to `end`;
 //!   * the sensitive apps: before a screenshot, a locate, a click, a key or typed text the
-//!     frontmost app is checked against computer_policy.rs; one on the list is refused with
+//!     frontmost app is checked against computer_policy.rs (Maka itself, browsers, banking,
+//!     password managers, System Settings, terminals) and its front window's title and URL
+//!     against the loopback rule (127.0.0.1, localhost, the sidecar's own host:port: a local
+//!     web UI, which may be Maka's own; safety 2026-10-11 H2); either is refused with
 //!     SENSITIVE_APP (the sidecar hands off to the Superintendent), and `focus` never brings
-//!     one to the front.
+//!     a sensitive app to the front. `frontmost` reports the window too, so the sidecar
+//!     applies the same rule with its own address.
 //!
 //! macOS only: Accessibility (AXUIElement, for `locate`), CGEvent (clicks, keys, text),
 //! CGDisplayCreateImage (screenshots, PNG through the `png` crate) and NSWorkspace (the
@@ -23,7 +27,7 @@ use std::sync::Mutex;
 use serde_json::{json, Value};
 
 use crate::broker::ComputerHost;
-use crate::computer_policy::{sensitive_reason, HALT_HOTKEY_LABEL};
+use crate::computer_policy::{loopback_window_reason, sensitive_reason, HALT_HOTKEY_LABEL};
 
 pub const MAX_LOCATE_NODES: usize = 2000;
 pub const MAX_LOCATE_DEPTH: usize = 14;
@@ -31,15 +35,29 @@ pub const MAX_TYPE_CHARS: usize = 2000;
 
 type BannerFn = Box<dyn Fn(bool) + Send + Sync>;
 
-/// The shell's side of computer control: the halt flag, who is driving, the banner hook.
+/// The shell's side of computer control: the halt flag, who is driving, the banner hook,
+/// and the sidecar's own host:port strings for the loopback-window rule.
 #[derive(Default)]
 pub struct Computer {
     halted: AtomicBool,
     driving: Mutex<Option<(String, String)>>,
     banner: Mutex<Option<BannerFn>>,
+    own_hosts: Mutex<Vec<String>>,
 }
 
 impl Computer {
+    /// The sidecar's own addresses (host:port) as the shell knows them; a front window
+    /// naming one is Maka's own UI and is never driven (safety 2026-10-11 H2).
+    pub fn set_own_hosts(&self, hosts: Vec<String>) {
+        *self.own_hosts.lock().unwrap_or_else(|p| p.into_inner()) = hosts;
+    }
+    fn own_hosts(&self) -> Vec<String> {
+        self.own_hosts.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+    /// The app list's reason or the window's: either makes the app in front off limits.
+    fn front_reason(&self, app: &App) -> Option<String> {
+        sensitive_reason(&app.bundle_id, &app.name).or_else(|| loopback_window_reason(&app.window_title, &app.window_url, &self.own_hosts()))
+    }
     pub fn set_banner(&self, f: BannerFn) {
         *self.banner.lock().unwrap_or_else(|p| p.into_inner()) = Some(f);
     }
@@ -107,8 +125,8 @@ impl ComputerHost for Computer {
             }
             "frontmost" => {
                 let app = platform::frontmost()?;
-                let why = sensitive_reason(&app.bundle_id, &app.name);
-                Ok(json!({ "app": app.json(), "sensitive": why.is_some(), "reason": why }).to_string())
+                let why = self.front_reason(&app);
+                Ok(json!({ "app": app.json(), "window": app.window_json(), "sensitive": why.is_some(), "reason": why }).to_string())
             }
             "apps" => {
                 let apps: Vec<Value> = platform::apps()?.into_iter().map(|a| {
@@ -131,10 +149,10 @@ impl ComputerHost for Computer {
                 Ok(json!({ "app": app.json() }).to_string())
             }
             "screenshot" | "locate" | "click" | "type" | "key" => {
-                // The shell's own lock: whatever the sidecar believes, a sensitive app in front
-                // is never acted on or captured.
+                // The shell's own lock: whatever the sidecar believes, a sensitive app in front,
+                // or a front window showing a local web UI, is never acted on or captured.
                 let front = platform::frontmost()?;
-                if let Some(why) = sensitive_reason(&front.bundle_id, &front.name) {
+                if let Some(why) = self.front_reason(&front) {
                     return refuse("SENSITIVE_APP", why, Some(&front.name));
                 }
                 match action {
@@ -185,11 +203,18 @@ pub struct App {
     pub name: String,
     pub pid: i32,
     pub front: bool,
+    /// The front window's title and document URL (Accessibility: AXFocusedWindow's AXTitle
+    /// and AXDocument), filled for the frontmost app only; empty when unknown.
+    pub window_title: String,
+    pub window_url: String,
 }
 
 impl App {
     fn json(&self) -> Value {
         json!({ "bundleId": self.bundle_id, "name": self.name, "pid": self.pid, "front": self.front })
+    }
+    fn window_json(&self) -> Value {
+        json!({ "title": self.window_title, "url": self.window_url })
     }
 }
 
@@ -242,13 +267,38 @@ mod platform {
     fn app_of(a: &NSRunningApplication, front: bool) -> App {
         let bundle_id = a.bundleIdentifier().map(|s| s.to_string()).unwrap_or_default();
         let name = a.localizedName().map(|s| s.to_string()).unwrap_or_default();
-        App { bundle_id, name, pid: a.processIdentifier(), front }
+        App { bundle_id, name, pid: a.processIdentifier(), front, window_title: String::new(), window_url: String::new() }
+    }
+
+    /// The focused window's title and document URL through Accessibility (empty strings
+    /// when the permission is missing or the app exposes neither). Browsers put the page
+    /// URL in AXDocument of the window; the title names the page (safety 2026-10-11 H2).
+    fn front_window(pid: i32) -> (String, String) {
+        if !unsafe { AXIsProcessTrusted() } {
+            return (String::new(), String::new());
+        }
+        let app = unsafe { AXUIElementCreateApplication(pid) };
+        if app.is_null() {
+            return (String::new(), String::new());
+        }
+        let root = unsafe { CFType::wrap_under_create_rule(app) };
+        let Some(win) = ax_attr(root.as_CFTypeRef(), "AXFocusedWindow") else { return (String::new(), String::new()) };
+        let title = ax_string(win.as_CFTypeRef(), "AXTitle");
+        let mut url = ax_string(win.as_CFTypeRef(), "AXDocument");
+        if url.is_empty() {
+            url = ax_string(win.as_CFTypeRef(), "AXURL");
+        }
+        (title, url)
     }
 
     pub fn frontmost() -> Result<App, String> {
         let ws = NSWorkspace::sharedWorkspace();
         let app = ws.frontmostApplication().ok_or("no app is in front")?;
-        Ok(app_of(&app, true))
+        let mut out = app_of(&app, true);
+        let (title, url) = front_window(out.pid);
+        out.window_title = title;
+        out.window_url = url;
+        Ok(out)
     }
 
     pub fn apps() -> Result<Vec<App>, String> {

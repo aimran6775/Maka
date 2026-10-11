@@ -290,8 +290,11 @@ click, type, key chords, app focus, the running apps) and never stands at the Pe
 shell does the driving (`src-tauri/src/computer.rs`: NSWorkspace, AXUIElement, CGEvent,
 CGDisplayCreateImage) and the sidecar reaches it over the credential broker's Unix socket
 with one more op, `COMPUTER`, never over HTTP. Every action asks for the frontmost app
-first: banking, password managers, System Settings, Keychain Access and terminals always
-hand off to the Superintendent (`computer.handoff`), who does the thing and hands back;
+first: Maka itself, browsers (the web is driven through the browser tools, which carry the
+outbound guard and the payment handoff), banking, password managers, System Settings,
+Keychain Access and terminals always hand off to the Superintendent (`computer.handoff`),
+who does the thing and hands back, and so does any app whose front window's title or URL
+names a loopback host or the sidecar's own address (safety 2026-10-11 H2);
 the Ranger's action is then refused, not retried, and the shell keeps the same list as its
 own lock and never captures or types into such an app. Then a screenshot before, the
 action, a screenshot after, a trace line with both paths and a `computer.action` event. The
@@ -380,7 +383,11 @@ the first Mac build): the findings are being fixed in order, each with a regress
 and the user, only from a private chat (Telegram `chat.type`, Slack `channel_type`,
 Discord's `guild_id` absent), and every Gate decision, note, command and question from a
 paired chat must come from the user who paired it; anyone else is refused and the event
-names the real sender (D152).
+names the real sender (D152). H2 done: computer control never drives Maka's own window
+(`com.makapark.maka` and the name are first on both sensitive lists), never a browser, and
+never a window whose title or URL names 127.0.0.1, localhost or the sidecar's host:port;
+the shell reads the front window through Accessibility and applies the same rule as its
+own lock (D153).
 
 Phase 3 (the macOS app, `docs/PHASE3_BRIEF.md`) is built. Step 7 done: the release
 gates and the runbook. `npm run release` refuses to start unless `HEAD` is the release

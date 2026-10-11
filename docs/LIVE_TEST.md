@@ -342,6 +342,11 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 - Bring Terminal to the front and let the Ranger act: a `computer.handoff` waits with the
   app named, nothing is typed; hand it back with a note and the Ranger's action is refused
   with that note; a second action in Terminal is refused without a new handoff.
+- Bring Maka itself to the front (or Safari, or any app showing `http://127.0.0.1:<port>`
+  in its window) and let the Ranger act: the same handoff, the reason naming Maka, the
+  browser, or "the window in front (url names 127.0.0.1)"; `computer.focus` on
+  `com.makapark.maka` or on Safari is refused before the shell hears of it (safety
+  2026-10-11 H2).
 - Press ⌃⌥⌘H while a Ranger drives: the banner goes, the row says HALTED by the hotkey,
   every action is refused until Resume at the Peak.
 

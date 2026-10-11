@@ -399,8 +399,9 @@ Cancel an open purchase from the Peak to release the hold.
 Step 18, computer control (macOS only): place a Control desk and raise the `computer_control`
 leash from Observe at the Gate, and a Ranger in that zone can drive this Mac through the app:
 screenshots, the accessibility tree, clicks, keys, typed text, app focus. A banner shows
-while it drives and ⌃⌥⌘H halts it; banking, password managers, System Settings and terminals
-are always handed to you; every action is traced with a screenshot before and after. Outside
+while it drives and ⌃⌥⌘H halts it; Maka's own window, browsers (the web goes through the
+browser tools), banking, password managers, System Settings and terminals are always
+handed to you; every action is traced with a screenshot before and after. Outside
 the app the tools say not wired.
 
 Step 19, import from another home: at the Peak, point at an OpenClaw (`~/.openclaw`) or

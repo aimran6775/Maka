@@ -18,25 +18,51 @@ export const LOCATE_MAX_MATCHES = 40;
 
 // Apps a Ranger never drives: the action hands off to the Superintendent instead. Bundle
 // id prefixes and name words, matched case-insensitively. The shell keeps the same list
-// (computer_policy.rs) as a second lock.
+// (computer_policy.rs) as a second lock. Maka itself is first on it (safety 2026-10-11
+// H2): a Ranger that could focus Maka's window could click its own Gate items. Browsers
+// are on it too: the web is driven through the browser tools (sidecar/browser/), which
+// carry the outbound guard, the payment handoff and the purchase rules; a browser driven
+// by clicks and keys would carry none of them.
+export const MAKA_BUNDLE_ID = 'com.makapark.maka';
+export const BROWSER_BUNDLE_IDS = Object.freeze(['com.apple.Safari', 'com.apple.SafariTechnologyPreview', 'com.google.Chrome', 'com.google.Chrome.canary', 'org.chromium.Chromium', 'org.mozilla.firefox', 'org.mozilla.firefoxdeveloperedition', 'com.microsoft.edgemac', 'com.brave.Browser', 'com.operasoftware.Opera', 'com.vivaldi.Vivaldi', 'company.thebrowser.Browser', 'com.kagi.kagimacOS', 'org.torproject.torbrowser']);
 export const SENSITIVE_APPS = Object.freeze({
   bundleIds: [
+    MAKA_BUNDLE_ID, ...BROWSER_BUNDLE_IDS,
     'com.apple.systempreferences', 'com.apple.Terminal', 'com.apple.keychainaccess', 'com.apple.Passwords', 'com.apple.Passwords-Settings', 'com.apple.Console',
     'com.googlecode.iterm2', 'dev.warp.Warp', 'co.zeit.hyper', 'com.github.wez.wezterm', 'net.kovidgoyal.kitty', 'org.alacritty',
     'com.agilebits.onepassword', 'com.1password', 'com.bitwarden', 'com.lastpass', 'com.dashlane', 'org.keepassxc', 'com.nordpass', 'com.enpass',
     'com.apple.Wallet', 'com.paypal', 'com.venmo', 'com.squareup.cash', 'com.coinbase', 'com.binance', 'com.robinhood', 'com.revolut', 'co.uk.getmondo', 'com.transferwise', 'com.wise',
   ],
-  names: ['system settings', 'system preferences', 'terminal', 'iterm', 'warp', 'hyper', 'wezterm', 'kitty', 'alacritty', 'console', 'keychain access', 'passwords', '1password', 'bitwarden', 'lastpass', 'dashlane', 'keepass', 'nordpass', 'enpass', 'wallet', 'bank', 'banking', 'paypal', 'venmo', 'cash app', 'coinbase', 'binance', 'robinhood', 'revolut', 'monzo', 'wise'],
+  names: ['maka', 'safari', 'chrome', 'chromium', 'firefox', 'edge', 'brave', 'opera', 'vivaldi', 'arc', 'orion', 'tor browser', 'system settings', 'system preferences', 'terminal', 'iterm', 'warp', 'hyper', 'wezterm', 'kitty', 'alacritty', 'console', 'keychain access', 'passwords', '1password', 'bitwarden', 'lastpass', 'dashlane', 'keepass', 'nordpass', 'enpass', 'wallet', 'bank', 'banking', 'paypal', 'venmo', 'cash app', 'coinbase', 'binance', 'robinhood', 'revolut', 'monzo', 'wise'],
 });
 
-// { sensitive, why } for an app as the shell names it.
-export function isSensitiveApp({ bundleId = '', name = '' } = {}) {
+// A window title or URL that names a loopback host (the sidecar's own UI, or any local
+// web UI): the app in front is treated as sensitive whatever it is (safety 2026-10-11 H2).
+// `ownHosts` adds the sidecar's own host:port strings as the shell knows them.
+const LOOPBACK_RE = /(^|[^a-z0-9.-])(127(?:\.\d{1,3}){3}|localhost|0\.0\.0\.0|\[::1\]|::1|[a-z0-9-]+\.local)(?=$|[^a-z0-9.-])/i;
+export function namesLoopback(text, ownHosts = []) {
+  const t = String(text || '');
+  if (!t) return null;
+  const m = LOOPBACK_RE.exec(t);
+  if (m) return m[2];
+  for (const h of ownHosts || []) if (h && t.toLowerCase().includes(String(h).toLowerCase())) return String(h);
+  return null;
+}
+
+// { sensitive, why } for an app as the shell names it, with its front window when known.
+export function isSensitiveApp({ bundleId = '', name = '', window = null } = {}, { ownHosts = [] } = {}) {
   const id = String(bundleId || '').toLowerCase();
   const nm = String(name || '').toLowerCase().trim();
   for (const prefix of SENSITIVE_APPS.bundleIds) if (id === prefix.toLowerCase() || id.startsWith(`${prefix.toLowerCase()}.`)) return { sensitive: true, why: `${name || bundleId} (${bundleId}) is on the list of apps a Ranger never drives` };
   for (const word of SENSITIVE_APPS.names) {
     const re = new RegExp(`(^|[^a-z])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`, 'i');
     if (re.test(nm)) return { sensitive: true, why: `${name} is on the list of apps a Ranger never drives (${word})` };
+  }
+  if (window && typeof window === 'object') {
+    for (const field of ['url', 'title']) {
+      const hit = namesLoopback(window[field], ownHosts);
+      if (hit) return { sensitive: true, why: `the window in front (${field} names ${hit}) shows a local web UI, which may be Maka's own; a Ranger never drives it` };
+    }
   }
   return { sensitive: false, why: null };
 }
