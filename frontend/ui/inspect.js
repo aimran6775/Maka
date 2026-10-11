@@ -2,6 +2,7 @@
 // harness has emitted this session: no projections, no placeholders for phase 2 features.
 import { el, createWindow, setChildren, fmtUsd } from './windows.js';
 import { workerLines } from './worker.js';
+import { sparkline } from './sparkline.js';
 import { grantedTools, toolUses, lastModel, pendingGate, pendingHandoffs, recentGate, judgeVerdicts, workInTransit, workFor } from '../state.js';
 import { LEASH_LEVEL_LABELS, LEASH_LEVELS, DOMAINS, resolveAllLeash, resolveLeash } from '../../shared/leash.js';
 
@@ -511,6 +512,52 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       ...creativeCache.rows.slice(0, 6).map((d) => el('div', { class: `use ${d.judge && d.judge.verdict === 'approve' ? 'ok' : d.judge && d.judge.verdict === 'reject' ? 'failed' : ''}`, text: `${new Date(d.createdAt).toLocaleDateString()} · ${d.kind} · ${d.name}${d.venture ? ` · ${d.venture}` : ''} · ${d.kind === 'copy' ? `${d.variants} variant(s) for ${d.platform}` : `${d.model}, ${d.bytes} bytes`} · judge ${d.judge ? d.judge.verdict : '?'} · ${d.agentId} · ${d.path}` })),
     ];
   }
+  // Phase 4 step 9: the results table. Every figure is what a ledger or a sync proved; a
+  // null is printed as "no data", never 0. Sparklines are hand-drawn SVG over the last days.
+  const resultsCache = { key: null, data: null, loading: false };
+  function loadResults(key) {
+    if (resultsCache.key === key || resultsCache.loading) return;
+    resultsCache.loading = true;
+    api.get('/api/results').then((r) => {
+      resultsCache.data = r.ok ? r.body : null;
+      resultsCache.key = key;
+    }).finally(() => {
+      resultsCache.loading = false;
+      if (selectionRefresh) selectionRefresh();
+    });
+  }
+  const nd = (n, money = true) => (typeof n === 'number' ? (money ? `$${n.toFixed(2)}` : String(n)) : 'no data');
+  function resultsSection(s) {
+    if (!s.results) return [];
+    const key = `${s.results.lastRollup ? s.results.lastRollup.at : 0}:${s.results.latest ? s.results.latest.at : 0}`;
+    loadResults(key);
+    const d = resultsCache.data || s.results;
+    const sources = d.sources ? Object.entries(d.sources).filter(([, v]) => v).map(([k]) => k) : [];
+    const cell = (text, cls = '') => el('td', { class: cls, text });
+    const head = el('tr', {}, ...['venture', 'revenue', 'orders', 'refunds', 'fees', 'ad spend', 'model spend', 'contrib./order', 'model/order', 'payback', 'verdict'].map((t) => el('th', { text: t })));
+    const rowFor = (label, econ, all, proposal, series) => el('tr', {},
+      cell(label),
+      el('td', {}, nd(econ.revenue), series ? sparkline(series.map((x) => x.revenue), { w: 72, h: 16, title: 'revenue by day' }) : null),
+      cell(nd(econ.orders, false)),
+      cell(nd(econ.refunds)),
+      cell(nd(econ.fees)),
+      el('td', {}, nd(econ.adSpend), series ? sparkline(series.map((x) => x.adSpend), { w: 72, h: 16, title: 'ad spend by day' }) : null),
+      el('td', {}, nd(econ.modelSpend), series ? sparkline(series.map((x) => x.modelSpend), { w: 72, h: 16, title: 'model spend by day' }) : null),
+      cell(econ.contributionPerOrder === null || econ.contributionPerOrder === undefined ? 'no data' : `${nd(econ.contributionPerOrder)}${econ.unknown && econ.unknown.length ? ` (${econ.unknown.join(', ')}: no data)` : ''}`),
+      cell(nd(econ.modelCostPerOrder)),
+      cell(all && all.payback ? (all.payback.reached ? `reached ${all.payback.day}` : 'not reached') : 'no data'),
+      cell(proposal ? proposal.verdict : '—', proposal ? `verdict ${proposal.verdict}` : ''),
+    );
+    const win = d.parkWindow || d.park;
+    const rows = [rowFor('park (all)', win || {}, d.park, null, d.parkSeries), ...(d.ventures || []).map((v) => rowFor(v.name || v.id, v.window || {}, v.all, v.proposal, v.series))];
+    return [
+      row('results', `${d.lastRollup ? `rolled up ${new Date(d.lastRollup.at).toLocaleString()} (${d.lastRollup.reason})` : 'no rollup yet'} · sources: ${sources.length ? sources.join(', ') : 'ledgers only (no connector synced)'} · last ${win && win.days ? win.days : 0} day(s); "no data" means no source holds the figure`),
+      el('table', { class: 'results' }, el('thead', {}, head), el('tbody', {}, ...rows)),
+      ...(d.ventures || []).filter((v) => v.proposal).map((v) => el('div', { class: `use ${v.proposal.verdict === 'kill' ? 'failed' : v.proposal.verdict === 'scale' ? 'ok' : ''}`, text: `${v.id}: ${v.proposal.verdict} — ${v.proposal.because.join('; ')}` })),
+      el('div', { class: 'row' }, el('button', { class: 'btn', text: 'Roll up now', onclick: async () => { const r = await api.post('/api/results/rollup', {}); missionNotice.textContent = r.ok ? `Rolled up ${r.body.today}.` : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } })),
+    ];
+  }
+
   function briefsSection(s) {
     if (!s.research) return [];
     loadBriefs(s);
@@ -607,6 +654,7 @@ export function createInspect({ parent, getState, api, x, y, w }) {
         el('button', { class: 'btn', text: 'Apply DNS (via the Gate)', disabled: !(s.mail.keys.resend && s.mail.keys.cloudflare), onclick: async () => { const r = await api.post('/api/mail/dns/apply', {}); missionNotice.textContent = r.ok ? (r.body.itemId ? `DNS change waiting at the Gate (${r.body.itemId}).` : r.body.status) : `${r.body.code || r.status}: ${r.body.error || 'failed'}`; } }),
       ) : null,
       row('gate queue', `${pendingGate(s).length} waiting`),
+      ...resultsSection(s),
       ...connectorsSection(s),
       ...mcpSection(s),
       ...channelsSection(s),

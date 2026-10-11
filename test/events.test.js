@@ -42,6 +42,7 @@ const SAMPLES = {
   'channel.inbound': { channel: 'telegram', chatId: '12345', userId: '777', action: 'gate', paired: true, outcome: 'accepted', itemId: 'gate-1', decision: 'approve', messageId: '42' },
   'channel.connect': { channel: 'telegram', status: 'up', message: 'long polling as @maka_bot', by: 'env' },
   'channel.delivery': { channel: 'telegram', chatId: '12345', kind: 'gate_card', status: 'sent', itemId: 'gate-1', messageId: '43' },
+  'results.rollup': { day: '2026-10-11', reason: 'sync', park: { revenue: 120.5, refunds: 10, fees: null, adSpend: 24, orders: 3, modelSpend: 0.12, mailIn: 2, mailOut: 1, contributionPerOrder: 28.83, modelCostPerOrder: 0.04 }, ventures: [{ id: 'lantern-co', revenue: null, refunds: null, fees: null, adSpend: null, orders: null, modelSpend: 0.12, mailIn: 0, mailOut: 0, contributionPerOrder: null, modelCostPerOrder: null }], proposals: [{ venture: 'lantern-co', verdict: 'no_data', because: ['no connector has synced'] }] },
   'browser.handoff': { handoffId: 'hand-1', agentId: 'ranger-1', status: 'waiting', kind: 'login', runId: 'run-1', url: 'https://shop.example/login', title: 'Sign in', reason: 'the page asks for a password', headless: false },
   'mail.classified': { messageId: 'msg-1', classification: 'customer', by: 'worker', confidence: 0.92, reason: 'asks about an order' },
   'mail.dns': { domain: 'makapark.com', change: 'applied', itemId: 'gate-1', create: 4, update: 1, remove: 0, unchanged: 2, errors: [], message: '5 change(s) written' },
@@ -122,6 +123,8 @@ test('payloads reject missing required fields, unknown fields and bad enums', ()
   bad('channel.inbound', { channel: 'telegram', chatId: '1', userId: '2', action: 'wave', paired: true, outcome: 'x' });
   bad('channel.connect', { channel: 'telegram', status: 'maybe' });
   bad('channel.delivery', { channel: 'telegram', chatId: '1', kind: 'gate_card', status: 'queued' });
+  bad('results.rollup', { day: '2026-10-11', reason: 'sync', park: { revenue: 'none' }, ventures: [] });
+  bad('results.rollup', { day: '2026-10-11', reason: 'sync', park: {}, ventures: [], proposals: [{ venture: 'v', verdict: 'maybe', because: [] }] });
   bad('judge.verdict', { ...SAMPLES['judge.verdict'], verdict: 'shrug' });
   bad('crew.agent', { agentId: 'x', change: 'cloned' });
   bad('plan.updated', { missionId: 'm', change: 'dreamt' });

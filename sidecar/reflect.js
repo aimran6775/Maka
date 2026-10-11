@@ -86,6 +86,16 @@ export function reflectionMarkdown(doc) {
     if (v.revisions && v.revisions.length) lines.push('Revisions:', ...v.revisions.map((x) => `- ${x}`), '');
     lines.push(`Morale note: ${v.morale || '(none)'}`, '');
   }
+  if (doc.proposals && doc.proposals.length) {
+    lines.push('## Rule verdicts (results engine)', '');
+    for (const p of doc.proposals) lines.push(`- ${p.venture}: **${p.verdict}** — ${p.because.join('; ')}`);
+    lines.push('');
+  }
+  if (doc.kills && doc.kills.length) {
+    lines.push('## Kills delegated', '');
+    for (const k of doc.kills) lines.push(`- ${k.venture}: ${k.steps.length} pause(s) → work item(s) ${k.items.join(', ') || 'none'}${k.notes.length ? ` (${k.notes.join('; ')})` : ''}`);
+    lines.push('');
+  }
   if (doc.briefings && doc.briefings.length) {
     lines.push('## Briefings', '');
     for (const b of doc.briefings) lines.push(`### ${b.zoneId}`, '', b.text, '');
@@ -99,6 +109,7 @@ export function createReflect({
   runs,
   getConnectors = null, // () => connectors registry (step 14); its summaries feed the reflection
   getMail = null, // () => the mail system (phase 4 step 6): briefings go into station mail from peak@
+  getResults = null, // () => the results engine (phase 4 step 9): actuals per venture and the Chief rules' proposals
   agents,
   trails,
   chief,
@@ -186,6 +197,11 @@ export function createReflect({
   // Everything the reflection may know, from persisted facts only.
   async function gather() {
     const st = chief.state();
+    // Phase 4 step 9: the results engine rolls the day up first, so the reflection reads
+    // the same figures the Peak shows (nulls are "no data", never zero).
+    const results = typeof getResults === 'function' ? getResults() : null;
+    const rolled = results ? await results.rollup({ reason: 'reflection' }).catch((err) => { log.error('results rollup failed:', err); return null; }) : null;
+    const resultsFor = (vid) => (rolled ? rolled.ventures.find((v) => v.id === vid) || null : null);
     const layout = getLayout();
     const allRuns = await store.listRuns();
     const since = st.mission ? st.mission.createdAt : 0;
@@ -218,6 +234,8 @@ export function createReflect({
         gatePending: vGate.filter((g) => g.status === 'pending').length,
         gateRefused: vGate.filter((g) => g.status === 'refused').length,
         revenue: 'unknown (no connector wired)',
+        results: resultsFor(v.id) ? { window: resultsFor(v.id).window, all: resultsFor(v.id).all, spentUsd: resultsFor(v.id).spentUsd } : null,
+        proposal: resultsFor(v.id) ? resultsFor(v.id).proposal : null,
       };
     });
     const zones = layout.rooms.filter((r) => !['entrance_gate', 'mountain_peak'].includes(r.kind)).map((r) => ({ id: r.id, name: r.name, kind: r.kind || null, crew: layout.agents.filter((a) => a.roomId === r.id).map((a) => a.id) }));
@@ -232,7 +250,20 @@ export function createReflect({
       zones,
       gatePending: gate.filter((g) => g.status === 'pending').length,
       connectors: connectorLines(),
+      results: rolled ? { park: rolled.park, parkWindow: rolled.parkWindow, sources: rolled.sources } : null,
     };
+  }
+
+  // Phase 4 step 9: a venture's actuals and the rule's verdict, as prompt lines. Every
+  // figure is a number a source proved or "no data".
+  const money = (n) => (n === null || n === undefined ? 'no data' : `$${n.toFixed(2)}`);
+  function resultLines(v) {
+    if (!v.results) return [];
+    const w = v.results.window;
+    const lines = [`  results, last ${w.days} day(s): revenue ${money(w.revenue)}, orders ${w.orders === null ? 'no data' : w.orders}, refunds ${money(w.refunds)}, fees ${money(w.fees)}, ad spend ${money(w.adSpend)}, model spend ${money(w.modelSpend)} (worker ${money(w.modelSpendByTier.worker)}, judge ${money(w.modelSpendByTier.judge)}, hosted ${money(w.modelSpendByTier.hosted_worker)}), mail in ${w.mailIn} / out ${w.mailOut}`];
+    lines.push(`  unit economics: contribution per order ${money(w.contributionPerOrder)}, model cost per order ${money(w.modelCostPerOrder)}, net ${money(w.net)}${w.unknown.length ? ` (${w.unknown.join(', ')} unknown)` : ''}; payback ${v.results.all.payback ? (v.results.all.payback.reached ? `reached on ${v.results.all.payback.day}` : 'not reached') : 'no data'}`);
+    if (v.proposal) lines.push(`  RULE VERDICT: ${v.proposal.verdict.toUpperCase()} because ${v.proposal.because.join('; ')}`);
+    return lines;
   }
 
   // What the connectors' syncs hold, as plain text: real figures or "not connected".
@@ -257,9 +288,11 @@ export function createReflect({
       lines.push(`  tasks planned ${v.tasksPlanned}: ${v.tasks.map((t) => `${t.id} ${t.title}`).join('; ') || 'none'}`);
       lines.push(`  runs ${v.runs} (${v.runsFailed} failed); work items done ${v.itemsDone}, failed ${v.itemsFailed}, in flight ${v.itemsOpen}; deliverables ${v.deliverables}`);
       lines.push(`  Gate: approved ${v.gateApproved}, rejected/revised ${v.gateRejected}, pending ${v.gatePending}, refused by leash ${v.gateRefused}; revenue ${v.revenue}`);
+      lines.push(...resultLines(v));
       for (const it of v.recentItems) lines.push(`  item ${it.id} → ${it.to}: ${it.status}; brief "${it.brief}"; summary "${it.summary}"; files ${it.deliverables.join(', ') || 'none'}`);
       lines.push('');
     }
+    if (data.results) lines.push(`Park totals, last ${data.results.parkWindow.days} day(s): revenue ${money(data.results.parkWindow.revenue)}, orders ${data.results.parkWindow.orders === null ? 'no data' : data.results.parkWindow.orders}, refunds ${money(data.results.parkWindow.refunds)}, fees ${money(data.results.parkWindow.fees)}, ad spend ${money(data.results.parkWindow.adSpend)}, model spend ${money(data.results.parkWindow.modelSpend)}. The rule verdicts above are the harness's own reading of the numbers: a KILL means pause that venture's campaigns and listings (already delegated to its Rangers through the Gate), a SCALE is a proposal only (a budget raise is money out at the Gate), HOLD and NO_DATA change nothing.`, '');
     lines.push('Answer with the JSON object only.');
     return lines.join('\n');
   }
@@ -284,6 +317,47 @@ export function createReflect({
       } catch (err) {
         log.error(`briefing mail to ${to} failed:`, err.message);
       }
+    }
+    return out;
+  }
+
+  // Phase 4 step 9: a KILL verdict pauses the venture's attributed campaigns and listings.
+  // The pauses are work items the Chief hands to the venture's own Ads / Storefront
+  // Rangers, whose tools pass the Gate as usual (a pause is a proven $0 money_out; a
+  // listing change is publishing). Nothing is paused here directly, nothing twice: an
+  // open kill item for the venture means no new one.
+  async function delegateKills(data) {
+    const results = typeof getResults === 'function' ? getResults() : null;
+    if (!results || !data.mission || data.mission.status === 'done') return [];
+    const out = [];
+    for (const v of data.ventures) {
+      if (!v.proposal || v.proposal.verdict !== 'kill') continue;
+      const steps = results.killPlan(v.id);
+      const record = { venture: v.id, because: v.proposal.because, steps: steps.map((s) => ({ connector: s.connector, object: s.object, tool: s.tool, agentId: s.agentId })), items: [], notes: [] };
+      if (!steps.length) record.notes.push('nothing to pause: no campaign or listing is attributed to this venture');
+      const open = trails.list().some((it) => it.fromAgentId === CHIEF_ID && (it.status === 'queued' || it.status === 'running') && /^KILL /.test(it.brief) && it.brief.includes(`venture ${v.id}`));
+      if (open) record.notes.push('a kill item for this venture is still open: nothing new delegated');
+      const byAgent = new Map();
+      for (const s of steps) {
+        if (!s.agentId) {
+          record.notes.push(`no ${s.specialty} Ranger in the venture's crew for ${s.tool} on ${s.object}: not delegated`);
+          continue;
+        }
+        if (!byAgent.has(s.agentId)) byAgent.set(s.agentId, []);
+        byAgent.get(s.agentId).push(s);
+      }
+      if (!open) {
+        for (const [agentId, mine] of byAgent) {
+          const brief = [`KILL venture ${v.id}: the results engine's rule says kill because ${v.proposal.because.join('; ')}.`, 'Pause everything below with exactly these tool calls, one each, and report what each tool answered. Do not create, activate or change anything else.', ...mine.map((s) => `- ${s.tool} ${JSON.stringify(s.input)}  (${s.connector} ${s.object})`)].join('\n');
+          try {
+            const item = await trails.delegate({ toAgentId: agentId, brief, budgetUsd: 0.25, evidence: ['the tool results'] }, { by: CHIEF_ID });
+            record.items.push(item.id);
+          } catch (err) {
+            record.notes.push(`delegation to ${agentId} refused: ${err.code || ''} ${err.message}`.trim());
+          }
+        }
+      }
+      out.push(record);
     }
     return out;
   }
@@ -351,6 +425,8 @@ export function createReflect({
       const doc = { id, at: data.at, reason, status: 'posted', missionId: data.mission ? data.mission.id : null, provider: p.provider.name, model: p.model, usd, data, portfolio: String(parsed.portfolio).trim(), ventures, briefings, briefingFiles: [], path: '' };
       doc.briefingFiles = await writeBriefings(doc);
       doc.briefingMail = await mailBriefings(doc);
+      doc.proposals = data.ventures.filter((v) => v.proposal).map((v) => v.proposal);
+      doc.kills = await delegateKills(data);
       const outbox = path.join(workspaceRoot, CHIEF_ID, 'outbox');
       await fsp.mkdir(outbox, { recursive: true });
       const mdPath = path.join(outbox, `${id}.md`);
@@ -362,6 +438,8 @@ export function createReflect({
       // The Chief revises the plan and delegates from the reflection (bounded like any follow-up).
       if (data.mission && data.mission.status !== 'done' && ventures.length) {
         const revisions = ventures.flatMap((v) => v.revisions.map((r) => `${v.id}: ${r}`));
+        const verdicts = (doc.proposals || []).filter((p) => p.verdict !== 'hold').map((p) => `${p.venture}: ${p.verdict.toUpperCase()} (${p.because[0]})`);
+        if (verdicts.length) revisions.push(`rule verdicts: ${verdicts.join('; ')}`);
         chief.followUp({ payload: { workItemId: id, toAgentId: CHIEF_ID, status: 'done', reason: 'reflection', deliverables: [doc.path], summary: `Reflection ${id}: ${doc.portfolio.slice(0, 600)}${revisions.length ? ` Revisions: ${revisions.join('; ').slice(0, 800)}` : ''}`, spentUsd: usd || 0 } }).catch((err) => log.error('reflection follow-up failed:', err));
       }
       return doc;
@@ -372,7 +450,7 @@ export function createReflect({
   }
 
   function summary(doc) {
-    return { id: doc.id, at: doc.at, reason: doc.reason, status: doc.status, skipReason: doc.skipReason || null, missionId: doc.missionId || null, model: doc.model || null, usd: doc.usd ?? null, portfolio: (doc.portfolio || '').slice(0, 600), ventures: (doc.ventures || []).map((v) => ({ id: v.id, planStillRight: v.planStillRight, morale: v.morale })), briefings: (doc.briefings || []).map((b) => b.zoneId), mailed: (doc.briefingMail || []).length, path: doc.path || null };
+    return { id: doc.id, at: doc.at, reason: doc.reason, status: doc.status, skipReason: doc.skipReason || null, missionId: doc.missionId || null, model: doc.model || null, usd: doc.usd ?? null, portfolio: (doc.portfolio || '').slice(0, 600), ventures: (doc.ventures || []).map((v) => ({ id: v.id, planStillRight: v.planStillRight, morale: v.morale })), briefings: (doc.briefings || []).map((b) => b.zoneId), mailed: (doc.briefingMail || []).length, proposals: (doc.proposals || []).map((p) => ({ venture: p.venture, verdict: p.verdict, because: p.because })), kills: (doc.kills || []).map((k) => ({ venture: k.venture, items: k.items, steps: k.steps.length, notes: k.notes })), path: doc.path || null };
   }
 
   return {

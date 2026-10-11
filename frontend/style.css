@@ -126,3 +126,12 @@ body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--sans); ov
 .fr-head.done .fr-num { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .fr-foot { border-top: 1px solid var(--panel-border); padding-top: 10px; }
 .small.warn { color: var(--warn); }
+
+/* Phase 4 step 9: the Peak's results table and its hand-drawn sparklines. */
+table.results { border-collapse: collapse; font-size: 11px; font-family: var(--mono); width: 100%; margin: 4px 0; }
+table.results th, table.results td { text-align: left; padding: 2px 6px 2px 0; vertical-align: top; border-bottom: 1px solid rgba(255,255,255,0.08); white-space: nowrap; }
+table.results th { color: var(--muted); font-weight: normal; }
+table.results td.verdict.kill { color: var(--error); }
+table.results td.verdict.scale { color: var(--ok); }
+svg.spark { display: block; color: var(--muted); }
+svg.spark .spark-empty { font-size: 9px; fill: var(--muted); }

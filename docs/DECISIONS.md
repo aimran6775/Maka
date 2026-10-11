@@ -1309,3 +1309,49 @@ tool has a leash domain: both write to the Ranger's outbox only, and the money a
 publishing happen in the ads tools that already carry them. Only the Notice board grants
 them: ad creative is the ads camp's work, and the listing pipeline (step 13) will grant
 what it needs when it exists.
+
+## D139. Results come from ledgers and syncs only; a venture owns a figure only through a Ranger's recorded write
+
+The results engine reads what the park can prove: the cost events on the bus, the
+connector stores the syncs wrote, the mail store, the trails and the Gate. Nothing is
+projected and nothing is inferred: a figure no source holds is null and the Peak prints
+"no data", never a zero that would read as "nothing happened"; a synced source that shows
+nothing that day is a known 0. The hard case is attribution. No platform row says which
+venture it belongs to, and guessing (the only venture in the plan, the camp a connector
+sits in, a name in a campaign) would be a projection. So a connector figure belongs to a
+venture only through an object a Ranger of that venture created with a Maka tool, recorded
+by the engine from that tool's own result: the Meta or Google campaign (its daily spend),
+the Shopify product's variants and the Etsy listing (the line items of orders that hold
+them, so a venture's revenue excludes shipping and tax and the row says so), the Stripe
+refund. Stripe charges are never attributed: nothing links a charge to a venture. The
+park-level row carries everything, attributed or not. Revenue is the storefronts' order
+totals when any storefront has synced, else Stripe's paid charges, never both (a Shopify
+store paid through Stripe would count twice); Stripe's fee rides the charge row only when
+the sync could expand the balance transaction, and Shopify's refund amounts are not synced,
+each said in the row's notes. Ad spend by day comes from the platforms' own daily rows
+(Meta `time_increment=1`, Google `segments.date`), kept across syncs so the window the
+platform answers does not erase the history, because a 7-day total cannot be honestly
+turned into days. Unit economics follow: contribution per order is computed from the known
+components and names the unknown ones; payback is the first rolled-up day on which
+recorded contribution covered recorded ad and model spend, a fact about the past, not a
+date in the future.
+
+## D140. The Chief rules are deterministic, a kill is pauses through the Gate, a scale is a proposal
+
+The brief asks for scale / hold / kill proposals "with the numbers that drove them". A
+model reading figures and deciding would make the numbers a suggestion; the rules are
+therefore pure code with fixed thresholds (`RULES`): `no_data` when revenue and ad spend
+are both unknown, `kill` after a week of spend with no order once half the venture budget
+is gone or after a fortnight at a loss once three quarters is gone, `scale` only when
+orders exist, every cost component is known, the net is positive and payback was reached,
+`hold` otherwise, each verdict carrying its numbers. The reflection shows the Chief the
+verdicts and asks it to answer them with numbers; it may disagree in its revisions. A
+kill is executed, because waiting for the Chief to act on a loss is the loss continuing:
+the engine lists the exact pauses (attributed campaigns still running, attributed
+listings still live) and the reflection delegates them as work items to the venture's own
+Ads and Storefront Rangers, so the pause runs as a tool call under the leash like any
+other (a pause is a proven $0 money_out, a listing change is publishing) and waits at the
+Gate under the park's defaults. Nothing is paused from the reflection directly, nothing
+unattributed is touched, a venture with no kill item open gets one per Ranger and no
+more while it is open, and a venture with nothing attributed gets a note. A scale is a
+proposal only: a budget raise is money out and belongs to the Chief's plan and the Gate.

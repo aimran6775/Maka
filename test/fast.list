@@ -45,3 +45,4 @@ test/mcp-catalog.test.js
 test/briefings.test.js
 test/ads-creatives.test.js
 test/creative.test.js
+test/results.test.js

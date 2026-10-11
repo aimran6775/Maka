@@ -23,6 +23,11 @@ export async function startFakeGoogleAds({ clientId = 'gads-client.apps.googleus
     ads: [{ id: '7001', name: 'RSA 1', status: 'ENABLED', type: 'RESPONSIVE_SEARCH_AD', adGroupId: '5001', campaignId: '9001', finalUrls: ['https://lanterns.example/shop'], headlines: ['Handmade Lanterns', 'Light Your Evenings', 'Free Shipping'], descriptions: ['Hand-finished lanterns for porches and gardens.', 'Ships in two days.'], path1: 'lanterns', path2: '' }],
     assets: [{ id: '3001', name: 'hero.jpg', type: 'IMAGE', url: 'https://cdn.example/hero.jpg', fileSize: '20480' }],
     metrics: [{ campaignId: '9001', costMicros: '61250000', impressions: '9800', clicks: '310', conversions: 4, conversionsValue: 120.5 }],
+    // segments.date rows (phase 4 step 9): one per campaign per day.
+    metricsDaily: [
+      { campaignId: '9001', date: '2026-10-08', costMicros: '8750000', impressions: '1400', clicks: '44', conversions: 1, conversionsValue: 30.5 },
+      { campaignId: '9001', date: '2026-10-09', costMicros: '8250000', impressions: '1300', clicks: '41', conversions: 0, conversionsValue: 0 },
+    ],
     fail: null,
   };
   let n = 9100;
@@ -75,6 +80,7 @@ export async function startFakeGoogleAds({ clientId = 'gads-client.apps.googleus
     if (req.method === 'POST' && m[2] === 'googleAds:searchStream') {
       const q = String(body.query || '');
       if (/FROM customer/.test(q)) return send(200, [{ results: [{ customer: state.customer }] }]);
+      if (/segments\.date,/.test(q)) return send(200, [{ results: state.metricsDaily.map((r) => ({ campaign: { id: r.campaignId, name: state.campaigns.find((c) => c.id === r.campaignId).name }, segments: { date: r.date }, metrics: { costMicros: r.costMicros, impressions: r.impressions, clicks: r.clicks, conversions: r.conversions, conversionsValue: r.conversionsValue } })) }]);
       if (/metrics\./.test(q)) return send(200, [{ results: state.metrics.map((r) => ({ campaign: { id: r.campaignId, name: state.campaigns.find((c) => c.id === r.campaignId).name }, metrics: { costMicros: r.costMicros, impressions: r.impressions, clicks: r.clicks, conversions: r.conversions, conversionsValue: r.conversionsValue } })) }]);
       if (/FROM ad_group_ad/.test(q)) return send(200, [{ results: state.ads.filter((a) => a.status !== 'REMOVED').map((a) => ({ adGroupAd: { status: a.status, ad: { id: a.id, name: a.name, type: a.type, finalUrls: a.finalUrls, responsiveSearchAd: { headlines: a.headlines.map((text) => ({ text })), descriptions: a.descriptions.map((text) => ({ text })), path1: a.path1, path2: a.path2 } } }, adGroup: { id: a.adGroupId }, campaign: { id: a.campaignId } })) }]);
       if (/FROM ad_group/.test(q)) return send(200, [{ results: state.adGroups.filter((g) => g.status !== 'REMOVED').map((g) => ({ adGroup: { id: g.id, name: g.name, status: g.status, type: g.type, campaign: `customers/${customerId}/campaigns/${g.campaignId}`, cpcBidMicros: g.cpcBidMicros } })) }]);

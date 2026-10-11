@@ -12,6 +12,7 @@ browser (frontend/, vanilla JS, canvas)
 sidecar (one Node process, no dependencies)
    ├─ chief       mission → plan (schema-checked) → hire → delegate; follow-ups on work.done
    ├─ reflect     daily and on budget breach: actuals per venture → document + briefings
+   ├─ results     rollups per day from ledgers and syncs; unit economics; the Chief rules
    ├─ mail        Resend in and out, routed to stations by address rules, stored locally
    ├─ runs        N runs at once, one per Ranger, queued past the cap
    ├─ trails      work items between zones: handoff → receiver run → done
@@ -124,6 +125,30 @@ policy verdict and the fact that only the prompt was checked) are the deliverabl
 tool has a leash domain because neither leaves the workspace: an upload is
 `meta_ads.upload_image` / `google_ads.upload_image_asset`, publishing, at the Gate. The Peak
 lists the newest copy and images with their verdicts.
+
+Part D step 9 done: the results engine (`sidecar/results.js`). Per venture and per Ranger,
+from real ledgers and connector syncs only: model spend by tier (every `cost.estimate` on
+the bus by local day, agent and tier, seeded from stored runs at boot), revenue and orders
+(Shopify and Etsy by order day; Stripe's paid charges only when no storefront is
+connected), refunds and Stripe's own fees (the sync now expands the balance transaction),
+ad spend by day (Meta's `time_increment=1` and Google's `segments.date` rows, kept across
+syncs), external mail, work items and Gate decisions. A connector figure belongs to a
+venture only through an object a Ranger of that venture created with a Maka tool, recorded
+from the tool's own result (D139): the campaign, the product's variants, the listing, the
+refund; everything else is park-level. Unit economics are contribution per order (revenue
+less the known of refunds, fees and ad spend, the unknown named), model cost per order, and
+payback as the first day recorded contribution covered recorded spend. A figure no source
+holds is null and the Peak prints "no data", never 0; a synced source that shows nothing
+that day is a known 0. Daily rollups persist in `results.json` and every rollup (after a
+sync, a `work.done`, before a reflection, or "Roll up now") emits `results.rollup`. The
+Chief rules are pure and deterministic (`proposeFor`): `no_data`, `kill` (a week of spend
+with no orders past half the budget, or a fortnight at a loss past three quarters), `scale`
+(orders, every component known, a positive net, payback reached), else `hold`, each with
+the numbers that drove it; the reflection prints them to the Chief as RULE VERDICT lines
+and a kill is executed by delegating the exact pauses (attributed campaigns still running,
+attributed listings still live) as work items to the venture's own Ads and Storefront
+Rangers, whose tools pass the Gate as usual (D140). The Peak draws the table and
+hand-drawn SVG sparklines (`frontend/ui/sparkline.js`), no chart library.
 
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`

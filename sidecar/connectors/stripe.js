@@ -88,7 +88,10 @@ export function createStripeClient({ apiKey, fetch: fetchImpl = globalThis.fetch
   return client;
 }
 
-const chargeRow = (c) => ({ id: c.id, created: (c.created || 0) * 1000, amount: c.amount, amountRefunded: c.amount_refunded || 0, currency: c.currency, status: c.status, paid: Boolean(c.paid), refunded: Boolean(c.refunded), description: c.description || '', customer: typeof c.customer === 'string' ? c.customer : (c.customer && c.customer.id) || null, receiptEmail: c.receipt_email || null, paymentIntent: typeof c.payment_intent === 'string' ? c.payment_intent : null });
+// `fee` (phase 4 step 9) is Stripe's own processing fee in minor units when the charge's
+// balance transaction was expanded by the sync; null when Stripe did not say.
+const feeOf = (c) => (c.balance_transaction && typeof c.balance_transaction === 'object' && typeof c.balance_transaction.fee === 'number' ? c.balance_transaction.fee : null);
+const chargeRow = (c) => ({ id: c.id, created: (c.created || 0) * 1000, amount: c.amount, amountRefunded: c.amount_refunded || 0, fee: feeOf(c), currency: c.currency, status: c.status, paid: Boolean(c.paid), refunded: Boolean(c.refunded), description: c.description || '', customer: typeof c.customer === 'string' ? c.customer : (c.customer && c.customer.id) || null, receiptEmail: c.receipt_email || null, paymentIntent: typeof c.payment_intent === 'string' ? c.payment_intent : null });
 const payoutRow = (p) => ({ id: p.id, created: (p.created || 0) * 1000, arrivalDate: (p.arrival_date || 0) * 1000, amount: p.amount, currency: p.currency, status: p.status, method: p.method || '', description: p.description || '' });
 const refundRow = (r) => ({ id: r.id, created: (r.created || 0) * 1000, amount: r.amount, currency: r.currency, status: r.status, reason: r.reason || '', charge: typeof r.charge === 'string' ? r.charge : (r.charge && r.charge.id) || null });
 
@@ -116,7 +119,7 @@ export function stripeSpec({ baseUrl = STRIPE_BASE_URL } = {}) {
     makeClient: ({ token, fetch: fetchImpl }) => createStripeClient({ apiKey: token.accessToken, fetch: fetchImpl, baseUrl }),
     // Reads: the balance now, the last pages of charges / payouts / refunds (newest first).
     async sync({ client, data }) {
-      const [balance, charges, payouts, refunds] = await Promise.all([client.balance(), client.listAll('charges'), client.listAll('payouts'), client.listAll('refunds')]);
+      const [balance, charges, payouts, refunds] = await Promise.all([client.balance(), client.listAll('charges', { expand: ['data.balance_transaction'] }), client.listAll('payouts'), client.listAll('refunds')]);
       const known = { charges: new Set((data.charges || []).map((c) => c.id)), refunds: new Set((data.refunds || []).map((r) => r.id)), payouts: new Set((data.payouts || []).map((p) => p.id)) };
       const next = {
         ...data,

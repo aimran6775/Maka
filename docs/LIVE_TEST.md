@@ -200,6 +200,22 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
 - Then "upload the hero image to Meta": `meta_ads.upload_image` waits at the Gate under
   publishing with the path; nothing is uploaded before the approval.
 
+## 15d. Results (phase 4)
+
+- With Stripe or a storefront and an ad network connected, click the Peak after a sync:
+  the "results" row names the sources, the table shows the park's revenue, orders,
+  refunds, fees (Stripe's own, from the synced balance transactions), ad spend (the
+  platforms' per-day rows) and model spend with sparklines; a figure no source holds
+  reads "no data", never 0. `results.rollup` follows every finished sync.
+- A venture row fills only for what its Rangers made: after the Ads Ranger created a
+  campaign through `meta_ads.create_campaign`, that campaign's daily spend lands on the
+  venture; a campaign made by hand in Ads Manager stays park-level.
+- "Reflect now": the reflection document under `$MAKA_HOME/reflections/` carries
+  `proposals` (the rule verdict per venture with its numbers) and the Chief's revisions
+  answer them. With a venture at `kill` (no orders in a week while spending past half its
+  budget), `work.handoff` items titled `KILL venture <id>` reach its Ads / Storefront
+  Rangers and their pauses wait at the Gate as $0 money_out / publishing items.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

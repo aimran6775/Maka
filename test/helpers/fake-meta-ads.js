@@ -19,6 +19,11 @@ export async function startFakeMetaAds({ accessToken = 'EAAB_fake', account = 'a
     creatives: [{ id: 'cr1', name: 'Hero creative', status: 'ACTIVE', object_story_spec: { page_id: '777', link_data: { image_hash: 'h1', link: 'https://lanterns.example/shop', message: 'Light your evenings.', name: 'Lanterns, handmade', description: 'Free shipping', call_to_action: { type: 'SHOP_NOW' } } }, thumbnail_url: 'https://cdn.example/t1.jpg' }],
     images: [],
     insights: [{ campaign_id: 'c1', campaign_name: 'Lanterns – Sales', spend: '84.50', impressions: '12000', clicks: '240', cpc: '0.352083', ctr: '2.0', actions: [{ action_type: 'purchase', value: '6' }], date_start: '2026-10-03', date_stop: '2026-10-09' }],
+    // time_increment=1 rows (phase 4 step 9): one per campaign per day.
+    insightsDaily: [
+      { campaign_id: 'c1', campaign_name: 'Lanterns – Sales', spend: '12.25', impressions: '1800', clicks: '40', actions: [{ action_type: 'purchase', value: '1' }], date_start: '2026-10-08', date_stop: '2026-10-08' },
+      { campaign_id: 'c1', campaign_name: 'Lanterns – Sales', spend: '11.75', impressions: '1700', clicks: '38', actions: [], date_start: '2026-10-09', date_stop: '2026-10-09' },
+    ],
     fail: null,
   };
   let n = 10;
@@ -83,7 +88,7 @@ export async function startFakeMetaAds({ accessToken = 'EAAB_fake', account = 'a
     }
     if (req.method === 'GET' && p === `${account}/insights`) {
       if (url.searchParams.get('level') !== 'campaign') return error(400, 'level must be campaign', 100);
-      return page(state.insights);
+      return page(url.searchParams.get('time_increment') === '1' ? state.insightsDaily : state.insights);
     }
     if (req.method === 'POST' && p === `${account}/campaigns`) {
       if (!body || !body.name || !body.objective) return error(400, 'Missing required field: name/objective', 100);

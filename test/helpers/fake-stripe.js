@@ -45,7 +45,11 @@ export async function startFakeStripe({ apiKey = 'sk_test_fake', charges = null,
       return send(200, { object: 'list', data, has_more: start + limit < rows.length, url: url.pathname });
     };
     if (req.method === 'GET' && url.pathname === '/v1/balance') return send(200, state.balance);
-    if (req.method === 'GET' && url.pathname === '/v1/charges') return page(state.charges);
+    if (req.method === 'GET' && url.pathname === '/v1/charges') {
+      // expand[0]=data.balance_transaction (phase 4 step 9): the fee rides along as Stripe sends it.
+      const expand = [...url.searchParams.entries()].some(([k, v]) => k.startsWith('expand') && v === 'data.balance_transaction');
+      return page(expand ? state.charges.map((c) => (c.paid ? { ...c, balance_transaction: { id: `txn_${c.id}`, object: 'balance_transaction', fee: Math.round(c.amount * 0.029) + 30, net: c.amount - Math.round(c.amount * 0.029) - 30 } } : c)) : state.charges);
+    }
     if (req.method === 'GET' && url.pathname === '/v1/payouts') return page(state.payouts);
     if (req.method === 'GET' && url.pathname === '/v1/refunds') return page(state.refunds);
     if (req.method === 'POST' && url.pathname === '/v1/refunds') {

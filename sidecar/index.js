@@ -40,6 +40,7 @@ import { createConnectors } from './connectors/registry.js';
 import { CONNECTOR_SPECS } from './connectors/kinds.js';
 import { createResearch } from './research/index.js';
 import { createCreative } from './creative/index.js';
+import { createResults } from './results.js';
 import { createChannels } from './channels/registry.js';
 import { createTelegramAdapter } from './channels/telegram.js';
 import { createDiscordAdapter } from './channels/discord.js';
@@ -111,7 +112,10 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   Object.assign(registry, chief.tools);
   const scheduler = await createScheduler({ store, log }).init();
   let connectors = null;
-  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router, scheduler, getLayout: layoutState.get, workspaceRoot, env, keystorePath, schedule: { daily: config.reflectAt || '07:00' }, getConnectors: () => connectors, getMail: () => mail, log }).init();
+  // Phase 4 step 9: the results engine reads the ledgers and the connector stores; the
+  // reflection rolls it up first and reads the Chief rules' verdicts from it.
+  const results = await createResults({ bus, store, agents, trails, chief, ledger, gateQueue, getConnectors: () => connectors, getMail: () => mail, getLayout: layoutState.get, log }).init();
+  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router, scheduler, getLayout: layoutState.get, workspaceRoot, env, keystorePath, schedule: { daily: config.reflectAt || '07:00' }, getConnectors: () => connectors, getMail: () => mail, getResults: () => results, log }).init();
   scheduler.start();
   away = await createAway({ bus, store, gateQueue, workspaceRoot, log }).init();
   const mailSetup = createMailSetup({ bus, gateQueue, env, keystorePath, domain: config.mailDomain || undefined, region: config.resendRegion || undefined, log });
@@ -126,6 +130,15 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   await connectors.init();
   Object.assign(registry, connectors.tools);
   toolContext.connectors = connectors;
+  // A finished connector sync or work item rolls the day up (debounced), so the Peak's
+  // results follow the syncs without a reflection.
+  let rollupTimer = null;
+  bus.listen((event) => {
+    if (!((event.type === 'connector.sync' && event.payload.status === 'done') || event.type === 'work.done')) return;
+    clearTimeout(rollupTimer);
+    rollupTimer = setTimeout(() => results.rollup({ reason: event.type === 'work.done' ? 'work.done' : `sync ${event.payload.connector}` }).catch((err) => log.error('results rollup failed:', err)), 1500);
+    if (rollupTimer.unref) rollupTimer.unref();
+  });
   const research = createResearch({ env, keystorePath, judge, workspaceRoot });
   // Phase 4 step 8: ad copy and images as outbox deliverables; images through Hugging Face
   // under the hosted worker cap, the judge checks every prompt for faces and logos first.
@@ -177,6 +190,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     mcp,
     research,
     creative,
+    results,
     setup,
     ollama,
     backup,
@@ -226,10 +240,13 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const browserStatus = await browser.status();
   log.info(`  browser: ${browserStatus.chromium ? `${browserStatus.chromium} (${browserStatus.headless ? 'headless' : 'windowed'})` : 'not wired (no Chromium found; set browser.chromiumPath or CHROMIUM)'}`);
   log.info(`  mail: ${mailStatus.domain} · resend ${mailStatus.keys.resend ? 'key configured' : 'not wired (RESEND_API_KEY)'} · cloudflare ${mailStatus.keys.cloudflare ? 'token configured' : 'not wired (CLOUDFLARE_API_TOKEN)'} · webhook ${mailSys.keys.webhook ? 'secret configured' : 'not wired (RESEND_WEBHOOK_SECRET)'} · ${mailSys.addresses} address(es), ${mailSys.counts.messages} message(s), poll every ${mailSys.sync.pollMs / 1000}s`);
+  const resultsNow = results.summary();
+  log.info(`  results: ${resultsNow.lastRollup ? `last rollup ${new Date(resultsNow.lastRollup.at).toISOString()} (${resultsNow.lastRollup.reason})` : 'no rollup yet'} · sources: ${Object.entries(resultsNow.sources).filter(([, v]) => v).map(([k]) => k).join(', ') || 'ledgers only (no connector synced)'}`);
   log.info(`  reflection: daily at ${config.reflectAt || '07:00'}, next ${new Date(scheduler.state().reflection.nextRunAt).toISOString()}${reflect.latest() ? `, last ${reflect.latest().id} (${reflect.latest().status})` : ', none yet'}`);
   log.info(`  routing: worker=${policy.tiers.worker.provider}${policy.tiers.worker.model ? '/' + policy.tiers.worker.model : ''} judge=${judge.route.provider}/${judge.route.model || 'default'} (cap $${judge.caps.judgeUsdPerDay}/day, $${ledger.judgeToday().usd.toFixed(2)} used today)`);
 
   async function close() {
+    clearTimeout(rollupTimer);
     scheduler.stop();
     backup.close();
     workspace.stop();
@@ -239,6 +256,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     await connectors.close();
     await channels.close();
     await mcp.close();
+    await results.close();
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
@@ -248,7 +266,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const setupState = await setup.state();
   log.info(`  first run: ${setupState.firstRun ? 'yes (the park shows the first-run card)' : `done ${new Date(setupState.completedAt).toISOString()}${setupState.skipped ? ' (skipped)' : ''}`} · worker ${ollama.summary().worker}`);
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, setup, ollama, backup, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, results, setup, ollama, backup, close };
 }
 
 function validateConfig(data) {

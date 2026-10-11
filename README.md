@@ -325,6 +325,15 @@ and text; without a judge no image is made. Images count against the hosted work
 daily call cap. Both land in `outbox/creative/<venture>/` and are uploaded only through
 the ads tools, which wait at the Gate under publishing. The Peak lists them.
 
+Step 9, results: the Peak's table shows, per venture and for the park, revenue, orders,
+refunds, fees, ad spend, model spend by tier, contribution and model cost per order and
+payback, rolled up by day from the ledgers and the connector syncs only (a figure no
+source holds says "no data"), with hand-drawn sparklines. A venture owns a figure only
+through something its own Ranger created with a Maka tool (a campaign, a product, a
+listing, a refund). The reflection reads the rule verdicts (scale / hold / kill /
+no data, with the numbers) and a kill delegates the pauses to the venture's Rangers,
+through the Gate as usual. `GET /api/results`, "Roll up now" on the Peak.
+
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),
 so the camp card and a Ranger's mail.search show it.

@@ -75,6 +75,9 @@ export function createMetaAdsClient({ accessToken, adAccountId: account, pageId 
     },
     campaigns: () => client.listAll(`${act}/campaigns`, { fields: 'id,name,status,effective_status,objective,daily_budget,lifetime_budget,created_time,updated_time' }),
     insights: (preset = META_INSIGHTS_PRESET) => client.listAll(`${act}/insights`, { level: 'campaign', date_preset: preset, fields: 'campaign_id,campaign_name,spend,impressions,clicks,cpc,ctr,actions' }),
+    // Phase 4 step 9: the same window one row per campaign per day (time_increment 1), so
+    // the results engine can roll ad spend up by day instead of guessing from a 7-day total.
+    insightsDaily: (preset = META_INSIGHTS_PRESET) => client.listAll(`${act}/insights`, { level: 'campaign', date_preset: preset, time_increment: 1, fields: 'campaign_id,campaign_name,spend,impressions,clicks,actions,date_start,date_stop' }),
     createCampaign: (body) => call('POST', `${act}/campaigns`, { body }),
     updateCampaign: (id, body) => call('POST', id, { body }),
   };
@@ -84,10 +87,21 @@ export function createMetaAdsClient({ accessToken, adAccountId: account, pageId 
 
 const minorToMajor = (s) => (s === undefined || s === null || s === '' ? null : Number(s) / 100);
 const campaignRow = (c) => ({ id: c.id, name: c.name, status: c.status, effectiveStatus: c.effective_status || c.status, objective: c.objective || '', dailyBudget: minorToMajor(c.daily_budget), lifetimeBudget: minorToMajor(c.lifetime_budget), createdAt: c.created_time || null, updatedAt: c.updated_time || null });
+const dailyRow = (r) => ({ date: r.date_start || null, campaignId: r.campaign_id, campaignName: r.campaign_name, spend: Number(r.spend) || 0, impressions: Number(r.impressions) || 0, clicks: Number(r.clicks) || 0, results: (r.actions || []).map((a) => ({ type: a.action_type, value: Number(a.value) || 0 })) });
 const insightRow = (r) => ({ campaignId: r.campaign_id, campaignName: r.campaign_name, spend: Number(r.spend) || 0, impressions: Number(r.impressions) || 0, clicks: Number(r.clicks) || 0, cpc: r.cpc !== undefined ? Number(r.cpc) : null, ctr: r.ctr !== undefined ? Number(r.ctr) : null, results: (r.actions || []).map((a) => ({ type: a.action_type, value: Number(a.value) || 0 })) });
 
+// Keeps daily rows the platform no longer returns (older than the window) and replaces the
+// ones it does; bounded to the newest DAILY_KEEP rows. Shared with Google Ads.
+export const DAILY_KEEP = 4000;
+export function mergeDaily(previous, fresh, keyOf) {
+  const by = new Map();
+  for (const r of previous || []) if (r && r.date) by.set(keyOf(r), r);
+  for (const r of fresh || []) if (r && r.date) by.set(keyOf(r), r);
+  return [...by.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).slice(-DAILY_KEEP);
+}
+
 export function emptyMetaAdsData() {
-  return { account: null, campaigns: [], adsets: [], ads: [], creatives: [], insights: { preset: META_INSIGHTS_PRESET, rows: [] } };
+  return { account: null, campaigns: [], adsets: [], ads: [], creatives: [], insights: { preset: META_INSIGHTS_PRESET, rows: [], daily: [] } };
 }
 
 export function summarizeMetaAds(data) {
@@ -111,8 +125,10 @@ export function metaAdsSpec({ baseUrl = META_BASE_URL } = {}) {
     summarize: summarizeMetaAds,
     makeClient: ({ token, fetch: fetchImpl, env, config }) => createMetaAdsClient({ accessToken: token.accessToken, adAccountId: (config && config.adAccountId) || env.META_AD_ACCOUNT_ID, pageId: (config && config.pageId) || env.META_PAGE_ID || null, fetch: fetchImpl, baseUrl }),
     async sync({ client, data }) {
-      const [account, campaigns, insights, adsets, ads, creatives] = await Promise.all([client.accountInfo(), client.campaigns(), client.insights(), client.adsets(), client.ads(), client.creatives()]);
-      const next = { ...data, account: { id: account.id, name: account.name || '', currency: account.currency || '', status: account.account_status, amountSpent: minorToMajor(account.amount_spent), balance: minorToMajor(account.balance), timezone: account.timezone_name || '' }, campaigns: campaigns.map(campaignRow), adsets: adsets.map(adsetRow), ads: ads.map(adRow), creatives: creatives.map(creativeRow), insights: { preset: META_INSIGHTS_PRESET, rows: insights.map(insightRow) } };
+      const [account, campaigns, insights, daily, adsets, ads, creatives] = await Promise.all([client.accountInfo(), client.campaigns(), client.insights(), client.insightsDaily(), client.adsets(), client.ads(), client.creatives()]);
+      // Daily rows are kept across syncs (a sync sees the last 7 days only), newest window winning, bounded.
+      const dailyRows = mergeDaily(data.insights && data.insights.daily, daily.map(dailyRow), (r) => `${r.date}|${r.campaignId}`);
+      const next = { ...data, account: { id: account.id, name: account.name || '', currency: account.currency || '', status: account.account_status, amountSpent: minorToMajor(account.amount_spent), balance: minorToMajor(account.balance), timezone: account.timezone_name || '' }, campaigns: campaigns.map(campaignRow), adsets: adsets.map(adsetRow), ads: ads.map(adRow), creatives: creatives.map(creativeRow), insights: { preset: META_INSIGHTS_PRESET, rows: insights.map(insightRow), daily: dailyRows } };
       return { data: next, counts: { campaigns: next.campaigns.length, active: next.campaigns.filter((c) => c.effectiveStatus === 'ACTIVE').length, adsets: next.adsets.length, ads: next.ads.length, creatives: next.creatives.length, insightRows: next.insights.rows.length, spend7d: Number(next.insights.rows.reduce((n, r) => n + r.spend, 0).toFixed(2)) } };
     },
     tools: META_ADS_TOOLS,

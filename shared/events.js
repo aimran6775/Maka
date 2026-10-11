@@ -37,6 +37,14 @@ const usage = {
   properties: { inputTokens: int0, outputTokens: int0 },
 };
 
+const money = { type: ['number', 'null'] };
+// One day's figures for the park or a venture (phase 4 step 9). Nulls are "no data".
+const resultsRow = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { revenue: money, refunds: money, fees: money, adSpend: money, orders: { type: ['integer', 'null'], minimum: 0 }, modelSpend: num0, mailIn: int0, mailOut: int0, contributionPerOrder: money, modelCostPerOrder: money },
+};
+
 function payload(required, properties) {
   return { type: 'object', required, additionalProperties: false, properties };
 }
@@ -514,6 +522,17 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     messageId: str,
     error: str,
     ref: str,
+  }),
+  // Added v1 (phase 4 step 9): the results engine rolled a day up from real ledgers and
+  // connector syncs. Every money figure is a number only when a source proved it and null
+  // when no source has it ("no data", never zero). `proposals` are the Chief rules'
+  // scale / hold / kill / no_data verdicts with the numbers that drove them.
+  'results.rollup': payload(['day', 'reason', 'park', 'ventures'], {
+    day: nonEmpty,
+    reason: nonEmpty,
+    park: resultsRow,
+    ventures: { type: 'array', items: { type: 'object', required: ['id'], additionalProperties: false, properties: { id: nonEmpty, ...resultsRow.properties } } },
+    proposals: { type: 'array', items: { type: 'object', required: ['venture', 'verdict', 'because'], additionalProperties: false, properties: { venture: nonEmpty, verdict: { type: 'string', enum: ['scale', 'hold', 'kill', 'no_data'] }, because: { type: 'array', items: str } } } },
   }),
 });
 

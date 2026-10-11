@@ -12,6 +12,7 @@
 //   googleAdsSpec({ baseUrl, authorizeUrl, tokenUrl })  -> a connector spec (camp marketing)
 //   GOOGLE_ADS_TOOLS
 
+import { mergeDaily } from './meta-ads.js';
 import { GOOGLE_AD_GROUP_TOOLS, adGroupClientCalls, adGroupRow, adRow, assetRow, AD_GROUP_QUERY, AD_QUERY, ASSET_QUERY } from './google-ads-groups.js';
 
 export const GOOGLE_ADS_BASE_URL = 'https://googleads.googleapis.com/v18';
@@ -34,6 +35,8 @@ export const majorToMicros = (n) => Math.round(Number(n) * 1_000_000);
 
 export const CAMPAIGN_QUERY = "SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, campaign.start_date, campaign_budget.id, campaign_budget.resource_name, campaign_budget.amount_micros FROM campaign WHERE campaign.status != 'REMOVED' ORDER BY campaign.id";
 export const METRICS_QUERY = 'SELECT campaign.id, campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_7_DAYS';
+// Phase 4 step 9: the same window segmented by day for the results engine's daily rollups.
+export const METRICS_DAILY_QUERY = 'SELECT campaign.id, campaign.name, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_7_DAYS';
 export const CUSTOMER_QUERY = 'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer';
 
 export function createGoogleAdsClient({ accessToken, developerToken, customerId: cid, loginCustomerId = null, fetch: fetchImpl = globalThis.fetch, baseUrl = GOOGLE_ADS_BASE_URL } = {}) {
@@ -77,10 +80,11 @@ export function createGoogleAdsClient({ accessToken, developerToken, customerId:
 }
 
 const campaignRow = (r) => ({ id: String(r.campaign.id), name: r.campaign.name, status: r.campaign.status, channel: r.campaign.advertisingChannelType || '', startDate: r.campaign.startDate || null, budgetResource: r.campaignBudget ? r.campaignBudget.resourceName : null, budgetId: r.campaignBudget ? String(r.campaignBudget.id) : null, dailyBudget: r.campaignBudget ? microsToMajor(r.campaignBudget.amountMicros) : null });
+const dailyRow = (r) => ({ ...metricRow(r), date: r.segments && r.segments.date ? String(r.segments.date) : null });
 const metricRow = (r) => ({ campaignId: String(r.campaign.id), campaignName: r.campaign.name, cost: microsToMajor(r.metrics.costMicros) || 0, impressions: Number(r.metrics.impressions) || 0, clicks: Number(r.metrics.clicks) || 0, conversions: Number(r.metrics.conversions) || 0, conversionsValue: Number(r.metrics.conversionsValue) || 0 });
 
 export function emptyGoogleAdsData() {
-  return { customer: null, campaigns: [], adGroups: [], ads: [], assets: [], metrics: { range: 'LAST_7_DAYS', rows: [] } };
+  return { customer: null, campaigns: [], adGroups: [], ads: [], assets: [], metrics: { range: 'LAST_7_DAYS', rows: [], daily: [] } };
 }
 
 export function summarizeGoogleAds(data) {
@@ -104,9 +108,10 @@ export function googleAdsSpec({ baseUrl = GOOGLE_ADS_BASE_URL, authorizeUrl = GO
     summarize: summarizeGoogleAds,
     makeClient: async ({ token, fetch: fetchImpl, env, config, keys }) => createGoogleAdsClient({ accessToken: token.accessToken, developerToken: await keys.get('googleAdsDeveloperToken'), customerId: (config && config.customerId) || env.GOOGLE_ADS_CUSTOMER_ID, loginCustomerId: (config && config.loginCustomerId) || env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || null, fetch: fetchImpl, baseUrl }),
     async sync({ client, data }) {
-      const [customer, campaigns, metrics, adGroups, ads, assets] = await Promise.all([client.search(CUSTOMER_QUERY), client.search(CAMPAIGN_QUERY), client.search(METRICS_QUERY), client.search(AD_GROUP_QUERY), client.search(AD_QUERY), client.search(ASSET_QUERY)]);
+      const [customer, campaigns, metrics, daily, adGroups, ads, assets] = await Promise.all([client.search(CUSTOMER_QUERY), client.search(CAMPAIGN_QUERY), client.search(METRICS_QUERY), client.search(METRICS_DAILY_QUERY), client.search(AD_GROUP_QUERY), client.search(AD_QUERY), client.search(ASSET_QUERY)]);
       const c = customer[0] && customer[0].customer ? customer[0].customer : {};
-      const next = { ...data, customer: { id: String(c.id || client.customer), name: c.descriptiveName || '', currency: c.currencyCode || '', timezone: c.timeZone || '' }, campaigns: campaigns.map(campaignRow), adGroups: adGroups.map(adGroupRow), ads: ads.map(adRow), assets: assets.map(assetRow), metrics: { range: 'LAST_7_DAYS', rows: metrics.map(metricRow) } };
+      const dailyRows = mergeDaily(data.metrics && data.metrics.daily, daily.map(dailyRow).filter((r) => r.date), (r) => `${r.date}|${r.campaignId}`);
+      const next = { ...data, customer: { id: String(c.id || client.customer), name: c.descriptiveName || '', currency: c.currencyCode || '', timezone: c.timeZone || '' }, campaigns: campaigns.map(campaignRow), adGroups: adGroups.map(adGroupRow), ads: ads.map(adRow), assets: assets.map(assetRow), metrics: { range: 'LAST_7_DAYS', rows: metrics.map(metricRow), daily: dailyRows } };
       return { data: next, counts: { campaigns: next.campaigns.length, enabled: next.campaigns.filter((x) => x.status === 'ENABLED').length, adGroups: next.adGroups.length, ads: next.ads.length, assets: next.assets.length, metricRows: next.metrics.rows.length, cost7d: Number(next.metrics.rows.reduce((n, r) => n + r.cost, 0).toFixed(2)) } };
     },
     tools: GOOGLE_ADS_TOOLS,

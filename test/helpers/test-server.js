@@ -22,6 +22,7 @@ import { createNetGuard } from '../../sidecar/netguard.js';
 import { createConnectors } from '../../sidecar/connectors/registry.js';
 import { createResearch } from '../../sidecar/research/index.js';
 import { createCreative } from '../../sidecar/creative/index.js';
+import { createResults } from '../../sidecar/results.js';
 import { createChannels } from '../../sidecar/channels/registry.js';
 import { createMcpManager } from '../../sidecar/mcp/manager.js';
 import { createOllama } from '../../sidecar/ollama.js';
@@ -100,7 +101,9 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     Object.assign(registry, connectors.tools);
     toolContext.connectors = connectors;
   }
-  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, getConnectors: () => connectors, getMail: () => mailSystem, log: { error() {} } }).init();
+  // Phase 4 step 9: the results engine, always wired (ledgers only until a connector syncs).
+  const results = await createResults({ bus, store, agents, trails, chief, ledger, gateQueue, getConnectors: () => connectors, getMail: () => mailSystem, getLayout: layoutState.get, clock, log: { error() {} } }).init();
+  const reflect = await createReflect({ bus, store, runs, agents, trails, chief, ledger, gateQueue, router: createRouter(policy || defaultPolicy()), scheduler, makeProvider: judgeProvider || makeProvider, getLayout: layoutState.get, clock, workspaceRoot, env, keystorePath, getConnectors: () => connectors, getMail: () => mailSystem, getResults: () => results, log: { error() {} } }).init();
   await workspace.check();
   // `research`: endpoints for the fakes ({ braveBaseUrl, duckBaseUrl, wikiApi, wikiRest, hnApi });
   // absent → no research kit is wired.
@@ -156,6 +159,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     mcp,
     research,
     creative,
+    results,
     setup,
     ollama,
     backup,
@@ -196,6 +200,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     channels,
     mcp,
     research,
+    results,
     setup,
     ollama,
     backup,
@@ -271,6 +276,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
       if (connectors) await connectors.close();
       if (channels) await channels.close();
       if (mcp) await mcp.close();
+      await results.close();
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
       // A run record flushed by a follow-up that started during the cancel can land while the

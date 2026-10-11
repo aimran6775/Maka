@@ -32,6 +32,8 @@ export function initialState() {
     connectorEvents: [], // connector.sync / connector.error payloads this session, oldest first (bounded)
     research: null, // { search, searchKey, trends, judge } from the snapshot
     creative: null, // { images, imageKey, model, judge, hostedToday, hostedCap } from the snapshot (phase 4 step 8)
+    results: null, // the results engine's summary from the snapshot (phase 4 step 9); `latest` patched by results.rollup
+
     channels: null, // { adapters: [row per channel], pairing } from the snapshot; channel.connect patches rows (phase 4 step 1)
     channelEvents: [], // channel.inbound / channel.delivery payloads this session, oldest first (bounded)
     mcp: null, // MCP server rows from the snapshot (/api/mcp shape); mcp.server events patch status (phase 4 step 4)
@@ -111,6 +113,7 @@ export function applySnapshot(state, snap) {
   next.connectors = Array.isArray(snap.connectors) ? snap.connectors : [];
   next.research = snap.research || null;
   next.creative = snap.creative || null;
+  next.results = snap.results || null;
   next.channels = snap.channels || null;
   next.mcp = Array.isArray(snap.mcp) ? snap.mcp : null;
   next.setup = snap.setup || null;
@@ -360,6 +363,11 @@ export function applyEvent(state, event) {
       if (p.change === 'submitted') m.plan = { ...(m.plan || {}), id: p.planId, missionId: p.missionId, version: p.version, summary: p.summary || '', ventures: p.ventures || [], by: p.by, runId: p.runId, submittedAt: event.ts };
       next.mission = m;
       break;
+    }
+    case 'results.rollup': {
+      // The day's figures as the engine proved them; the full table is re-read from /api/results.
+      next.results = { ...(next.results || {}), latest: { day: p.day, reason: p.reason, at: event.ts, park: p.park, ventures: p.ventures, proposals: p.proposals || [] }, stale: true };
+      return next;
     }
     case 'reflection.posted': {
       const latest = { id: p.reflectionId, at: event.ts, reason: p.reason, status: p.status, skipReason: p.skipReason || null, missionId: p.missionId || null, model: p.model || null, usd: typeof p.usd === 'number' ? p.usd : null, portfolio: p.portfolio || '', ventures: p.ventures || [], briefings: p.briefings || [], path: p.path || null };
