@@ -1802,3 +1802,7 @@ gather now takes `rollup: false`: the same document from the same engine, comput
 memory, with nothing written and nothing emitted; the ask route and the owner channels use
 it. A reflection keeps the rollup, because its document is the one the Peak's table must
 match and the rows it writes are the record of that day.
+- 2026-10-11 owner: the remaining work (Mac build, live tests, connectors) moves to a local
+  Claude Code session on the owner's Mac; docs/MAC_HANDOFF.md is its brief and
+  scripts/mac-bootstrap.sh prepares the machine with everything on the LaCie (APFS/HFS+
+  required for the 0600 keystore).
