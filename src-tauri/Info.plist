@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Merged into the app's Info.plist by tauri-build. Voice (phase 4 step 14): the two
+       usage descriptions macOS shows when the park first listens. Audio never leaves the
+       device: recognition is on-device and the sidecar sees text only. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Maka listens while you hold the talk button, so you can ask the Peak or dictate a mission. Audio stays on this Mac.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Maka turns what you say into text on this Mac (on-device recognition). Only the text you confirm is used.</string>
+</dict>
+</plist>

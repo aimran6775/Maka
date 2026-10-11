@@ -1,7 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The one park window. The page it shows is served by the sidecar over loopback HTTP and talks to the sidecar only; it calls no Tauri command, so no IPC permission is granted beyond the core defaults for the splash page.",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "The one park window. The page it shows is served by the sidecar over loopback HTTP and talks to the sidecar for everything but voice: the shell's own voice commands (voice_status, voice_listen_start / stop, voice_speak, voice_stop_speaking; phase 4 step 14) are app commands, allowed to the page at the sidecar's loopback origin, and no plugin or core permission is granted beyond the defaults.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/*",
+      "http://localhost:*/*"
+    ]
+  }
 }

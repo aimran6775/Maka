@@ -61,6 +61,10 @@
 //   GET  /api/research         the Scout kit: search provider, trend sources, judge wired
 //   GET  /api/briefs           venture briefs from every Ranger's outbox, newest first
 //   GET  /api/creative         the creative kit: image model wired, judge, hosted calls today (phase 4 step 8)
+//   GET  /api/voice            voice: the recogniser outside the app (Hugging Face, HF_TOKEN) wired or not, the model, the hosted calls (phase 4 step 14)
+//   POST /api/voice/transcribe audio/* body (token and Origin checked, at most 10 MB) → { text, via, ms }: relayed to Hugging Face, never stored
+//   POST /api/voice/heard      { via, text, accepted, use } what the Superintendent did with a transcript → voice.transcript (the length, never the words)
+//   POST /api/peak/ask         { question } → the Chief answers from the recorded data (one tool-less run, judge spend) → { runId, answer, evidence }
 //   GET  /api/recipes          the recipe library (latest versions, grants); /api/recipes/:id the document (phase 4 step 12)
 //   POST /api/recipes          { ...recipe } saves a new recipe or the next version of one
 //   POST /api/recipes/:id/plan   { ventureId, params } what a run would do: receivers, problems, notes (nothing runs)
@@ -155,6 +159,10 @@ class HttpError extends Error {
 // outside and is guarded by its svix signature.
 export const TOKEN_HEADER = 'x-maka-token';
 export const TOKEN_EXEMPT_PATHS = Object.freeze(['/api/mail/resend/webhook']);
+// Mutating routes whose body is not JSON (phase 4 step 14: audio). The token and the Origin
+// are still checked; only the content-type rule is waived for them.
+export const RAW_BODY_PATHS = Object.freeze(['/api/voice/transcribe']);
+const RAW_BODY_LIMIT = 10 * 1024 * 1024;
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export function makeToken() {
@@ -169,7 +177,7 @@ function sameToken(given, expected) {
 }
 
 // Throws the HttpError that refuses a mutating request without its proofs.
-export function checkMutation(req, token) {
+export function checkMutation(req, token, { raw = false } = {}) {
   const headers = req.headers || {};
   const given = headers[TOKEN_HEADER];
   if (given === undefined || given === '') throw new HttpError(403, `this request changes the park and needs the ${TOKEN_HEADER} header with the token from GET /api/state`, 'TOKEN_REQUIRED');
@@ -185,8 +193,28 @@ export function checkMutation(req, token) {
     const host = String(headers.host || '').toLowerCase();
     if (!originHost || !host || originHost !== host) throw new HttpError(403, `the request's Origin (${origin}) is not this sidecar (${host || 'unknown host'})`, 'ORIGIN_MISMATCH');
   }
+  if (raw) return;
   const type = String(headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   if (type !== 'application/json') throw new HttpError(415, `mutating requests take application/json, got ${type || 'no content type'}`, 'JSON_REQUIRED');
+}
+
+// The raw bytes of a request body (audio), under a limit of its own.
+function readRawBody(req, limit = RAW_BODY_LIMIT) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new HttpError(413, `body too large (at most ${limit} bytes)`, 'TOO_LARGE'));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
 }
 
 // The fields POST /api/run accepts (safety M3); everything else in the body is dropped.
@@ -314,7 +342,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, scoutMemory = null, memory = null, recipes = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -351,7 +379,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     const p = url.pathname;
     const method = req.method;
     // Safety M4: nothing under /api changes without the token, a same-origin Origin and JSON.
-    if (p.startsWith('/api/') && !SAFE_METHODS.has(method) && !TOKEN_EXEMPT_PATHS.includes(p)) checkMutation(req, token);
+    if (p.startsWith('/api/') && !SAFE_METHODS.has(method) && !TOKEN_EXEMPT_PATHS.includes(p)) checkMutation(req, token, { raw: RAW_BODY_PATHS.includes(p) });
 
     if (p === '/api/events' && method === 'GET') {
       const last = Number(req.headers['last-event-id'] || url.searchParams.get('since') || 0) || 0;
@@ -397,6 +425,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         scoutMemory: scoutMemory ? scoutMemory.summary() : null,
         memory: memory ? memory.summary() : null,
         recipes: recipes ? recipes.summary() : null,
+        voice: voice ? await voice.status() : null,
         setup: setup ? await setup.state() : null,
         ollama: ollama ? ollama.summary() : null,
         backup: backup ? await backup.status() : null,
@@ -665,6 +694,28 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/briefs' && method === 'GET') {
       if (!research) throw new HttpError(404, 'no research kit');
       return sendJson(res, 200, await research.listBriefs({ limit: Number(url.searchParams.get('limit')) || 50 }));
+    }
+    if (p === '/api/voice' && method === 'GET') {
+      if (!voice) throw new HttpError(404, 'no voice');
+      return sendJson(res, 200, await voice.status());
+    }
+    if (p === '/api/voice/transcribe' && method === 'POST') {
+      if (!voice) throw new HttpError(404, 'no voice');
+      const bytes = await readRawBody(req);
+      return sendJson(res, 200, await rethrow(() => voice.transcribe({ bytes, contentType: req.headers['content-type'] || '' })));
+    }
+    if (p === '/api/voice/heard' && method === 'POST') {
+      if (!voice) throw new HttpError(404, 'no voice');
+      const body = await readJsonBody(req);
+      return sendJson(res, 200, await rethrow(() => voice.heard({ via: body.via, text: body.text, accepted: body.accepted, use: body.use || null })));
+    }
+    if (p === '/api/peak/ask' && method === 'POST') {
+      if (!chief || typeof chief.ask !== 'function') throw new HttpError(404, 'no Chief');
+      const body = await readJsonBody(req);
+      const context = reflect && typeof reflect.gather === 'function' ? await reflect.gather() : null;
+      const r = await rethrow(() => chief.ask({ question: body.question, context, by: 'superintendent' }));
+      const answered = await r.answer;
+      return sendJson(res, 200, { runId: r.runId, answer: answered && typeof answered === 'object' ? answered.text || answered.answer || '' : String(answered || ''), evidence: answered && typeof answered === 'object' ? answered.evidence || answered.refs || null : null });
     }
     if (p === '/api/recipes' && method === 'GET') {
       if (!recipes) throw new HttpError(404, 'no recipes');

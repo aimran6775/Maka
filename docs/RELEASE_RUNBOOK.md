@@ -119,6 +119,27 @@ sudo sysadminctl -deleteUser makasmoke                   # when done (removes th
 
 Record the outcome in the release notes; a failed expectation blocks the publish.
 
+### Voice (phase 4 step 14), on the Mac
+
+The shell's voice (`src-tauri/src/voice.rs`) is type-checked for Apple Silicon from Linux
+but the frameworks only run here. In the dev loop (`cargo tauri dev`) and once in the built
+app, verify:
+
+1. The first "hold to talk" shows the macOS dialogs for the microphone and for speech
+   recognition with Maka's two sentences (`src-tauri/Info.plist`); deny one and the bar
+   says which setting to change (System Settings → Privacy & Security).
+2. With both allowed, holding the button and speaking fills the transcript box on release,
+   with Wi-Fi off (recognition is on-device; `voice_status` reports `on_device: true`). A
+   locale the Mac cannot recognise on the device makes `voice_status` say so and listening
+   is refused rather than sent off the device.
+3. `voice: on` then approve or raise a Gate item: the sentence is spoken by the system
+   en-US voice; `voice: off` cuts it mid-sentence.
+4. The page is served from `http://127.0.0.1:<port>`: the capability's remote origin
+   (`src-tauri/capabilities/default.json`) must let `window.__TAURI__.core.invoke('voice_status')`
+   succeed from the park page; if Tauri refuses the pattern, the bar falls back to the
+   browser path and says so, and the pattern needs adjusting.
+5. Record the outcome in the release notes; a failed expectation blocks the publish.
+
 ## 5. Publish to makapark.com
 
 The site is static: `dist/site/` is the whole thing. Cloudflare Pages (the domain is on

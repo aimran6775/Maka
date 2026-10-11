@@ -794,6 +794,11 @@ export function createInspect({ parent, getState, api, x, y, w }) {
   }
 
   return {
+    // Phase 4 step 14: a dictated mission lands in the form; the Superintendent still clicks "Brief the Chief".
+    setMissionDraft(text) {
+      missionText.value = String(text || '');
+      this.select({ type: 'peak' });
+    },
     select(info) {
       selection = info;
       selectionRefresh = () => this.render();

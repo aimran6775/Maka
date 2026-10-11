@@ -28,6 +28,14 @@ serde_json = "=1.0.152"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "=3.7.0"
+# Voice (phase 4 step 14): the Speech framework (on-device recognition) and AVFAudio
+# (AVAudioEngine for the microphone, AVSpeechSynthesizer for the station voice) through the
+# objc2 bindings, so the shell stays Rust and this crate still type-checks from Linux.
+objc2 = "=0.6.5"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString", "NSError", "NSObject"] }
+objc2-speech = { version = "=0.3.2", default-features = false, features = ["std", "SFSpeechRecognizer", "SFSpeechRecognitionRequest", "SFSpeechRecognitionResult", "SFSpeechRecognitionTask", "SFTranscription", "block2", "objc2-avf-audio"] }
+objc2-avf-audio = { version = "=0.3.2", default-features = false, features = ["std", "AVAudioEngine", "AVAudioNode", "AVAudioIONode", "AVAudioBuffer", "AVAudioFormat", "AVAudioTime", "AVAudioTypes", "AVSpeechSynthesis", "block2"] }
+block2 = "=0.6.2"
 
 [profile.release]
 codegen-units = 1

@@ -44,6 +44,7 @@ import { createResults } from './results.js';
 import { createScoutMemory } from './scout-memory.js';
 import { createMemory } from './memory/index.js';
 import { createRecipes } from './recipes/index.js';
+import { createVoice } from './voice.js';
 import { createChannels } from './channels/registry.js';
 import { createTelegramAdapter } from './channels/telegram.js';
 import { createDiscordAdapter } from './channels/discord.js';
@@ -163,6 +164,9 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const creative = createCreative({ env, keystorePath, netGuard, judge, ledger, caps: router.caps(), bus, workspaceRoot, config: config.creative || {}, log });
   // Phase 4 step 4: MCP servers configured at the Peak; their tools reach Rangers through
   // Outposts. HTTP servers go through the outbound guard like every other network path.
+  // Phase 4 step 14: voice. Recognition happens in the shell (on device) or, outside it, in
+  // the browser with the sidecar relaying audio to Hugging Face; the sidecar keeps text only.
+  const voice = createVoice({ env, keystorePath, netGuard, ledger, caps: router.caps(), bus, model: config.voice && config.voice.asrModel, log });
   const mcp = await createMcpManager({ bus, store, gateQueue, env, keystorePath, netGuard, registry, getLayout: layoutState.get, oauthPort: (config.connectors && config.connectors.oauthPort) || undefined, log }).init();
   toolContext.mcp = mcp;
   layoutState.setObjectCheck((o) => mcp.checkPlacement(o));
@@ -212,6 +216,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     scoutMemory,
     memory,
     recipes,
+    voice,
     setup,
     ollama,
     backup,
@@ -263,6 +268,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   log.info(`  mail: ${mailStatus.domain} · resend ${mailStatus.keys.resend ? 'key configured' : 'not wired (RESEND_API_KEY)'} · cloudflare ${mailStatus.keys.cloudflare ? 'token configured' : 'not wired (CLOUDFLARE_API_TOKEN)'} · webhook ${mailSys.keys.webhook ? 'secret configured' : 'not wired (RESEND_WEBHOOK_SECRET)'} · ${mailSys.addresses} address(es), ${mailSys.counts.messages} message(s), poll every ${mailSys.sync.pollMs / 1000}s`);
   const resultsNow = results.summary();
   log.info(`  results: ${resultsNow.lastRollup ? `last rollup ${new Date(resultsNow.lastRollup.at).toISOString()} (${resultsNow.lastRollup.reason})` : 'no rollup yet'} · sources: ${Object.entries(resultsNow.sources).filter(([, v]) => v).map(([k]) => k).join(', ') || 'ledgers only (no connector synced)'}`);
+  const voiceStatus = await voice.status();
+  log.info(`  voice: recognition outside the app via ${voiceStatus.asr}${voiceStatus.asrKey ? ` (${voiceStatus.model})` : ''} · in the app: ${voiceStatus.shell}`);
   const rec = recipes.summary();
   log.info(`  recipes: ${rec.recipes} recipe(s), ${rec.skills} skill(s), ${rec.grants} grant(s) · runs: ${rec.runs.running} running, ${rec.runs.done} done, ${rec.runs.failed} failed`);
   const mem = memory.summary();
@@ -293,11 +300,11 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const setupState = await setup.state();
   log.info(`  first run: ${setupState.firstRun ? 'yes (the park shows the first-run card)' : `done ${new Date(setupState.completedAt).toISOString()}${setupState.skipped ? ' (skipped)' : ''}`} · worker ${ollama.summary().worker}`);
 
-  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, results, scoutMemory, memory, recipes, setup, ollama, backup, close };
+  return { server, url, port: addr.port, home, workspaceRoot, bus, store, runs, layoutState, leashState, ledger, gateQueue, agents, trails, chief, scheduler, reflect, away, mailSetup, mail, browser, connectors, channels, mcp, research, results, scoutMemory, memory, recipes, voice, setup, ollama, backup, close };
 }
 
 function validateConfig(data) {
-  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } }, backup: { type: 'object', additionalProperties: false, properties: { enabled: { type: 'boolean' }, at: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, bucket: { type: 'string', minLength: 3 }, prefix: { type: 'string', minLength: 1 } } }, creative: { type: 'object', additionalProperties: false, properties: { imageModel: { type: 'string', minLength: 1 } } }, connectors: { type: 'object', additionalProperties: true, properties: { syncEveryMs: { type: 'integer', minimum: 60000 }, oauthPort: { type: 'integer', minimum: 0, maximum: 65535 }, shopify: { type: 'object', additionalProperties: false, properties: { shop: { type: 'string', minLength: 1 } } }, meta_ads: { type: 'object', additionalProperties: false, properties: { adAccountId: { type: 'string', minLength: 1 }, pageId: { type: 'string', minLength: 1 } } }, google_ads: { type: 'object', additionalProperties: false, properties: { customerId: { type: 'string', minLength: 1 }, loginCustomerId: { type: 'string', minLength: 1 } } } } } } }, data);
+  return validate({ type: 'object', additionalProperties: false, properties: { workspaceRoot: { type: 'string', minLength: 1 }, maxConcurrentRuns: { type: 'integer', minimum: 1 }, reflectAt: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, mailDomain: { type: 'string', minLength: 1 }, resendRegion: { type: 'string', minLength: 1 }, mailPollMs: { type: 'integer', minimum: 5000 }, mailCeilings: { type: 'object', additionalProperties: false, properties: { perAgentPerHour: { type: 'integer', minimum: 0 }, perStationPerHour: { type: 'integer', minimum: 0 }, campaignRecipientsPerHour: { type: 'integer', minimum: 0 } } }, browser: { type: 'object', additionalProperties: false, properties: { chromiumPath: { type: 'string', minLength: 1 }, headless: { type: 'boolean' } } }, backup: { type: 'object', additionalProperties: false, properties: { enabled: { type: 'boolean' }, at: { type: 'string', pattern: '^\\d{1,2}:\\d{2}$' }, bucket: { type: 'string', minLength: 3 }, prefix: { type: 'string', minLength: 1 } } }, creative: { type: 'object', additionalProperties: false, properties: { imageModel: { type: 'string', minLength: 1 } } }, voice: { type: 'object', additionalProperties: false, properties: { asrModel: { type: 'string', minLength: 1 } } }, connectors: { type: 'object', additionalProperties: true, properties: { syncEveryMs: { type: 'integer', minimum: 60000 }, oauthPort: { type: 'integer', minimum: 0, maximum: 65535 }, shopify: { type: 'object', additionalProperties: false, properties: { shop: { type: 'string', minLength: 1 } } }, meta_ads: { type: 'object', additionalProperties: false, properties: { adAccountId: { type: 'string', minLength: 1 }, pageId: { type: 'string', minLength: 1 } } }, google_ads: { type: 'object', additionalProperties: false, properties: { customerId: { type: 'string', minLength: 1 }, loginCustomerId: { type: 'string', minLength: 1 } } } } } } }, data);
 }
 
 async function loadOrDefault(file, validateFn, defaultFn, log, label) {

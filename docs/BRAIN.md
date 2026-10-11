@@ -208,6 +208,23 @@ third approval, and the results engine attributes the listing to the venture thr
 Ranger's own write. `test/listing-pipeline.test.js` runs the whole chain against the fake
 Etsy, the fake Hugging Face and a fake judge; the phase 4 demo (step 20) walks it.
 
+Part E step 14 done: voice. In the park a "hold to talk" button records while held. Inside
+the macOS app the shell recognises on the device (`src-tauri/src/voice.rs`: macOS Speech
+through the objc2 bindings, an on-device `SFSpeechAudioBufferRecognitionRequest` fed by an
+`AVAudioEngine` tap, exposed as Tauri commands the park page may call from the sidecar's
+loopback origin); outside the app the browser records with MediaRecorder and the sidecar
+relays the audio to Hugging Face's recogniser (`sidecar/voice.js`) with the bearer
+`HF_TOKEN`, counted as a hosted call, kept nowhere. Either way the transcript is shown in an
+editable box first and nothing acts on it until the Superintendent clicks "Ask the Peak"
+(a tool-less Chief run through `POST /api/peak/ask`, the answer shown with its run id) or
+"Use as the mission text" (into the Peak's form; Brief is still a click). One station voice
+speaks through the shell's AVSpeechSynthesizer or the Web Speech API when switched on: Gate
+items as they arrive, reflections, browser handoffs, finished recipes and the Peak's
+answers, each a sentence built from the event alone (`frontend/ui/voice.js`). The sidecar
+sees text only, the event carries a length and never the words (D145). What the Mac must
+verify (the microphone and recognition permissions, on-device availability, the capability's
+remote origin) is in the runbook; the Rust type-checks for Apple Silicon from here.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

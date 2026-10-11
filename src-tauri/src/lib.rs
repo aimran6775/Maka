@@ -15,6 +15,8 @@ pub mod credentials;
 pub mod local_http;
 pub mod sidecar;
 pub mod tray;
+pub mod voice;
+pub mod voice_text;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -50,6 +52,9 @@ pub fn run() {
     let shell: ShellState = Arc::new(Shell::default());
     tauri::Builder::default()
         .manage(shell.clone())
+        // Voice (phase 4 step 14): the park page's push-to-talk and the station voice.
+        .manage(voice::VoiceState::default())
+        .invoke_handler(tauri::generate_handler![voice::voice_status, voice::voice_listen_start, voice::voice_listen_stop, voice::voice_speak, voice::voice_stop_speaking])
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .setup(move |app| {
             // The updater is registered only when the build carried an updater config

@@ -135,3 +135,9 @@ table.results td.verdict.kill { color: var(--error); }
 table.results td.verdict.scale { color: var(--ok); }
 svg.spark { display: block; color: var(--muted); }
 svg.spark .spark-empty { font-size: 9px; fill: var(--muted); }
+
+/* Phase 4 step 14: the voice bar (hold to talk, the station voice) and the transcript box. */
+.voice-bar { position: fixed; left: 16px; bottom: 44px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; max-width: 60vw; z-index: 5; }
+.voice-bar .voice-talk.active { background: var(--warn); color: #000; }
+.voice-box { flex-basis: 100%; }
+.voice-box textarea { width: 100%; }

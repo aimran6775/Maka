@@ -362,6 +362,13 @@ product sheet and the copy (judge-reviewed), the Ads Ranger makes the image (jud
 the draft listing, the price and the activation each wait at the Gate; approve the third and
 the listing is live. The Park Store now grants `creative.copy`.
 
+Step 14, voice: hold the "hold to talk" button at the bottom left. In the app, macOS
+recognises your words on the device; in a browser, it records and the sidecar relays the
+audio to Hugging Face (`HF_TOKEN`). The transcript appears first: edit it, then "Ask the
+Peak" (the Chief answers from the recorded data) or "Use as the mission text" (into the
+Peak's form). Switch "voice: on" and the park says Gate items and the Peak's answers aloud
+(AVSpeechSynthesizer in the app, the browser's own voice elsewhere).
+
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),
 so the camp card and a Ranger's mail.search show it.

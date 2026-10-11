@@ -1422,3 +1422,27 @@ Superintendent sees is the summary ("set listing N's price to 25.00"), and the c
 money_in counts an action, not a sum. The pipeline is a recipe and nothing more: every
 platform write is the tool's own leash at the Gate, the listing is created as a draft and
 activated only by a third, separate approval.
+
+## D145. Voice: on-device in the app, a keyed relay outside it, a transcript confirmed before anything acts, no words in the record
+
+The brief asks for push-to-talk through the shell with macOS Speech, the browser's
+recorder with Hugging Face as the fallback, one station voice, "the sidecar only sees
+text", and transcripts shown before they are sent. In the app the shell recognises on the
+device and refuses to listen when the locale cannot be recognised on-device, so no audio
+ever leaves the Mac from the app; the shell is reached through its own Tauri commands
+(the capability allows the sidecar's loopback origin to call them and nothing else), not
+through the sidecar. Outside the app the sidecar is the only place with the Hugging Face
+key, so it relays the browser's recording to the recogniser; "sees text only" is kept in
+the strict sense that nothing of the audio is written, logged or held past the request,
+the relay is one guarded request counted as a hosted call under the same daily cap as an
+image, and without `HF_TOKEN` the button says not wired rather than recording for nothing.
+The transcript is never acted on by itself: it appears in an editable box, "Ask the Peak"
+runs the Chief's tool-less question route, "Use as the mission text" fills the form the
+Superintendent still submits by hand, and the record of what happened is a `voice.transcript`
+event carrying where the words were recognised, how many characters and what they were
+used for, never the words, which are the Superintendent's own. The station voice says only
+sentences built from events (a Gate item, a reflection, a handoff, a finished recipe, an
+answer): nothing it says is a claim the harness did not prove. The frameworks are reached
+from Rust through the objc2 bindings rather than Swift so that the code is type-checked for
+Apple Silicon from this Linux environment; the microphone and the recogniser themselves are
+on the Mac's list in the runbook.

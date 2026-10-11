@@ -273,6 +273,18 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   deliverables: 4 }`. Reject the last card instead: the listing stays a draft and the run
   fails with the step named.
 
+## 15i. Voice (phase 4)
+
+- In a browser with `HF_TOKEN` set: the voice bar says "the browser records, Hugging Face
+  recognises". Hold the button, say "what did the Scout find this week", release: a
+  `voice.transcript { via: 'huggingface' }` event with the length, the transcript in the
+  box, nothing else. Click "Ask the Peak": `agent.run.start` for the Chief with `tools:
+  []`, the answer with its run id in the box; `voice.transcript { accepted: true, use: 'ask' }`.
+  Without `HF_TOKEN` the button is disabled and the bar says not wired.
+- In the app (the Mac): the bar says "macOS Speech in the app"; the first hold asks for the
+  microphone and speech recognition permissions; the second recognises on the device (no
+  network while listening). Switch "voice: on": a Gate card arriving is spoken once.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the

@@ -26,6 +26,7 @@ import { createResults } from '../../sidecar/results.js';
 import { createScoutMemory } from '../../sidecar/scout-memory.js';
 import { createMemory } from '../../sidecar/memory/index.js';
 import { createRecipes } from '../../sidecar/recipes/index.js';
+import { createVoice } from '../../sidecar/voice.js';
 import { createChannels } from '../../sidecar/channels/registry.js';
 import { createMcpManager } from '../../sidecar/mcp/manager.js';
 import { createOllama } from '../../sidecar/ollama.js';
@@ -50,7 +51,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 // `netGuard`: the outbound URL guard the tools and the browser use (sidecar/netguard.js).
 // The fakes every suite talks to listen on 127.0.0.1, so the default here turns the guard
 // off; a test of the guard itself passes a strict one. The sidecar never turns it off.
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, recipes: recipeOpts = null, keys = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, recipes: recipeOpts = null, keys = null, voice: voiceOpts = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -142,6 +143,8 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   const ollama = ollamaUrl ? createOllama({ env: { ...env, OLLAMA_HOST: ollamaUrl }, bus, clock, log: { error() {} } }) : null;
   const restartCalls = [];
   const setup = setupOpts ? await createSetup({ home, workspaceRoot, env, keystorePath, bus, ollama, chief, agents, providerStatus: () => providerStatus({ env, keystorePath, fetch: localFetch, probeLocal: false }), restart: setupOpts.restart || (() => restartCalls.push(clock ? clock.now() : Date.now())), fetch: globalThis.fetch, fs: setupOpts.fs, platform: setupOpts.platform, clock, verifyUrls: setupOpts.verifyUrls, log: { error() {} } }).init() : null;
+  // `voice`: { hfAsrBaseUrl, model } points the relay at a fake recogniser; absent → the real endpoint (no key in tests: "not wired").
+  const voice = createVoice({ env, keystorePath, netGuard, ledger, caps: createRouter(policy || defaultPolicy()).caps(), bus, clock, baseUrl: voiceOpts ? voiceOpts.hfAsrBaseUrl : undefined, model: voiceOpts ? voiceOpts.model : null, log: { error() {} } });
   // `mcp`: { oauthPort } wires the MCP manager (servers are added through the routes / the Gate).
   const mcp = mcpOpts ? await createMcpManager({ bus, store, gateQueue, env, keystorePath, netGuard, registry, getLayout: layoutState.get, clock, fetch: globalThis.fetch, oauthPort: mcpOpts.oauthPort, log: { error() {}, warn() {} } }).init() : null;
   if (mcp) {
@@ -181,6 +184,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     scoutMemory,
     memory,
     recipes,
+    voice,
     setup,
     ollama,
     backup,
@@ -225,6 +229,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
     scoutMemory,
     memory,
     recipes,
+    voice,
     setup,
     ollama,
     backup,

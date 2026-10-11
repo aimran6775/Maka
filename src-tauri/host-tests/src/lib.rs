@@ -7,3 +7,5 @@ pub mod credentials;
 pub mod broker;
 #[path = "../../src/local_http.rs"]
 pub mod local_http;
+#[path = "../../src/voice_text.rs"]
+pub mod voice_text;

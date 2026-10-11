@@ -9,6 +9,7 @@ import { createBuild } from './ui/build.js';
 import { createPermission } from './ui/permission.js';
 import { createInspect } from './ui/inspect.js';
 import { createFirstRun } from './ui/firstrun.js';
+import { createVoice } from './ui/voice.js';
 import { el, setChildren } from './ui/windows.js';
 import { tileToWorld, TILE_WORLD } from './park/placement.js';
 
@@ -50,6 +51,18 @@ const api = {
     if (res.status === 403 && parsed && (parsed.code === 'TOKEN_INVALID' || parsed.code === 'TOKEN_REQUIRED') && !retried) {
       apiToken = null;
       return api.post(path, body, { retried: true });
+    }
+    return { ok: res.ok, status: res.status, body: parsed };
+  },
+  // A non-JSON body (phase 4 step 14: audio for the recogniser) with the same token.
+  async raw(path, body, contentType) {
+    if (!apiToken) await loadToken();
+    const res = await fetch(path, { method: 'POST', headers: { 'content-type': contentType, 'x-maka-token': apiToken || '' }, body });
+    let parsed = {};
+    try {
+      parsed = await res.json();
+    } catch {
+      /* no body */
     }
     return { ok: res.ok, status: res.status, body: parsed };
   },
@@ -99,6 +112,9 @@ const build = createBuild({ parent: ui, getState, world: { setBuild() { render()
 const permission = createPermission({ parent: ui, getState, api });
 const inspect = createInspect({ parent: ui, getState, api, x: window.innerWidth - 300, y: 420, w: 270 });
 const firstRun = createFirstRun({ parent: ui, getState, api, onRefresh: () => render() });
+// Voice (phase 4 step 14): hold to talk, the transcript shown before anything acts on it,
+// the station voice for Gate items and the Peak's answers when switched on.
+const voice = createVoice({ parent: ui, getState, api, onMission: (text) => { inspect.setMissionDraft(text); } });
 
 // Camera and park controls (a small bar under the status line).
 const cameraBar = el('div', { class: 'camera-bar' });
@@ -195,7 +211,10 @@ async function main() {
   setState(applySnapshot(state, snap));
   connectEvents({
     since: snap.seq || 0,
-    onEvent: (event) => setState(applyEvent(state, event)),
+    onEvent: (event) => {
+      setState(applyEvent(state, event));
+      voice.onEvent(event);
+    },
     onStatus: async (connected) => {
       setState({ ...state, connected });
       if (connected) {

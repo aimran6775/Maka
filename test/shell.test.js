@@ -31,9 +31,17 @@ test('tauri.conf.json: valid JSON, the version comes from package.json, every re
   assert.equal(release.bundle.createUpdaterArtifacts, true);
   const cap = JSON.parse(await read('capabilities/default.json'));
   assert.deepEqual(cap.windows, ['main']);
-  assert.deepEqual(cap.permissions, ['core:default'], 'the park page calls no Tauri command');
+  assert.deepEqual(cap.permissions, ['core:default'], 'no plugin or core permission beyond the defaults; the voice commands are app commands');
   const ent = await read('Entitlements.plist');
   for (const key of ['allow-jit', 'allow-unsigned-executable-memory']) assert.match(ent, new RegExp(`com.apple.security.cs.${key}`), `V8 needs ${key}`);
+  // Phase 4 step 14: the park page (served by the sidecar over loopback) may call the shell's voice commands.
+  assert.deepEqual(cap.remote, { urls: ['http://127.0.0.1:*/*', 'http://localhost:*/*'] });
+  assert.equal(JSON.parse(await read('tauri.conf.json')).app.withGlobalTauri, true, 'the page reaches invoke through window.__TAURI__');
+  const info = await read('Info.plist');
+  for (const key of ['NSMicrophoneUsageDescription', 'NSSpeechRecognitionUsageDescription']) assert.match(info, new RegExp(key), `voice needs ${key}`);
+  assert.match(ent, /com\.apple\.security\.device\.audio-input/, 'the hardened runtime needs the microphone entitlement');
+  const lib = await read('src/lib.rs');
+  for (const cmd of ['voice_status', 'voice_listen_start', 'voice_listen_stop', 'voice_speak', 'voice_stop_speaking']) assert.match(lib, new RegExp(`voice::${cmd}`), `${cmd} is registered`);
 });
 
 test('Cargo.toml pins every crate exactly and the sidecar stays dependency-free', async () => {

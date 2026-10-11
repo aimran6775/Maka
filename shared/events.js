@@ -523,6 +523,19 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     error: str,
     ref: str,
   }),
+  // Added v1 (phase 4 step 14): a transcript was made or handled. `via` says where the words
+  // were recognised (the shell's on-device recogniser, Hugging Face through the sidecar's
+  // relay, the browser itself); `chars` is the length, never the text; `accepted` is true
+  // only when the Superintendent used it, `use` says as what (ask / mission).
+  'voice.transcript': payload(['via', 'chars', 'accepted'], {
+    via: { type: 'string', enum: ['shell', 'huggingface', 'browser'] },
+    chars: int0,
+    accepted: bool,
+    use: { type: 'string', enum: ['ask', 'mission'] },
+    bytes: int0,
+    ms: int0,
+    model: str,
+  }),
   // Added v1 (phase 4 step 12): a recipe run: started, a step delegated as a work item,
   // done (the success check passed), failed (a step failed, a delegation was refused, the
   // check failed, a restart) or refused before it began (not granted, no Ranger of the

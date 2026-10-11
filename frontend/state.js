@@ -32,6 +32,7 @@ export function initialState() {
     connectorEvents: [], // connector.sync / connector.error payloads this session, oldest first (bounded)
     research: null, // { search, searchKey, trends, judge } from the snapshot
     creative: null, // { images, imageKey, model, judge, hostedToday, hostedCap } from the snapshot (phase 4 step 8)
+    voice: null, // { asr, asrKey, model, hostedToday, hostedCap } from the snapshot (phase 4 step 14)
     recipes: null, // the recipe library's counts and recent runs from the snapshot (phase 4 step 12); `stale` after recipe.run
     memory: null, // Ranger memory counts from the snapshot (phase 4 step 11); `stale` after a memory.* event
     scoutMemory: null, // the Scout's memory summary from the snapshot (phase 4 step 10); `stale` after scout.brief
@@ -120,6 +121,7 @@ export function applySnapshot(state, snap) {
   next.scoutMemory = snap.scoutMemory || null;
   next.memory = snap.memory || null;
   next.recipes = snap.recipes || null;
+  next.voice = snap.voice || null;
   next.channels = snap.channels || null;
   next.mcp = Array.isArray(snap.mcp) ? snap.mcp : null;
   next.setup = snap.setup || null;
