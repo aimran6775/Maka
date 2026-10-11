@@ -140,6 +140,26 @@ app, verify:
    browser path and says so, and the pattern needs adjusting.
 5. Record the outcome in the release notes; a failed expectation blocks the publish.
 
+### Renderer (phase 4 step 15), on the Mac
+
+Headless Chromium on Linux cannot present WebGPU to a canvas, so the WebGPU path is verified
+here only up to its first frame and the fallback after it. In the dev loop and once in the
+built app, verify:
+
+1. In the app's webview the status line says `park: webgpu` when the Mac's WebKit offers
+   WebGPU (macOS 26 and later), else `park: webgl2 (…)` with the reason; either is
+   acceptable, a wrong or missing word is not.
+2. With the backtick key the overlay shows draw calls above zero and frame medians on both
+   renderers (`?renderer=webgl2` forces the other); record the median between frames on the
+   default park and on `?density=3` with a crew of ten. The 60 fps target holds when the
+   default park's median is at or under 16.7 ms; a miss goes into the release notes with
+   the numbers.
+3. Orbit out until trees turn flat-shaded and lose their shadows, then further until they
+   disappear into the fog; Rangers far away keep standing where they stand.
+4. `node scripts/park-check.mjs` and `--webgpu` pass against the dev sidecar on the Mac
+   (Chrome's WebGPU, not SwiftShader); `--webgpu` should print `webgpu drew the park OK`.
+5. Record the outcome in the release notes.
+
 ## 5. Publish to makapark.com
 
 The site is static: `dist/site/` is the whole thing. Cloudflare Pages (the domain is on

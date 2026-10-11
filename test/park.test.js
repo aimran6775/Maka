@@ -265,3 +265,191 @@ test('phase 4 step 3 lamps: a Peak tower shows one lamp per owner channel from c
   assert.deepEqual(lampsFor(null), []);
   assert.deepEqual(lampsFor({}), []);
 });
+
+test('phase 4 step 15 lod: distance levels for foliage and crew, the buckets, the rebucket rule, lod off keeps everything near', async () => {
+  const { LOD, foliageLevel, bucketFoliage, crewLod, shouldRebucket, cellSizeFor } = await import('../frontend/park/lod.js');
+  assert.equal(foliageLevel(0), 0);
+  assert.equal(foliageLevel(LOD.foliageNear - 0.01), 0);
+  assert.equal(foliageLevel(LOD.foliageNear), 1);
+  assert.equal(foliageLevel(LOD.foliageFar - 0.01), 1);
+  assert.equal(foliageLevel(LOD.foliageFar), 2);
+  assert.equal(foliageLevel(5000, { enabled: false }), 0);
+  const items = [{ x: 0, y: 0, z: 0 }, { x: 100, y: 0, z: 0 }, { x: 0, y: 0, z: 400 }, { x: 10, y: 0, z: 10 }];
+  const cam = { x: 0, y: 0, z: 0 };
+  const b = bucketFoliage(items, cam);
+  assert.deepEqual([...b.levels], [0, 1, 2, 0]);
+  assert.deepEqual(b.counts, [2, 1, 1]);
+  assert.deepEqual(bucketFoliage(items, cam, { enabled: false }).counts, [4, 0, 0]);
+  // Height counts: an item 100 below a camera straight above it is far, not near.
+  assert.equal(bucketFoliage([{ x: 0, y: 0, z: 0 }], { x: 0, y: 100, z: 0 }).levels[0], 1);
+  assert.deepEqual(crewLod(1), { level: 0, mixerEvery: 1, label: true, badge: true, shadow: true });
+  assert.deepEqual(crewLod(LOD.crewNear), { level: 1, mixerEvery: 2, label: false, badge: true, shadow: true });
+  assert.deepEqual(crewLod(LOD.crewFar), { level: 2, mixerEvery: 4, label: false, badge: false, shadow: false });
+  assert.equal(crewLod(999, { enabled: false }).level, 0);
+  assert.equal(shouldRebucket(null, cam, 0), true);
+  assert.equal(shouldRebucket({ x: 0, y: 0, z: 0, at: 0 }, { x: 1, y: 0, z: 0 }, 10), false);
+  assert.equal(shouldRebucket({ x: 0, y: 0, z: 0, at: 0 }, { x: LOD.rebucketMove + 0.1, y: 0, z: 0 }, 10), true);
+  assert.equal(shouldRebucket({ x: 0, y: 0, z: 0, at: 0 }, { x: 0, y: 0, z: 0 }, LOD.rebucketMs), true);
+  assert.equal(cellSizeFor(new Float32Array([0, 0, 0, 12, 3, 6]), 6), 2);
+  assert.equal(cellSizeFor(new Float32Array([1, 1, 1, 1, 1, 1]), 6), 1, 'a flat model gets a cell of one');
+  assert.equal(cellSizeFor(new Float32Array(0)), 1);
+});
+
+test('phase 4 step 15 lod: vertex clustering decimates a mesh, drops collapsed and duplicate faces, stays inside the model, is deterministic', async () => {
+  const { clusterDecimate, cellSizeFor } = await import('../frontend/park/lod.js');
+  // A 10 × 10 grid of quads (200 triangles) over [0, 10]², indexed.
+  const n = 11;
+  const positions = new Float32Array(n * n * 3);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) positions.set([i, Math.sin(i) * 0.2, j], (j * n + i) * 3);
+  const index = [];
+  for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
+    const a = j * n + i;
+    index.push(a, a + 1, a + n, a + 1, a + n + 1, a + n);
+  }
+  const d = clusterDecimate({ positions, index: Uint32Array.from(index) }, cellSizeFor(positions, 4));
+  assert.equal(d.trianglesBefore, 200);
+  assert.ok(d.trianglesAfter > 4 && d.trianglesAfter < 200, `decimated to ${d.trianglesAfter}`);
+  assert.equal(d.index.length, d.trianglesAfter * 3);
+  assert.equal(d.positions.length, d.vertices * 3);
+  for (let t = 0; t < d.trianglesAfter; t++) {
+    const [a, b, c] = [d.index[t * 3], d.index[t * 3 + 1], d.index[t * 3 + 2]];
+    assert.ok(a !== b && b !== c && a !== c, 'no collapsed face');
+    assert.ok(a < d.vertices && b < d.vertices && c < d.vertices);
+  }
+  for (let i = 0; i < d.positions.length; i += 3) {
+    assert.ok(d.positions[i] >= 0 && d.positions[i] <= 10 && d.positions[i + 2] >= 0 && d.positions[i + 2] <= 10, 'inside the model');
+  }
+  const again = clusterDecimate({ positions, index: Uint32Array.from(index) }, cellSizeFor(positions, 4));
+  assert.deepEqual([...again.index], [...d.index]);
+  // One cell swallows everything: no face survives (the renderer then keeps the kit mesh).
+  assert.equal(clusterDecimate({ positions, index: Uint32Array.from(index) }, 1000).trianglesAfter, 0);
+  // A cell smaller than any edge keeps every face; an unindexed soup works too.
+  assert.equal(clusterDecimate({ positions, index: Uint32Array.from(index) }, 0.1).trianglesAfter, 200);
+  const soup = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 5, 5, 5, 5, 5, 5, 5, 5]);
+  const sd = clusterDecimate({ positions: soup }, 0.01);
+  assert.equal(sd.trianglesBefore, 3);
+  assert.equal(sd.trianglesAfter, 1, 'the duplicate face and the degenerate face go');
+});
+
+test('phase 4 step 15 frametime: ring statistics, percentiles, reset, and the overlay says "no data" without samples', async () => {
+  const { createFrameStats, percentile, median, overlayLines } = await import('../frontend/park/frametime.js');
+  assert.equal(median([]), null);
+  assert.equal(median([3]), 3);
+  assert.equal(median([1, 3]), 2);
+  assert.equal(median([1, 2, 10]), 2);
+  assert.equal(percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.95), 10);
+  assert.equal(percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.5), 5);
+  assert.equal(percentile([], 0.5), null);
+  const s = createFrameStats({ size: 4 });
+  assert.deepEqual(s.snapshot(), { samples: 0, median: null, p95: null, worst: null, mean: null });
+  s.push(10);
+  s.push(30);
+  s.push(NaN);
+  s.push(-1);
+  assert.equal(s.count, 2);
+  assert.equal(s.median(), 20);
+  for (const v of [1, 2, 3]) s.push(v); // wraps: keeps 30, 1, 2, 3
+  assert.equal(s.count, 4);
+  assert.equal(s.total, 5);
+  assert.equal(s.worst(), 30);
+  assert.equal(s.median(), 2.5);
+  assert.equal(s.p95(), 30);
+  assert.equal(s.mean(), 9);
+  s.reset();
+  assert.equal(s.count, 0);
+  assert.equal(s.total, 0);
+  const lines = overlayLines({ renderer: 'webgl2', fps: 0, frameMs: s.snapshot(), workMs: s.snapshot(), calls: null, triangles: null, lod: { enabled: false, foliage: [1, 2, 3], crew: [4, 5, 6], triangles: {} }, density: 2, foliage: 6, bodies: 15 });
+  assert.match(lines[0], /^renderer webgl2$/);
+  assert.match(lines[1], /frame no data median · no data p95/);
+  assert.match(lines[3], /draw calls no data · triangles no data/);
+  assert.match(lines[4], /lod off · foliage 1 near \/ 2 far \/ 3 culled of 6 .*density ×2/);
+  assert.match(lines[5], /crew 15 bodies: 4 near \/ 5 mid \/ 6 far/);
+  const withData = overlayLines({ renderer: 'webgpu', fps: 60, frameMs: { samples: 3, median: 16.66, p95: 20, worst: 33.3 }, workMs: { samples: 3, median: 4.04, p95: 6 }, calls: 87, triangles: 100127, lod: { enabled: true, foliage: [0, 0, 0], crew: [0, 0, 0], triangles: { near: 1, far: 2 } }, density: 1, foliage: 0, bodies: 0 });
+  assert.equal(withData[0], 'renderer webgpu · 60 fps');
+  assert.equal(withData[1], 'frame 16.7 ms median · 20.0 ms p95 · 33.3 ms worst (3 frames)');
+  assert.equal(withData[3], 'draw calls 87 · triangles 100127');
+});
+
+test('phase 4 step 15 gpu: WebGPU when navigator.gpu exists, WebGL2 otherwise or when forced; the label names a fallback; page options parse strictly', async () => {
+  const { chooseRenderer, rendererLabel, parkOptions } = await import('../frontend/park/gpu.js');
+  assert.deepEqual(chooseRenderer({ hasGpu: true }), { path: 'webgpu', reason: 'navigator.gpu exists' });
+  assert.deepEqual(chooseRenderer({ hasGpu: false }), { path: 'webgl2', reason: 'navigator.gpu is missing' });
+  assert.deepEqual(chooseRenderer({ hasGpu: false, secure: false }), { path: 'webgl2', reason: 'navigator.gpu is missing (not a secure context)' });
+  assert.equal(chooseRenderer({ query: { renderer: 'webgl2' }, hasGpu: true }).path, 'webgl2');
+  assert.equal(chooseRenderer({ query: { renderer: 'WebGL' }, hasGpu: true }).path, 'webgl2');
+  assert.equal(chooseRenderer({ query: { renderer: 'webgpu' }, hasGpu: true }).reason, 'renderer=webgpu in the URL');
+  assert.deepEqual(chooseRenderer({ query: { renderer: 'webgpu' }, hasGpu: false }), { path: 'webgl2', reason: 'renderer=webgpu asked, but navigator.gpu is missing' });
+  assert.match(chooseRenderer({ query: { renderer: 'vulkan' }, hasGpu: true }).reason, /unknown renderer "vulkan" ignored/);
+  assert.equal(chooseRenderer({ query: { renderer: 'vulkan' }, hasGpu: false }).path, 'webgl2');
+  assert.equal(rendererLabel({ path: 'webgpu' }), 'webgpu');
+  assert.equal(rendererLabel({ path: 'webgl2' }), 'webgl2');
+  assert.equal(rendererLabel({ path: 'webgl2', fellBack: 'no WebGPU adapter' }), 'webgl2 (no WebGPU adapter)');
+  assert.deepEqual(parkOptions({}), { renderer: 'auto', lod: true, density: 1, overlay: false });
+  assert.deepEqual(parkOptions({ renderer: 'WEBGPU', lod: 'off', density: '3', dev: '1' }), { renderer: 'webgpu', lod: false, density: 3, overlay: true });
+  assert.deepEqual(parkOptions({ renderer: 'webgl', lod: 'ON', density: '99', overlay: '1' }), { renderer: 'webgl2', lod: true, density: 6, overlay: true });
+  assert.deepEqual(parkOptions({ renderer: 'metal', density: '-2' }), { renderer: 'auto', lod: true, density: 1, overlay: false });
+  assert.equal(parkOptions({ density: 'abc' }).density, 1);
+});
+
+test('phase 4 step 15 density: buildParkModel multiplies the foliage for the bench and leaves the park itself unchanged', async () => {
+  const { buildParkModel, scatterFoliage, clearingsFor, trailsFor, FOLIAGE } = await import('../frontend/park/placement.js');
+  const layout = { ...defaultLayout(), seed: 777 };
+  const one = buildParkModel(layout);
+  const clearings = clearingsFor(layout);
+  assert.deepEqual(one.foliage, scatterFoliage(layout, clearings, trailsFor(clearings, layout)), 'density 1 is the park');
+  assert.deepEqual(FOLIAGE, { trees: 420, rocks: 90 });
+  const trees = (m) => m.foliage.filter((f) => f.kind === 'tree').length;
+  const rocks = (m) => m.foliage.filter((f) => f.kind === 'rock').length;
+  const three = buildParkModel(layout, { density: 3 });
+  assert.ok(trees(three) > trees(one) * 2 && trees(three) <= 1260, `${trees(three)} trees at ×3`);
+  assert.ok(rocks(three) > rocks(one) * 2 && rocks(three) <= 270, `${rocks(three)} rocks at ×3`);
+  assert.deepEqual(buildParkModel(layout, { density: 3 }).foliage, three.foliage, 'deterministic');
+  for (const f of three.foliage) assert.ok(!clearings.some((c) => Math.hypot(c.x - f.x, c.z - f.z) < c.radius), 'a dense park still keeps the clearings clear');
+});
+
+test('phase 4 step 15 bench: the argument parser, the configurations, the table and the LOD gain are pure and refuse typos', async () => {
+  const { parseArgs, configurations, benchTable, lodGain, DEFAULTS } = await import('../scripts/park-bench.mjs');
+  assert.deepEqual(parseArgs([]), DEFAULTS);
+  assert.deepEqual(parseArgs(['--density=2', '--crew=5', '--webgpu', '--json=false']), { ...DEFAULTS, density: 2, crew: 5, webgpu: true, json: false });
+  assert.throws(() => parseArgs(['--densty=2']), /unknown option --densty/);
+  assert.throws(() => parseArgs(['--frames=0']), /positive number/);
+  assert.deepEqual(configurations({ webgpu: false }), [{ renderer: 'webgl2', lod: 'on' }, { renderer: 'webgl2', lod: 'off' }]);
+  assert.equal(configurations({ webgpu: true }).length, 4);
+  const stats = (median, extra = {}) => ({ renderer: 'webgl2', frameMs: { samples: 100, median, p95: median * 2, worst: median * 3 }, workMs: { samples: 100, median: 3, p95: 5 }, calls: 80, triangles: 90000, lod: { foliage: [1, 2, 3], crew: [4, 5, 6] }, ...extra });
+  const rows = [{ renderer: 'webgl2', lod: 'on', stats: stats(10) }, { renderer: 'webgl2', lod: 'off', stats: stats(15) }, { renderer: 'webgpu', lod: 'on', stats: null, rendererLabel: 'webgl2 (no WebGPU adapter)' }];
+  const table = benchTable(rows);
+  assert.match(table[0], /^config\s+renderer \(as run\)\s+frames\s+frame median/);
+  assert.match(table[2], /^webgl2 lod on\s+webgl2\s+100\s+10\.0 ms\s+20\.0 ms\s+3\.0 ms\s+80\s+90000\s+1\/2\/3\s+4\/5\/6$/);
+  assert.match(table[4], /^webgpu lod on\s+webgl2 \(no WebGPU adapter\)\s+0\s+no data/);
+  assert.deepEqual(lodGain(rows, 'webgl2'), { onMs: 10, offMs: 15, ratio: 1.5 });
+  assert.equal(lodGain(rows, 'webgpu'), null);
+});
+
+test('phase 4 step 15 wiring: the import map carries the WebGPU build, the manifest vendors it, render.js alone imports Three.js, the bench script is registered', async () => {
+  const fs = await import('node:fs/promises');
+  const html = await fs.readFile(new URL('../frontend/index.html', import.meta.url), 'utf8');
+  const map = JSON.parse(/<script type="importmap">([\s\S]*?)<\/script>/.exec(html)[1]);
+  assert.equal(map.imports['three/webgpu'], '/vendor/three/three.webgpu.js');
+  assert.equal(map.imports['three/tsl'], '/vendor/three/three.tsl.js');
+  const manifest = JSON.parse(await fs.readFile(new URL('../frontend/assets/manifest.json', import.meta.url), 'utf8'));
+  const three = manifest.sources.find((s) => s.id === 'three');
+  for (const f of ['three.webgpu.js', 'three.tsl.js', 'addons/objects/SkyMesh.js']) assert.ok(three.files.some((x) => x.to === f), `${f} vendored`);
+  const dir = new URL('../frontend/', import.meta.url);
+  const importers = [];
+  const walk = async (d, rel) => {
+    for (const e of await fs.readdir(d, { withFileTypes: true })) {
+      if (e.name === 'vendor') continue;
+      if (e.isDirectory()) await walk(new URL(`${e.name}/`, d), `${rel}${e.name}/`);
+      else if (e.name.endsWith('.js') && /from ['"]three/.test(await fs.readFile(new URL(e.name, d), 'utf8'))) importers.push(`${rel}${e.name}`);
+    }
+  };
+  await walk(dir, '');
+  assert.deepEqual(importers, ['park/render.js']);
+  const render = await fs.readFile(new URL('../frontend/park/render.js', import.meta.url), 'utf8');
+  for (const s of ["import('three/webgpu')", "import('three/tsl')", 'isWebGPUBackend', 'shimTextureViewSwizzle', 'device.lost', 'onDeviceLost(', 'rebucketFoliage', 'crewLod(', 'frameStats', 'park-overlay']) assert.ok(render.includes(s), `render.js has ${s}`);
+  const app = await fs.readFile(new URL('../frontend/app.js', import.meta.url), 'utf8');
+  for (const s of ['parkOptions(', 'onDeviceLost:', "loadPark({ renderer: 'webgl2', fellBack: reason })"]) assert.ok(app.includes(s), `app.js has ${s}`);
+  const pkg = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(pkg.scripts['park:bench'], 'node scripts/park-bench.mjs');
+  assert.deepEqual(pkg.dependencies, {});
+});

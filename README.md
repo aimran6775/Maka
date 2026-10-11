@@ -23,7 +23,7 @@ Status: pre-alpha. See [docs/KICKOFF_BRIEF.md](docs/KICKOFF_BRIEF.md) for the pl
 
 ## Run the park
 
-Requires Node 22+ and a browser with WebGL2 (Safari, Chrome, or the Tauri webview later).
+Requires Node 22+ and a browser with WebGL2 or WebGPU (Safari, Chrome, or the Tauri webview; the status line says which renderer runs).
 No npm dependencies. Three.js and the CC0 model kits are vendored by a script that verifies
 each archive's SHA-256 (see `NOTICE.md` and `frontend/assets/manifest.json`); they are
 committed, so the step below is only needed after a clean checkout without them or to
@@ -368,6 +368,15 @@ audio to Hugging Face (`HF_TOKEN`). The transcript appears first: edit it, then 
 Peak" (the Chief answers from the recorded data) or "Use as the mission text" (into the
 Peak's form). Switch "voice: on" and the park says Gate items and the Peak's answers aloud
 (AVSpeechSynthesizer in the app, the browser's own voice elsewhere).
+
+Step 15, renderer: the status line says `webgpu` when the browser has a WebGPU adapter and
+`webgl2` otherwise, with the reason in parentheses when it fell back. Trees and rocks far
+from the camera are drawn as simplified copies without shadows and not at all past the fog;
+distant Rangers animate less often and lose their labels and badges. Press the backtick key
+(or open the page with `?dev=1`) for the frame-time overlay: measured frame times, draw
+calls, triangles and the level-of-detail buckets. `npm run park:bench` measures a dense park
+headless with LOD on and off; `node scripts/park-check.mjs --webgpu` exercises the WebGPU
+path and its fallback.
 
 Step 6, briefings in the mail: every reflection's briefing to a camp is now also a
 message in that camp's station mailbox from peak@ (internal, never sent through Resend),

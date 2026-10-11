@@ -8,6 +8,13 @@
 //
 // Loads Three.js through the import map in index.html (frontend/vendor/three). If that
 // import fails the caller shows "renderer not vendored" instead of a scene.
+//
+// Phase 4 step 15 (D146): when the browser has WebGPU the WebGPU build (`three/webgpu`,
+// `three/tsl`, the SkyMesh addon) is imported on demand and the park runs on
+// WebGPURenderer with a real WebGPU adapter, the water written in TSL; otherwise, or when
+// only the WebGPU build's own WebGL2 backend would run, the plain WebGLRenderer. Foliage and
+// crew have distance levels of detail (lod.js); a dev overlay shows measured frame times;
+// `options` come from the page's query (gpu.js `parkOptions`).
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -20,6 +27,9 @@ import { TERRAIN } from './terrain.js';
 import { pointAtFraction } from './spline.js';
 import { clipFor, placeFor, badgeFor, lookFor, lampsFor } from './clips.js';
 import { sunFor } from './sun.js';
+import { LOD, bucketFoliage, crewLod, shouldRebucket, clusterDecimate, cellSizeFor } from './lod.js';
+import { createFrameStats, overlayLines } from './frametime.js';
+import { chooseRenderer, rendererLabel } from './gpu.js';
 
 export const CAMERA_MODES = Object.freeze(['orbit', 'fly', 'follow']);
 
@@ -70,11 +80,80 @@ const ZONE_DRESS = {
 };
 const DISC_COLORS = { gate: 0xc2ad86, peak: 0x9a948a, visitor_center: 0x8fbf6a, trailhead: 0x7fb15a, zone: 0x6fae52 };
 
-export async function createPark({ container, getState, onPick, onStatus = () => {} }) {
-  const status = { renderer: 'webgl2', assets: 'loading', ranger: 'loading', fps: 0, problems: [] };
+// Three.js 0.186 writes `swizzle: 'rgba'` (the identity, from an earlier draft of the WebGPU
+// spec) into every texture view descriptor and never asks for any other; a browser that
+// exposes the final spec's `swizzle` member expects a dictionary there and throws on the
+// string, which kills every frame. Dropping the identity changes nothing drawn. Our own
+// code, not a patch to the vendored build; remove on the next Three.js bump (D146).
+function shimTextureViewSwizzle() {
+  const proto = globalThis.GPUTexture && globalThis.GPUTexture.prototype;
+  if (!proto || typeof proto.createView !== 'function' || proto.createView.makaSwizzleShim) return;
+  const original = proto.createView;
+  const createView = function createViewWithoutStringSwizzle(descriptor) {
+    if (descriptor && typeof descriptor.swizzle === 'string') {
+      const copy = { ...descriptor };
+      delete copy.swizzle;
+      return original.call(this, copy);
+    }
+    return original.call(this, descriptor);
+  };
+  createView.makaSwizzleShim = true;
+  proto.createView = createView;
+}
+
+export async function createPark({ container, getState, onPick, onStatus = () => {}, onDeviceLost = () => {}, options = {} }) {
+  const opts = { renderer: 'auto', lod: true, density: 1, overlay: false, fellBack: null, ...options };
+  const status = { renderer: 'choosing', assets: 'loading', ranger: 'loading', fps: 0, problems: [], lod: opts.lod, density: opts.density };
   const report = () => onStatus({ ...status });
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  // ---- the renderer: WebGPU with a real adapter, else WebGL2 (phase 4 step 15, D146) ----
+  let renderer = null;
+  let gpu = null; // the WebGPU build's exports, only on that path
+  let tsl = null; // the shading language, only on that path
+  let SkyMeshClass = null;
+  const choice = chooseRenderer({ query: { renderer: opts.renderer }, hasGpu: typeof navigator !== 'undefined' && Boolean(navigator.gpu), secure: typeof isSecureContext === 'undefined' || isSecureContext });
+  // `opts.fellBack` is the reason app.js restarted the park on WebGL2 (a lost WebGPU device).
+  let fellBack = choice.path === 'webgpu' ? null : opts.fellBack || choice.reason;
+  let deviceLost = false;
+  if (choice.path === 'webgpu') {
+    try {
+      // The adapter first: without one the 2.3 MB WebGPU build is not even fetched.
+      const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+      if (!adapter) throw Object.assign(new Error('no WebGPU adapter'), { plain: true });
+      const [g, t, skyMod] = await Promise.all([import('three/webgpu'), import('three/tsl'), import('three/addons/objects/SkyMesh.js')]);
+      shimTextureViewSwizzle();
+      const r = new g.WebGPURenderer({ antialias: true, powerPreference: 'high-performance' });
+      await r.init();
+      if (r.backend && r.backend.isWebGPUBackend) {
+        renderer = r;
+        gpu = g;
+        tsl = t;
+        SkyMeshClass = skyMod.SkyMesh;
+        // A device can be lost at any time (a GPU reset, a driver update, a browser that
+        // cannot present WebGPU to a canvas): the park reports it and app.js restarts it on
+        // WebGL2 with the reason in the status line, instead of a frozen canvas.
+        if (r.backend.device && r.backend.device.lost) {
+          r.backend.device.lost.then((info) => {
+            if (deviceLost) return;
+            deviceLost = true;
+            const message = info && info.message ? String(info.message).replace(/\.$/, '') : 'no message';
+            status.problems.push(`WebGPU device lost: ${message}`);
+            report();
+            onDeviceLost({ reason: 'WebGPU device lost', message });
+          });
+        }
+      } else {
+        // Three.js would run its WebGL2 backend under the WebGPU renderer; the proven
+        // WebGL2 path with its GLSL is the stricter choice, and the label says so.
+        r.dispose();
+        fellBack = 'no WebGPU adapter';
+      }
+    } catch (err) {
+      fellBack = err && err.plain ? err.message : `WebGPU failed: ${err && err.message ? err.message : err}`;
+    }
+  }
+  if (!renderer) renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  status.renderer = rendererLabel({ path: gpu ? 'webgpu' : 'webgl2', fellBack });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -91,9 +170,12 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   controls.minDistance = 6;
   controls.maxDistance = 220;
 
-  const sky = new Sky();
+  const sky = SkyMeshClass ? new SkyMeshClass() : new Sky();
   sky.scale.setScalar(4000);
   scene.add(sky);
+  // Both skies take the same five values; the WebGL one keeps them in shader uniforms, the
+  // TSL one in uniform nodes, each with a `.value`.
+  const skyU = SkyMeshClass ? { sunPosition: sky.sunPosition, turbidity: sky.turbidity, rayleigh: sky.rayleigh, mieCoefficient: sky.mieCoefficient, mieDirectionalG: sky.mieDirectionalG } : sky.material.uniforms;
   const sun = new THREE.DirectionalLight(0xffffff, 1.5);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -122,7 +204,6 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   let modelKey = '';
   let terrain = null;
   let water = null;
-  let foliage = [];
   const pickables = [];
   const dynamic = { fixtures: new Map(), clearings: new Map() };
   const timer = new THREE.Timer();
@@ -131,6 +212,9 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   let destroyed = false;
   let frames = 0;
   let fpsAt = performance.now();
+  const frameTimes = createFrameStats({ size: 240 }); // between frames
+  const workTimes = createFrameStats({ size: 240 }); // inside a frame: sync, update, render
+  let lastFrameAt = null;
 
   // ---- static kit models (loaded once, cloned per use) ----
   const kit = { trees: [], rocks: [], station: {}, gate: {}, fixtures: {} };
@@ -227,7 +311,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     const label = makeLabel(agent.name);
     label.position.y = BODY_HEIGHT * look.scale + 1.5;
     root.add(label);
-    return { root, mixer, actions, current: null, badge, label, agent, look, walk: { handoffKey: null, handoff: null, deliveryKey: null, delivery: null } };
+    return { root, mixer, actions, current: null, badge, label, agent, look, walk: { handoffKey: null, handoff: null, deliveryKey: null, delivery: null }, lod: { level: -1, acc: 0, tick: 0 } };
   }
 
   function makeLabel(text) {
@@ -350,7 +434,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   // ---- terrain, water, trails, clearings, foliage from the pure model ----
   function disposeGroup(g) {
     g.traverse((o) => {
-      if (o.geometry) o.geometry.dispose();
+      if (o.geometry && !o.userData.sharedGeometry) o.geometry.dispose();
       if (o.material && o.material.dispose && !o.userData.sharedMaterial) o.material.dispose();
     });
   }
@@ -389,20 +473,43 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
 
   function buildWater() {
     const geo = new THREE.PlaneGeometry(TERRAIN.size, TERRAIN.size, 60, 60);
-    const mat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: { value: 0 },
-        uColor: { value: new THREE.Color(0x3d8fc2) },
-        uFogColor: { value: scene.fog.color },
-        uFogNear: { value: scene.fog.near },
-        uFogFar: { value: scene.fog.far },
-      },
-      vertexShader: WATER_VERT,
-      fragmentShader: WATER_FRAG,
-      transparent: true,
-      depthWrite: false,
-    });
+    let mat;
+    let setTime;
+    if (tsl) {
+      // The same waves and glint as the GLSL, in TSL for the WebGPU path (D146); the
+      // renderer applies the scene fog to node materials itself.
+      const uTime = tsl.uniform(0);
+      const p = tsl.positionLocal;
+      const wave = tsl.sin(p.x.mul(0.35).add(uTime.mul(1.3))).mul(0.12).add(tsl.sin(p.y.mul(0.5).sub(uTime.mul(0.9))).mul(0.08));
+      const vWave = tsl.varying(wave);
+      mat = new gpu.MeshBasicNodeMaterial();
+      mat.positionNode = p.add(tsl.vec3(0, 0, wave));
+      mat.colorNode = tsl.vec4(tsl.color(0x3d8fc2).add(tsl.smoothstep(tsl.float(0.08), tsl.float(0.2), vWave).mul(0.5)), 0.78);
+      mat.transparent = true;
+      mat.depthWrite = false;
+      setTime = (t) => {
+        uTime.value = t;
+      };
+    } else {
+      mat = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uColor: { value: new THREE.Color(0x3d8fc2) },
+          uFogColor: { value: scene.fog.color },
+          uFogNear: { value: scene.fog.near },
+          uFogFar: { value: scene.fog.far },
+        },
+        vertexShader: WATER_VERT,
+        fragmentShader: WATER_FRAG,
+        transparent: true,
+        depthWrite: false,
+      });
+      setTime = (t) => {
+        mat.uniforms.uTime.value = t;
+      };
+    }
     const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.setTime = setTime;
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = TERRAIN.waterLevel;
     return mesh;
@@ -487,42 +594,124 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     return g;
   }
 
+  // ---- foliage: instanced, two levels by distance (phase 4 step 15, D146) ----
+  // Each kit mesh of each variant becomes two InstancedMeshes over the same items: `near`
+  // (the kit geometry, shadows) and `far` (the vertex-clustered geometry, flat shaded, no
+  // shadow). `rebucketFoliage` sorts the items between them by camera distance; an item
+  // beyond LOD.foliageFar is not drawn. With `lod: false` everything is near.
+  let foliageSets = [];
+  let foliageAt = null; // where and when the buckets were last done
+  const lodCounts = { foliage: [0, 0, 0], crew: [0, 0, 0], triangles: { near: 0, far: 0 } };
+
+  function positionsOf(attr) {
+    const out = new Float32Array(attr.count * 3);
+    for (let i = 0; i < attr.count; i++) {
+      out[i * 3] = attr.getX(i);
+      out[i * 3 + 1] = attr.getY(i);
+      out[i * 3 + 2] = attr.getZ(i);
+    }
+    return out;
+  }
+  const triangleCount = (geometry) => Math.floor((geometry.index ? geometry.index.count : geometry.getAttribute('position').count) / 3);
+
+  // The far geometry of a kit mesh, or the kit mesh itself when clustering would not pay.
+  function farGeometry(geometry) {
+    const positions = positionsOf(geometry.getAttribute('position'));
+    const d = clusterDecimate({ positions, index: geometry.index ? geometry.index.array : null }, cellSizeFor(positions, LOD.decimateCells));
+    if (d.trianglesAfter < 4 || d.trianglesAfter >= d.trianglesBefore) return { geometry, triangles: d.trianglesBefore, shared: true };
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(d.positions, 3));
+    g.setIndex(new THREE.BufferAttribute(d.index, 1));
+    g.computeVertexNormals();
+    return { geometry: g, triangles: d.trianglesAfter, shared: false };
+  }
+
   function buildFoliage(m) {
-    const out = [];
+    const sets = [];
     const byKind = { tree: kit.trees, rock: kit.rocks };
+    const up = new THREE.Vector3(0, 1, 0);
     for (const kind of ['tree', 'rock']) {
       const variants = byKind[kind];
       if (!variants.length) continue;
       for (let v = 0; v < variants.length; v++) {
-        const items = m.foliage.filter((f) => f.kind === kind && f.variant % variants.length === v);
-        if (!items.length) continue;
+        const idx = [];
+        m.foliage.forEach((f, i) => {
+          if (f.kind === kind && f.variant % variants.length === v) idx.push(i);
+        });
+        if (!idx.length) continue;
         const source = variants[v];
         source.updateMatrixWorld(true);
         source.traverse((mesh) => {
           if (!mesh.isMesh) return;
-          const inst = new THREE.InstancedMesh(mesh.geometry, mesh.material, items.length);
-          inst.castShadow = true;
-          inst.receiveShadow = true;
+          const n = idx.length;
+          const all = new Float32Array(16 * n);
           const mat = new THREE.Matrix4();
           const local = mesh.matrixWorld.clone();
           const q = new THREE.Quaternion();
           const pos = new THREE.Vector3();
           const scl = new THREE.Vector3();
-          items.forEach((it, i) => {
-            const s = it.scale * (kind === 'tree' ? 2.6 : 2.2);
-            q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), it.rotation);
+          idx.forEach((fi, i) => {
+            const it = m.foliage[fi];
+            const sc = it.scale * (kind === 'tree' ? 2.6 : 2.2);
+            q.setFromAxisAngle(up, it.rotation);
             pos.set(it.x, it.y, it.z);
-            scl.set(s, s, s);
+            scl.set(sc, sc, sc);
             mat.compose(pos, q, scl).multiply(local);
-            inst.setMatrixAt(i, mat);
+            mat.toArray(all, 16 * i);
           });
-          inst.instanceMatrix.needsUpdate = true;
-          inst.userData.sharedMaterial = true;
-          out.push(inst);
+          const near = new THREE.InstancedMesh(mesh.geometry, mesh.material, n);
+          near.castShadow = true;
+          near.receiveShadow = true;
+          near.count = 0;
+          near.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          near.userData.sharedMaterial = true;
+          near.userData.sharedGeometry = true;
+          const farG = farGeometry(mesh.geometry);
+          const far = new THREE.InstancedMesh(farG.geometry, new THREE.MeshLambertMaterial({ color: mesh.material.color ? mesh.material.color.clone() : 0xffffff, flatShading: true }), n);
+          far.castShadow = false;
+          far.receiveShadow = false;
+          far.count = 0;
+          far.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          far.userData.sharedGeometry = farG.shared;
+          sets.push({ idx, all, near, far, triangles: { near: triangleCount(mesh.geometry), far: farG.triangles } });
         });
       }
     }
-    return out;
+    return sets;
+  }
+
+  function rebucketFoliage(force = false) {
+    if (!model || !foliageSets.length) return;
+    const cam = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+    const now = performance.now();
+    if (!force && !shouldRebucket(foliageAt, cam, now)) return;
+    foliageAt = { ...cam, at: now };
+    const { levels, counts } = bucketFoliage(model.foliage, cam, { enabled: opts.lod });
+    lodCounts.foliage = counts;
+    let triNear = 0;
+    let triFar = 0;
+    for (const set of foliageSets) {
+      let ni = 0;
+      let fi = 0;
+      const na = set.near.instanceMatrix.array;
+      const fa = set.far.instanceMatrix.array;
+      for (let i = 0; i < set.idx.length; i++) {
+        const lv = levels[set.idx[i]];
+        if (lv === 0) na.set(set.all.subarray(16 * i, 16 * i + 16), 16 * ni++);
+        else if (lv === 1) fa.set(set.all.subarray(16 * i, 16 * i + 16), 16 * fi++);
+      }
+      set.near.count = ni;
+      set.far.count = fi;
+      set.near.visible = ni > 0;
+      set.far.visible = fi > 0;
+      set.near.instanceMatrix.needsUpdate = true;
+      set.far.instanceMatrix.needsUpdate = true;
+      if (ni) set.near.computeBoundingSphere();
+      if (fi) set.far.computeBoundingSphere();
+      triNear += ni * set.triangles.near;
+      triFar += fi * set.triangles.far;
+    }
+    lodCounts.triangles = { near: triNear, far: triFar };
   }
 
   function rebuild(state) {
@@ -538,7 +727,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     pickables.length = 0;
     for (const b of bodies.values()) pickables.push(b.root);
     dynamic.clearings.clear();
-    model = buildParkModel(layout);
+    model = buildParkModel(layout, { density: opts.density });
     terrain = buildTerrain(model);
     terrain.userData.static = true;
     world.add(terrain);
@@ -558,11 +747,15 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       world.add(g);
       dynamic.clearings.set(c.id, c);
     }
-    foliage = buildFoliage(model);
-    for (const f of foliage) {
-      f.userData.static = true;
-      world.add(f);
+    foliageSets = buildFoliage(model);
+    for (const set of foliageSets) {
+      for (const o of [set.near, set.far]) {
+        o.userData.static = true;
+        world.add(o);
+      }
     }
+    foliageAt = null;
+    rebucketFoliage(true);
     const station = model.clearings[0];
     if (station && !cameraPlaced) {
       controls.target.set(station.x, station.height + 1, station.z);
@@ -703,7 +896,7 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     sun.color.setHex(s.color);
     hemi.intensity = s.ambient;
     scene.fog.color.setHex(s.fog);
-    const u = sky.material.uniforms;
+    const u = skyU;
     u.sunPosition.value.copy(dir);
     u.turbidity.value = s.night ? 2 : 6;
     u.rayleigh.value = s.night ? 0.2 : 1.8;
@@ -757,12 +950,31 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       b.current = action;
     }
     if (b.current) b.current.paused = clip === 'error' || Boolean(agent.paused);
-    b.mixer.update(dt);
-    drawBadge(b.badge, badgeFor(agentState, { paused: Boolean(agent.paused) }), t);
+    // Distance level of detail (phase 4 step 15): the body stands where it stands every
+    // frame; far away its mixer runs less often (the time still adds up), the label, then
+    // the badge and the shadow go.
+    const lod = crewLod(camera.position.distanceTo(b.root.position), { enabled: opts.lod });
+    if (lod.level !== b.lod.level) {
+      b.lod.level = lod.level;
+      b.label.visible = lod.label;
+      if (!lod.badge) b.badge.visible = false;
+      b.root.traverse((o) => {
+        if (o.isMesh) o.castShadow = lod.shadow;
+      });
+    }
+    lodCounts.crew[lod.level]++;
+    b.lod.acc += dt;
+    b.lod.tick++;
+    if (b.lod.tick % lod.mixerEvery === 0) {
+      b.mixer.update(b.lod.acc);
+      b.lod.acc = 0;
+    }
+    if (lod.badge) drawBadge(b.badge, badgeFor(agentState, { paused: Boolean(agent.paused) }), t);
   }
 
   function updateBodies(state, dt, t) {
     if (!model) return;
+    lodCounts.crew = [0, 0, 0];
     for (const b of bodies.values()) updateBody(b, state, dt, t);
   }
 
@@ -850,8 +1062,11 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
   loadRanger().then(() => syncBodies(getState())); // not awaited: the park renders while the FBX files stream in
 
   function frame() {
-    if (destroyed) return;
+    if (destroyed || deviceLost) return;
     requestAnimationFrame(frame);
+    const started = performance.now();
+    if (lastFrameAt !== null) frameTimes.push(started - lastFrameAt);
+    lastFrameAt = started;
     timer.update();
     const dt = Math.min(0.1, timer.getDelta());
     const t = timer.getElapsed();
@@ -861,19 +1076,55 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     syncLamps(state);
     syncBodies(state);
     applySun();
-    if (water) water.material.uniforms.uTime.value = t;
+    if (water) water.userData.setTime(t);
     updateBodies(state, dt, t);
     updateCamera(dt, t);
+    rebucketFoliage();
     renderer.render(scene, camera);
-    frames++;
     const now = performance.now();
+    workTimes.push(now - started);
+    frames++;
     if (now - fpsAt > 1000) {
       status.fps = Math.round((frames * 1000) / (now - fpsAt));
       frames = 0;
       fpsAt = now;
       report();
     }
+    updateOverlay(now);
   }
+
+  // ---- dev overlay (phase 4 step 15): measured frame times, draw calls, the LOD buckets ----
+  const overlay = document.createElement('pre');
+  overlay.className = 'park-overlay';
+  overlay.hidden = !opts.overlay;
+  container.append(overlay);
+  let overlayAt = 0;
+  function frameStats() {
+    const info = renderer.info && renderer.info.render ? renderer.info.render : {};
+    return {
+      renderer: status.renderer,
+      fps: status.fps,
+      frameMs: frameTimes.snapshot(),
+      workMs: workTimes.snapshot(),
+      frames: frameTimes.total,
+      calls: typeof info.drawCalls === 'number' ? info.drawCalls : typeof info.calls === 'number' ? info.calls : null,
+      triangles: typeof info.triangles === 'number' ? info.triangles : null,
+      lod: { enabled: opts.lod, foliage: [...lodCounts.foliage], crew: [...lodCounts.crew], triangles: { ...lodCounts.triangles } },
+      density: opts.density,
+      foliage: model ? model.foliage.length : 0,
+      bodies: bodies.size,
+    };
+  }
+  function updateOverlay(now) {
+    if (overlay.hidden || now - overlayAt < 250) return;
+    overlayAt = now;
+    overlay.textContent = overlayLines(frameStats()).join('\n');
+  }
+  const onKey = (e) => {
+    if (e.key === '`' && !(e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName))) overlay.hidden = !overlay.hidden;
+  };
+  window.addEventListener('keydown', onKey);
+
   frame();
   report();
 
@@ -890,6 +1141,14 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
     follow(agentId) {
       followId = agentId;
     },
+    options: opts,
+    // Measured frame statistics for the overlay and scripts/park-bench.mjs; nothing projected.
+    frameStats,
+    resetFrameStats() {
+      frameTimes.reset();
+      workTimes.reset();
+      lastFrameAt = null;
+    },
     // Diagnostics for the headless check: which bodies exist and where they stand.
     bodies() {
       return [...bodies.values()].map((b) => ({ id: b.agent.id, role: b.agent.role || 'ranger', x: Math.round(b.root.position.x * 10) / 10, z: Math.round(b.root.position.z * 10) / 10, clip: b.current ? (b.current === b.actions.run ? 'run' : 'idle') : null }));
@@ -902,6 +1161,8 @@ export async function createPark({ container, getState, onPick, onStatus = () =>
       renderer.domElement.removeEventListener('pointerdown', onDown);
       renderer.domElement.removeEventListener('pointerup', onUp);
       window.removeEventListener('resize', resize);
+      window.removeEventListener('keydown', onKey);
+      overlay.remove();
       renderer.dispose();
       renderer.domElement.remove();
     },

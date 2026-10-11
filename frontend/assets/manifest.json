@@ -33,6 +33,20 @@
           "note": "WebGL2 build; imports ./three.core.js"
         },
         {
+          "from": "package/build/three.webgpu.js",
+          "to": "three.webgpu.js",
+          "sha256": "15cfce5c653541704fd9a3463c39d3e8b854bb6265ccd854d7cfe74090625cc6",
+          "bytes": 2284850,
+          "note": "WebGPU build (WebGPURenderer, node materials); imports ./three.core.js; loaded on demand when the park chooses WebGPU (phase 4 step 15)"
+        },
+        {
+          "from": "package/build/three.tsl.js",
+          "to": "three.tsl.js",
+          "sha256": "6e6b92d8ce467818944f73815a96abadc6392fb34de577d479a23810b6aeeed0",
+          "bytes": 36854,
+          "note": "Three Shading Language; imports three/webgpu"
+        },
+        {
           "from": "package/examples/jsm/controls/OrbitControls.js",
           "to": "addons/controls/OrbitControls.js",
           "sha256": "3d79d07ecb686b4e5d93232eedab255331c1beef711e13164eaa1f68655a5f2b",
@@ -79,6 +93,12 @@
           "to": "addons/objects/Sky.js",
           "sha256": "34121b60a3bd9adc004a5a637f6135e9d2b72757eeb9e476ae1988fe2db6a9fb",
           "bytes": 11526
+        },
+        {
+          "from": "package/examples/jsm/objects/SkyMesh.js",
+          "to": "addons/objects/SkyMesh.js",
+          "sha256": "453215002329fa8a84920045898fcb7c274795992eb6fba43576f41cfacd8585",
+          "bytes": 12862
         },
         {
           "from": "package/examples/jsm/libs/fflate.module.js",

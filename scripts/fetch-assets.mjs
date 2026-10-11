@@ -31,6 +31,7 @@ const THREE_ADDONS = [
   'utils/BufferGeometryUtils.js',
   'utils/SkeletonUtils.js',
   'objects/Sky.js',
+  'objects/SkyMesh.js', // the TSL sky for the WebGPU path (phase 4 step 15)
   'libs/fflate.module.js',
 ];
 
@@ -53,6 +54,8 @@ export const SOURCES = [
       { from: 'package/LICENSE', to: 'LICENSE' },
       { from: 'package/build/three.core.js', to: 'three.core.js' },
       { from: 'package/build/three.module.js', to: 'three.module.js', note: 'WebGL2 build; imports ./three.core.js' },
+      { from: 'package/build/three.webgpu.js', to: 'three.webgpu.js', note: 'WebGPU build (WebGPURenderer, node materials); imports ./three.core.js; loaded on demand when the park chooses WebGPU (phase 4 step 15)' },
+      { from: 'package/build/three.tsl.js', to: 'three.tsl.js', note: 'Three Shading Language; imports three/webgpu' },
       ...THREE_ADDONS.map((f) => ({ from: `package/examples/jsm/${f}`, to: `addons/${f}` })),
     ],
   },

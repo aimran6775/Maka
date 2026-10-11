@@ -141,37 +141,43 @@ function nearTrail(trails, x, z, margin) {
 }
 
 // Scatters trees and rocks from the seed. Returns instances { kind, variant, x, z, y, rotation, scale }.
-export function scatterFoliage(layout, clearings, trails, { trees = 420, rocks = 90 } = {}) {
+export const FOLIAGE = Object.freeze({ trees: 420, rocks: 90 });
+export function scatterFoliage(layout, clearings, trails, { trees = FOLIAGE.trees, rocks = FOLIAGE.rocks } = {}) {
   const seed = layout.seed || 1;
   const rand = mulberry32(seed ^ 0x9e3779b9);
   const half = TERRAIN.size / 2 - 6;
   const out = [];
   const blocked = (x, z, margin) => clearings.some((c) => Math.hypot(c.x - x, c.z - z) < c.radius + margin) || nearTrail(trails, x, z, 3 + margin) || isWater(x, z, seed);
   let attempts = 0;
-  while (out.filter((o) => o.kind === 'tree').length < trees && attempts++ < trees * 6) {
+  let placed = 0;
+  while (placed < trees && attempts++ < trees * 6) {
     const x = (rand() * 2 - 1) * half;
     const z = (rand() * 2 - 1) * half;
     if (blocked(x, z, 2)) continue;
     const y = heightAt(x, z, seed, clearings);
     if (y < TERRAIN.waterLevel + 0.8) continue;
     out.push({ kind: 'tree', variant: Math.floor(rand() * 4), x, z, y, rotation: rand() * Math.PI * 2, scale: 0.85 + rand() * 0.5 });
+    placed++;
   }
   attempts = 0;
-  while (out.filter((o) => o.kind === 'rock').length < rocks && attempts++ < rocks * 6) {
+  placed = 0;
+  while (placed < rocks && attempts++ < rocks * 6) {
     const x = (rand() * 2 - 1) * half;
     const z = (rand() * 2 - 1) * half;
     if (blocked(x, z, 1)) continue;
     const y = heightAt(x, z, seed, clearings);
     out.push({ kind: 'rock', variant: Math.floor(rand() * 3), x, z, y, rotation: rand() * Math.PI * 2, scale: 0.7 + rand() * 0.9 });
+    placed++;
   }
   return out;
 }
 
 // Everything render.js needs, derived once per layout change.
-export function buildParkModel(layout) {
+export function buildParkModel(layout, { density = 1 } = {}) {
   const clearings = clearingsFor(layout);
   const trails = trailsFor(clearings, layout);
-  const foliage = scatterFoliage(layout, clearings, trails);
+  // `density` multiplies the foliage (the bench's dense park, phase 4 step 15); 1 is the park.
+  const foliage = scatterFoliage(layout, clearings, trails, { trees: Math.round(FOLIAGE.trees * density), rocks: Math.round(FOLIAGE.rocks * density) });
   const seed = layout.seed || 1;
   const fixtures = layout.objects.map((o) => {
     const p = tileToWorld(o.x, o.y);

@@ -12,6 +12,7 @@ import { createFirstRun } from './ui/firstrun.js';
 import { createVoice } from './ui/voice.js';
 import { el, setChildren } from './ui/windows.js';
 import { tileToWorld, TILE_WORLD } from './park/placement.js';
+import { parkOptions } from './park/gpu.js';
 
 let state = initialState();
 const getState = () => state;
@@ -184,13 +185,23 @@ function setState(next) {
   render();
 }
 
-async function loadPark() {
+async function loadPark(overrides = {}) {
   try {
     const { createPark } = await import('./park/render.js');
+    // Phase 4 step 15: `?renderer=webgl2|webgpu`, `?lod=off`, `?density=N`, `?dev=1` (the
+    // frame-time overlay) come from the page's query; a normal page carries none. A lost
+    // WebGPU device restarts the park on WebGL2 with the reason in the status line.
     park = await createPark({
       container: parkEl,
       getState,
       onPick,
+      options: { ...parkOptions(Object.fromEntries(new URL(window.location.href).searchParams)), ...overrides },
+      onDeviceLost: ({ reason, message }) => {
+        if (park) park.destroy();
+        park = null;
+        flash(`${reason} (${message}); the park restarts on WebGL2`, 'warn');
+        loadPark({ renderer: 'webgl2', fellBack: reason });
+      },
       onStatus: (s) => {
         parkStatus = s;
         render();

@@ -225,6 +225,26 @@ sees text only, the event carries a length and never the words (D145). What the 
 verify (the microphone and recognition permissions, on-device availability, the capability's
 remote origin) is in the runbook; the Rust type-checks for Apple Silicon from here.
 
+Part E step 15 done: the renderer. Foliage keeps its instancing and gains two levels by
+distance: near the camera the kit mesh with shadows, farther the same items as a
+vertex-clustered, flat-shaded copy without shadow, and nothing at all past the fog
+(`frontend/park/lod.js`, pure and tested; `rebucketFoliage` in render.js moves the instance
+matrices between the two InstancedMeshes when the camera has moved). Crew bodies stand where
+they stand every frame; by distance their animation mixer runs every second or fourth frame
+with the time added up, then the label, the badge and the shadow go. When the browser has
+`navigator.gpu` and a real adapter answers, the park runs on Three.js's WebGPURenderer with
+the WebGPU build imported on demand, the sky as SkyMesh and the water written in TSL; without
+an adapter, or when only the WebGPU build's own WebGL2 backend would run, the proven
+WebGLRenderer path runs and the status line says why ("webgl2 (no WebGPU adapter)"); a device
+lost later restarts the park on WebGL2 with that reason (D146). A dev overlay (`?dev=1` or
+the backtick key) shows measured time between frames and inside a frame, draw calls,
+triangles and the LOD buckets, "no data" until there are frames. `npm run park:bench` opens
+a dense park in headless Chromium once per configuration and prints the same statistics for
+LOD on against LOD off, so the gain is a measurement (here, on a software rasteriser: ×1.21
+between frames, 195 k against 348 k triangles). This Chromium cannot present WebGPU to a
+canvas headless: `park-check --webgpu` verifies the path up to the first present and the
+fallback after it; a WebGPU frame is on the Mac's list in the runbook.
+
 Safety review (`docs/SECURITY_REVIEW_2026-10-10.md`, before the first Mac build): the
 findings are being fixed in order, each with a regression test in `test/safety.test.js`
 and its row's Status updated. H1 done: `sidecar/netguard.js` keeps every Ranger-facing

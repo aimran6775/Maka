@@ -234,6 +234,8 @@ it everywhere (the Tauri webview included). Switching to the WebGPU path later m
 vendoring `three.webgpu.js`, choosing the import map at load time, and porting the water
 material. The status line names the renderer in use so nothing is implied.
 
+Superseded in phase 4 step 15 (D146): the WebGPU build is vendored and loaded on demand.
+
 ## D28. Kenney characters are FBX, loaded with FBXLoader
 
 The animated character packs the brief names ship binary FBX plus separate animation FBX
@@ -254,6 +256,8 @@ Foliage is instanced per model variant with Three's frustum culling; there is no
 LOD yet. On SwiftShader in headless Chromium the scene renders at a few frames per second,
 which is a software rasteriser, not a target. The 60 fps on M1 target is unverified here
 and is listed as such in CODE_MAP.
+
+Superseded in phase 4 step 15 (D146): distance LOD for foliage and crew, measured by `park:bench`.
 
 ## D31. `fs.write` has no leash domain in phase 1
 
@@ -1446,3 +1450,33 @@ answer): nothing it says is a claim the harness did not prove. The frameworks ar
 from Rust through the objc2 bindings rather than Swift so that the code is type-checked for
 Apple Silicon from this Linux environment; the microphone and the recogniser themselves are
 on the Mac's list in the runbook.
+
+## D146. WebGPU only with a real adapter, WebGL2 otherwise and after a lost device; LOD that is measured, not claimed
+
+The brief asks for the WebGPU renderer path "when `navigator.gpu` exists" with WebGL2
+fallback, distance LOD with instancing kept, a frame-time overlay in dev and a bench.
+`navigator.gpu` existing is not WebGPU working: headless Chromium here exposes it on the
+loopback page and answers `requestAdapter()` with null, and Three.js's WebGPURenderer would
+then quietly run its own WebGL2 backend under the WebGPU name. The stricter reading is taken:
+the adapter is asked for first (no adapter, no 2.3 MB download), the renderer must report
+`isWebGPUBackend`, otherwise the plain WebGLRenderer with its proven GLSL runs and the
+status line carries the reason in parentheses. A device lost later (a GPU reset, a browser
+that cannot present WebGPU to a canvas) stops the frame loop and app.js restarts the park on
+WebGL2 saying "webgl2 (WebGPU device lost)", instead of a frozen canvas. Three.js 0.186
+writes the identity `swizzle: 'rgba'` into every texture view descriptor and a browser that
+exposes the final spec's dictionary member throws on the string; render.js drops that one
+identity field in its own `createView` wrapper rather than patching the vendored build, and
+the wrapper goes with the next Three.js bump. The water is written twice, GLSL and TSL, with
+the same waves, because a shader is the one place the two builds do not share code; the
+TSL version lets the renderer apply the scene fog itself. LOD keeps the instancing: two
+InstancedMeshes per kit mesh over the same items, the far one a vertex-clustered copy made
+at build time from the kit's own positions (no third-party simplifier), flat shaded and
+without shadow, and nothing drawn past the fog; the crew keeps one body each and only its
+animation rate, label, badge and shadow change with distance, never its place. Thresholds are
+constants in lod.js, chosen for a 240-unit park with fog ending at 320. Frame numbers are
+measured and shown as such: the overlay says "no data" until frames exist, the bench always
+runs LOD on against LOD off at the same density and prints both, and headless Chromium's
+SwiftShader numbers are labelled relative. This Chromium cannot present WebGPU to a canvas
+headless (the device is lost at the first `getCurrentTexture`, in the headless shell too), so
+`park-check --webgpu` verifies the path up to the first present and the fallback after it,
+and a WebGPU frame with draw calls is on the Mac's list in the runbook, as the voice is.

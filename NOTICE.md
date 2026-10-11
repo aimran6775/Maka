@@ -10,7 +10,7 @@ Any code adapted from StarNet is listed here with its origin.
 
 | Library | Version | License | Source |
 | --- | --- | --- | --- |
-| Three.js (module build, `three.core.js`, and the addons OrbitControls, GLTFLoader, FBXLoader, NURBSCurve, NURBSUtils, BufferGeometryUtils, SkeletonUtils, Sky, fflate 0.8.2) | 0.186.1 | MIT (`frontend/vendor/three/LICENSE`; fflate carries its own MIT header) | https://registry.npmjs.org/three/-/three-0.186.1.tgz |
+| Three.js (the WebGL2 module build, `three.core.js`, the WebGPU build `three.webgpu.js` with `three.tsl.js` (loaded only when the park runs on WebGPU, phase 4 step 15), and the addons OrbitControls, GLTFLoader, FBXLoader, NURBSCurve, NURBSUtils, BufferGeometryUtils, SkeletonUtils, Sky, SkyMesh, fflate 0.8.2) | 0.186.1 | MIT (`frontend/vendor/three/LICENSE`; fflate carries its own MIT header) | https://registry.npmjs.org/three/-/three-0.186.1.tgz |
 
 Vendored under `frontend/vendor/three/` by `scripts/fetch-assets.mjs`, which verifies the
 tarball's SHA-256 before extracting; per-file hashes are in `frontend/assets/manifest.json`.

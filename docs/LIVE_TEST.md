@@ -285,6 +285,21 @@ lists what is wired: providers, mail keys, connectors, the browser, the research
   microphone and speech recognition permissions; the second recognises on the device (no
   network while listening). Switch "voice: on": a Gate card arriving is spoken once.
 
+## 15j. Renderer: LOD, WebGPU, the overlay, the bench (phase 4)
+
+- `npm run park:check` prints `renderer: webgl2 wanted OK` and `PARK CHECK OK`;
+  `node scripts/park-check.mjs --webgpu` prints either `renderer: webgpu drew the park OK`
+  or the device-lost line with the fallback, never a silent WebGL2.
+- `npm run park:bench` prints two rows per renderer (LOD on, LOD off) with frames counted
+  and a `×` gain line, then `PARK BENCH OK`; a row without frames says "no data".
+- In Chrome or Safari with WebGPU: the status line says `park: webgpu`; with
+  `?renderer=webgl2` it says `park: webgl2 (renderer=webgl2 in the URL)`. Press the backtick
+  key: the overlay shows frame median and p95, draw calls, triangles, `foliage N near / M
+  far / K culled` and the crew levels; orbit the camera out and the near count falls while
+  far rises; `?lod=off` puts every item in near.
+- On the Mac in the app: the same, in the Tauri webview; the 60 fps target is read from the
+  overlay there (the runbook's renderer section), never from here.
+
 ## 16. Telegram (phase 4)
 
 - Make a bot with @BotFather, `export TELEGRAM_BOT_TOKEN=<token>`, start the sidecar: the
