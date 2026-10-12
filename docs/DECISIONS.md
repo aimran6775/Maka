@@ -2053,3 +2053,24 @@ park never pretends to be something it is not.
 
 Adapters may now declare `optionalKeys`: a key the channel can do without is not "not
 wired", it is simply unset.
+
+## D174 — how many people are in the chat, not what Apple labels it
+
+`chat.style` is documented as 43 for a one-to-one chat and 45 for a group, and the
+iMessage adapter trusted it: anything not 43 was discarded before the registry saw it,
+so the park could not be addressed from a group the owner happens to be in (D172).
+
+On a Mac signed in as the owner, Messages files the owner's own thread with themselves
+as **style 45 with one participant**. Every command the owner typed was therefore thrown
+away as "a group", silently — the park never answered and nothing was logged, because
+dropping a non-private chat is the normal, expected path.
+
+The inbound query now also counts the chat's members
+(`SELECT COUNT(*) FROM chat_handle_join WHERE chat_id = c.ROWID`) and `chatTypeOf`
+prefers that count: exactly one participant is private, more than one is a group, and
+the style flag is only consulted when no count is available. This is strictly tighter
+than reading the flag — a real group cannot become private by being mislabelled, because
+its member count gives it away — so it does not loosen D172's "the owner and nobody else".
+
+Proven live: `/status` from the owner's phone paired the chat and the park replied with
+the Gate, mission, spend and attendance, delivered.

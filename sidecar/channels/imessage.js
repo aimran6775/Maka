@@ -105,7 +105,8 @@ export function signed(text) {
 export function inboundQuery(afterRowId) {
   return [
     'SELECT m.ROWID AS rowid, COALESCE(h.id, "") AS handle, COALESCE(m.text, "") AS text,',
-    '       COALESCE(c.chat_identifier, "") AS chat, COALESCE(c.style, 0) AS style',
+    '       COALESCE(c.chat_identifier, "") AS chat, COALESCE(c.style, 0) AS style,',
+    '       (SELECT COUNT(*) FROM chat_handle_join chj WHERE chj.chat_id = c.ROWID) AS participants',
     'FROM message m',
     'LEFT JOIN handle h ON m.handle_id = h.ROWID',
     'LEFT JOIN chat_message_join j ON j.message_id = m.ROWID',
@@ -137,12 +138,20 @@ export function ownerHandles(value) {
   );
 }
 
-// chat.style 43 is a one-to-one conversation; 45 is a group. Anything else is unknown,
-// and the registry refuses to pair with anything that is not plainly private
-// (safety 2026-10-11 H1).
-export function chatTypeOf(style) {
-  if (Number(style) === 43) return 'private';
-  if (Number(style) === 45) return 'group';
+// Whether a chat is the one-to-one conversation the owner may act in (safety H1).
+//
+// `chat.style` is the obvious flag — 43 for a direct chat, 45 for a group — but Messages
+// does not keep it honest: the owner's own thread with themselves is filed as 45, and
+// every command the owner sent was being thrown away as "a group" (D174). How many people
+// are in the chat is the thing actually being asked, so when the participant count is
+// known it decides, and the style is only the fallback.
+export function chatTypeOf(styleOrRow, participantsArg) {
+  const row = styleOrRow && typeof styleOrRow === 'object' ? styleOrRow : null;
+  const style = Number(row ? row.style : styleOrRow);
+  const participants = Number(row ? row.participants : participantsArg);
+  if (Number.isFinite(participants) && participants > 0) return participants === 1 ? 'private' : 'group';
+  if (style === 43) return 'private';
+  if (style === 45) return 'group';
   return 'unknown';
 }
 
@@ -199,7 +208,7 @@ export function createIMessageAdapter({
         if (!owners.has(normalizeHandle(r.handle)) || !owners.has(normalizeHandle(chatId))) continue;
         // And only in the owner's own one-to-one chat: a group the owner happens to be
         // in is not the owner's channel, whoever typed in it.
-        if (chatTypeOf(r.style) !== 'private') continue;
+        if (chatTypeOf(r) !== 'private') continue;
         // The park's own words coming back on the same Apple ID are not the owner
         // speaking. Matched on the text, within a window, and consumed once.
         const body = String(r.text || '');
@@ -213,7 +222,7 @@ export function createIMessageAdapter({
         await onInbound({
           chatId,
           userId: String(r.handle || '').trim() || chatId,
-          chatType: chatTypeOf(r.style),
+          chatType: chatTypeOf(r),
           text: String(r.text || ''),
           messageId: String(r.rowid),
           updateId: `imessage:${r.rowid}`,

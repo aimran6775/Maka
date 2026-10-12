@@ -37,16 +37,25 @@ test('the query asks only for messages that came in after a point, and never for
   assert.match(q, /is_from_me = 0/, 'what the park sent is not inbound');
   assert.match(q, /m\.ROWID > 1234/);
   assert.match(q, /LIMIT 50/, 'a long backlog cannot flood one poll');
+  assert.match(q, /chat_handle_join/, 'it asks how many people are in the chat (D174)');
   // The row id is a number in the SQL, never pasted text.
   assert.match(inboundQuery('7; DROP TABLE message'), /m\.ROWID > 0/, 'a non-number becomes 0');
   assert.match(inboundQuery(null), /m\.ROWID > 0/);
 });
 
-test('only a one-to-one conversation counts as private, so nothing else can pair', () => {
+test('only a one-to-one conversation counts as private, and the participant count decides it', () => {
+  // The style flag alone, when nothing better is known.
   assert.equal(chatTypeOf(43), 'private');
   assert.equal(chatTypeOf(45), 'group');
   assert.equal(chatTypeOf(0), 'unknown');
   assert.equal(chatTypeOf(undefined), 'unknown');
+  // D174: Messages files the owner's own thread with themselves as style 45 while it
+  // holds exactly one participant. Every command the owner sent was thrown away as "a
+  // group" until the count was allowed to overrule the flag.
+  assert.equal(chatTypeOf({ style: 45, participants: 1 }), 'private', 'one participant is a direct chat whatever the flag says');
+  assert.equal(chatTypeOf({ style: 43, participants: 4 }), 'group', 'and four is a group whatever the flag says');
+  assert.equal(chatTypeOf({ style: 45, participants: 0 }), 'group', 'no count: fall back to the flag');
+  assert.equal(chatTypeOf({ style: 0, participants: null }), 'unknown');
 });
 
 test('rows parse, and an empty result is not an error', () => {
@@ -74,8 +83,8 @@ test('start reads where the history ends, then hands on only what arrives after 
   assert.match(detail, /me@example\.com/);
   // Nothing from before the park started: the first query asks after row 100.
   table = [
-    { rowid: 101, handle: 'me@example.com', text: 'hello park', chat: 'me@example.com', style: 43 },
-    { rowid: 102, handle: '+15550000', text: 'from a group', chat: 'chat9', style: 45 },
+    { rowid: 101, handle: 'me@example.com', text: 'hello park', chat: 'me@example.com', style: 45, participants: 1 },
+    { rowid: 102, handle: '+15550000', text: 'from a group', chat: 'chat9', style: 45, participants: 3 },
   ];
   await new Promise((r) => setTimeout(r, 40));
   await a.stop();
@@ -194,10 +203,10 @@ test('a message from anyone but the owner never reaches the registry, so the par
   const got = [];
   await a.start({ keys: { imessageHandle: 'me@example.com' }, onInbound: (m) => got.push(m), log: quiet });
   table = [
-    { rowid: 1, handle: 'stranger@spam.com', text: 'JA66RLVY', chat: 'stranger@spam.com', style: 43 },
-    { rowid: 2, handle: '+15550009999', text: 'hello?', chat: '+15550009999', style: 43 },
-    { rowid: 3, handle: 'me@example.com', text: 'approve w1', chat: 'me@example.com', style: 43 },
-    { rowid: 4, handle: 'me@example.com', text: 'in a group', chat: 'chat77', style: 45 },
+    { rowid: 1, handle: 'stranger@spam.com', text: 'JA66RLVY', chat: 'stranger@spam.com', style: 43, participants: 1 },
+    { rowid: 2, handle: '+15550009999', text: 'hello?', chat: '+15550009999', style: 43, participants: 1 },
+    { rowid: 3, handle: 'me@example.com', text: 'approve w1', chat: 'me@example.com', style: 45, participants: 1 },
+    { rowid: 4, handle: 'me@example.com', text: 'in a group', chat: 'chat77', style: 45, participants: 5 },
   ];
   await new Promise((r) => setTimeout(r, 40));
   await a.stop();
@@ -258,7 +267,7 @@ test('the park does not read its own messages back as the owner talking', async 
       if (/osascript$/.test(file)) {
         // Messages echoes what was just sent back as an incoming line.
         const body = (args[1].match(/send "([\s\S]*)" to targetBuddy/) || [])[1] || '';
-        table.push({ rowid: ++row, handle: 'me@example.com', text: body.replace(/\\"/g, '"'), chat: 'me@example.com', style: 43 });
+        table.push({ rowid: ++row, handle: 'me@example.com', text: body.replace(/\\"/g, '"'), chat: 'me@example.com', style: 45, participants: 1 });
         return '';
       }
       const sql = args[args.length - 1];
@@ -277,13 +286,13 @@ test('the park does not read its own messages back as the owner talking', async 
   assert.deepEqual(got, [], 'its own card did not come back as a question');
 
   // A real reply from the owner still gets through.
-  table.push({ rowid: ++row, handle: 'me@example.com', text: '/approve w1', chat: 'me@example.com', style: 43 });
+  table.push({ rowid: ++row, handle: 'me@example.com', text: '/approve w1', chat: 'me@example.com', style: 45, participants: 1 });
   await new Promise((r) => setTimeout(r, 40));
   assert.deepEqual(got.map((m) => m.text), ['/approve w1']);
 
   // And the same words said twice by the owner are not swallowed as an echo: only one
   // copy of each sent message is ever consumed.
-  table.push({ rowid: ++row, handle: 'me@example.com', text: '/approve w1', chat: 'me@example.com', style: 43 });
+  table.push({ rowid: ++row, handle: 'me@example.com', text: '/approve w1', chat: 'me@example.com', style: 45, participants: 1 });
   await new Promise((r) => setTimeout(r, 40));
   assert.equal(got.length, 2);
   await a.stop();
