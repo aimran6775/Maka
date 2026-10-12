@@ -157,15 +157,37 @@ export function createReflect({
     return usd;
   }
 
-  function checkThresholds() {
+  // D186: mark every threshold the park has already crossed as crossed, without emitting
+  // or reflecting on any of them. `crossed` lives in memory, so before this a restart
+  // re-crossed every threshold and triggered a fresh over-budget reflection — and a
+  // reflection is judge-tier spend, which pushed the figure higher, which the next restart
+  // announced again. Eight restarts in one afternoon sent the owner five reflections about
+  // being over budget and spent $1.79 past a $3.00 mission doing it, with every venture
+  // still at $0.00. The park found this itself and said so: "the freeze must also stop
+  // reflections and judging, since this reflection itself adds cost."
+  function seedThresholds() {
+    for (const s of thresholdScopes()) {
+      if (!(s.budgetUsd > 0)) continue;
+      const fraction = s.spentUsd / s.budgetUsd;
+      for (const t of THRESHOLDS) if (fraction >= t) crossed.add(`${s.scope}:${s.id}:${t}`);
+    }
+  }
+
+  // The budgets watched for a crossing: the mission, each venture in the plan, and the
+  // judge's day.
+  function thresholdScopes() {
     const st = chief.state();
-    if (!st.mission) return;
+    if (!st.mission) return [];
     const plan = st.plan;
     const missionSpent = [...spentByAgent.values()].reduce((n, v) => n + v, 0);
     const scopes = [{ scope: 'mission', id: st.mission.id, budgetUsd: st.mission.budgetUsd, spentUsd: missionSpent }];
     if (plan) for (const v of plan.ventures) scopes.push({ scope: 'venture', id: v.id, budgetUsd: v.budgetUsd, spentUsd: ventureSpend(v.id) });
     if (ledger) scopes.push({ scope: 'judge', id: ledger.dayKey(), budgetUsd: caps.judgeUsdPerDay, spentUsd: ledger.judgeToday().usd });
-    for (const s of scopes) {
+    return scopes;
+  }
+
+  function checkThresholds() {
+    for (const s of thresholdScopes()) {
       if (!(s.budgetUsd > 0)) continue;
       const fraction = s.spentUsd / s.budgetUsd;
       for (const t of THRESHOLDS) {
@@ -472,7 +494,9 @@ export function createReflect({
         if (doc) latest = summary(doc);
       }
       scheduler.add(REFLECT_JOB_ID, schedule, ({ reason }) => reflect({ reason }));
-      checkThresholds();
+      // D186: what was already over budget when the park started is recorded as crossed,
+      // not announced. A restart is not news, and reflecting on it costs money.
+      seedThresholds();
       return this;
     },
     reflect,

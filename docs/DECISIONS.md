@@ -2525,3 +2525,33 @@ wall only a person can clear, and reads the list first so it joins rather than r
 again. A Junior has neither: its work comes from its own Ranger, which is who it tells.
 There is no API route that *raises* one; a blocker comes from a Ranger that is actually
 stuck, not from outside the park.
+
+## D186 — a restart is not news, and reflecting on it costs money
+
+The owner, seeing their phone: the park had sent five reflections in a row, each one
+reporting the mission further over budget — 101 %, 137 %, 146 %, 157 %, 160 % — and each
+duplicated by Apple's self-thread, so ten messages about the same thing.
+
+`crossed`, the set that stops a budget threshold being announced twice, lives in memory.
+`init()` replayed every persisted run to rebuild the spend and then called
+`checkThresholds()`, so **every restart re-crossed every threshold** and triggered a fresh
+over-budget reflection. A reflection is judge-tier model spend, so it pushed the figure
+higher, which the next restart announced again. Eight restarts in one afternoon of
+development spent **$1.79 past a $3.00 mission** on nothing but reflecting about being over
+budget, with both ventures still at $0.00 and no deliverable between them.
+
+The park found it before I did, and said it plainly in the reflection itself: "the freeze
+must also stop reflections and judging, since this reflection itself adds cost." It then
+raised it as a blocker, because the remedy — a new budget, or stopping — is the owner's.
+
+`init()` now calls `seedThresholds()`, which marks every threshold already crossed as
+crossed **without emitting or reflecting**. What was true before the park started is not
+news. A crossing that happens while it is running is still announced, once, exactly as
+before.
+
+On the duplication itself: that is Apple's, not the park's. The Mac is signed into the
+owner's own Apple ID and the park messages the owner's own number, so every message is
+filed twice — once sent, once received — and both bubbles show. The park's echo filter
+already stops it *acting* on its own messages, which is why none of this became a loop. A
+single bubble needs a separate sender identity: a second Apple ID on the Mac, or one of the
+channels that is not self-addressed (Discord and Slack are both built and wired).

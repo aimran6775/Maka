@@ -18,6 +18,7 @@ import { createRouter, defaultPolicy } from '../sidecar/router.js';
 import { TOOLS } from '../sidecar/capability/tools.js';
 import { CREW_TOOLS } from '../sidecar/capability/crew.js';
 import { defaultLayout } from '../shared/world.js';
+import { makeEvent } from '../shared/events.js';
 import { defaultLeash } from '../shared/leash.js';
 import { fakeProvider, fakeClock, text, end, waitUntil } from './helpers/fake-provider.js';
 
@@ -198,5 +199,42 @@ test('skips are honest: judge cap, no key, unreadable answer; budget thresholds 
     assert.equal(budget.events.filter((e) => e.type === 'budget.threshold').length, 2, 'once per threshold');
   } finally {
     await budget.cleanup();
+  }
+});
+
+// D186: a restart is not news, and reflecting on it costs money.
+//
+// `crossed` lives in memory, so every restart re-crossed every budget threshold and
+// triggered a fresh over-budget reflection. A reflection is judge-tier spend, which pushed
+// the figure higher, which the next restart announced again. Eight restarts in one
+// afternoon sent the owner five reflections about being over budget — each one duplicated
+// by Apple's self-thread, so ten messages — and spent $1.79 past a $3.00 mission doing it,
+// with every venture still at $0.00 and no deliverable. The park diagnosed it itself:
+// "the freeze must also stop reflections and judging, since this reflection itself adds
+// cost."
+test('a restart records what was already over budget instead of announcing it again', async () => {
+  const h = await setup({ reflectScript: () => [[text('{"portfolio":"p","ventures":[],"briefings":[]}'), end('end_turn', { inputTokens: 10, outputTokens: 5 })]] });
+  try {
+    await seedPlan(h);
+    // Spend well past the mission budget, recorded as a finished run from before the boot.
+    await h.store.saveRun({ runId: 'r-old', agentId: 'chief-ranger', spentUsd: 99, status: 'ended', reason: 'completed', events: [], messages: [] });
+
+    const triggered = [];
+    const scheduler = { add() {}, remove() {}, state: () => ({}), trigger: async (id, reason) => { triggered.push(reason); } };
+    // A second reflect module over the same home: this is what a restart does.
+    const restarted = await createReflect({
+      bus: h.bus, store: h.store, runs: h.runs, agents: h.agents, trails: h.trails, chief: h.chief,
+      ledger: h.ledger, router: createRouter(defaultPolicy()), scheduler, getLayout: h.layoutState.get,
+      clock: h.clock, workspaceRoot: h.workspaceRoot, env: {}, schedule: { daily: '07:00' }, log: { error() {} },
+    }).init();
+    assert.ok(restarted);
+    assert.deepEqual(triggered, [], 'a threshold crossed before the park started is recorded, not announced');
+
+    // A crossing that happens while it is running is still announced — once.
+    h.bus.emit(makeEvent('cost.estimate', { runId: 'r-live', turn: 1, provider: 'anthropic', model: 'm', inputTokens: 1, outputTokens: 1, usd: 500, reconciled: true }, { ts: h.clock.now() }));
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(triggered.length <= 1, `a live crossing reflects at most once, got ${triggered.length}`);
+  } finally {
+    await h.cleanup();
   }
 });
