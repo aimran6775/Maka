@@ -83,7 +83,7 @@ test('plan schema, markdown and zone grid helpers', () => {
   assert.match(md, /## Lantern Co \(lantern-co\) · \$3.00/);
   assert.match(md, /- \[t2\] Draft three listings → storefront · \$1.50 · by in 3 days · after t1/);
   assert.match(md, /## Needs the Superintendent/);
-  assert.deepEqual(roleGrants('chief_ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'crew.set_head', 'brief.decide', 'venture.propose', 'venture.list', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request']);
+  assert.deepEqual(roleGrants('chief_ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'crew.set_head', 'brief.decide', 'venture.propose', 'venture.list', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request', 'charter.read']);
   const layout = defaultLayout();
   assert.deepEqual(freeZoneRect(layout), { x: 21, y: 1, w: 8, h: 6 }, 'to the right of the station');
   assert.deepEqual(freeZoneRect({ rooms: [{ x: 1, y: 1, w: 12, h: 8 }, { x: 21, y: 1, w: 8, h: 6 }, { x: 31, y: 1, w: 8, h: 6 }] }), { x: 41, y: 1, w: 8, h: 6 });

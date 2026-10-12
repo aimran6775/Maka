@@ -27,6 +27,8 @@ const SAMPLES = {
   'work.done': { workItemId: 'w1', fromAgentId: 'chief', toAgentId: 'ranger', runId: 'r1', status: 'done', reason: 'completed', deliverables: ['outbox/brief.md'], summary: 'wrote the brief', spentUsd: 0 },
   'agent.run.queued': { runId: 'r2', agentId: 'ranger', position: 0, workItemId: 'w1' },
   'plan.updated': { missionId: 'mission-1', planId: 'plan-1', version: 2, change: 'submitted', status: 'active', summary: 'two ventures', by: 'chief-ranger', runId: 'r1', ventures: [{ id: 'lantern-co', name: 'Lantern Co', budgetUsd: 3, taskCount: 4, summary: 'lanterns' }] },
+  // D184: a department's standing work.
+  'charter.duty': { department: 'finance', dutyId: 'daily-books', change: 'ran', title: 'Daily books', reason: '', trigger: 'due', workItemId: 'work-1', agentId: 'finance-lead', budgetUsd: 0.15 },
   // D182: a business the park proposed and the owner decided on.
   'venture.updated': { ventureId: 'trail-maps', change: 'approved', status: 'active', name: 'Trail Maps', thesis: 'printable maps', budgetUsd: 4, spentUsd: 0, askUsd: 4, briefId: 'b1', itemId: 'venture-ab12cd34', by: 'superintendent', reason: 'go on then', runId: 'r1', evidence: [{ kind: 'source', text: 'search volume', ref: 'https://example.com' }] },
   'budget.threshold': { scope: 'venture', id: 'lantern-co', budgetUsd: 3, spentUsd: 2.5, threshold: 0.8, fraction: 0.8333 },

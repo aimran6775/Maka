@@ -279,6 +279,21 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     runId: str,
     ventures: { type: 'array', items: { type: 'object', required: ['id', 'name'], additionalProperties: false, properties: { id: nonEmpty, name: nonEmpty, budgetUsd: num0, taskCount: int0, summary: str } } },
   }),
+  // Added v1 (D184): a department's standing work. 'ran' means a duty was handed to the
+  // department's head (`workItemId` says which item); 'skipped' says why it was not, and is
+  // emitted every time, because a duty that quietly did not run would read as work done.
+  // 'set' and 'removed' are changes to the charter itself.
+  'charter.duty': payload(['department', 'change'], {
+    department: nonEmpty,
+    dutyId: str,
+    change: { type: 'string', enum: ['ran', 'skipped', 'set', 'removed'] },
+    title: str,
+    reason: str,
+    trigger: str, // 'due', 'missed', 'asked for'
+    workItemId: str,
+    agentId: str,
+    budgetUsd: num0,
+  }),
   // Added v1 (D182): a venture in the portfolio changed. The park proposes a business, the
   // owner approves it at the Entrance Gate, and the approval is what starts it — so
   // `change` is the whole life of a venture: 'proposed' (waiting for the owner), 'approved'

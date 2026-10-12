@@ -2422,3 +2422,44 @@ delegator has left. What changed is which pool "has left" refers to, and every r
 names the pool, so `BUDGET_EXHAUSTED` now reads "nothing left to delegate from the budget
 the owner approved for big ($20.00, $20.00 already delegated)" instead of pointing at a
 mission that has nothing to do with the business.
+
+## D184 — department charters: what each department does without being asked
+
+The owner: "Every department should have its own tasks and instructions. It should be fully
+autonomous company managing 100s of business on it own. 24/7."
+
+After D178 a department had a head, a persona and a folder, so it could answer what another
+department asked it — and nothing else. It never acted on its own. Every run in the park
+still began with something outside the park asking for it.
+
+A charter is the other half, and each department has one:
+
+- **a remit** — what it owns, decides, and must hand to the Gate. It goes into the head's
+  system prompt through `systemExtras`, so it holds in *every* run that department does,
+  not only in a duty. A team member gets the remit; only the head is told it heads
+  anything and what its standing duties are.
+- **duties** — `{ id, title, brief, schedule, budgetUsd }`. The scheduler holds one job per
+  duty (`charter:<department>:<duty>`) and hands it to the department's head when it falls
+  due, including one found overdue because the park was off when it was.
+
+All ten departments ship with a remit and at least one duty, so a park nobody has
+configured still has ten departments doing something rather than ten waiting. Finance
+closes the books daily at 07:30; Infrastructure checks the park's own health at 06:45;
+Research sweeps for opportunities weekly; Legal re-reads the terms monthly. Seeding only
+fills in a department that has no charter — an edited one is never overwritten.
+
+**Every default duty is a read and a write-up.** A duty runs while the owner is asleep, so
+none of them publishes, sends, or spends outside the park: Marketing reviews ad performance
+and "change no budget or status", Support sweeps the inbox and "send nothing", People
+reviews the crew and "the Chief hires and retires". Outward acts stay the Gate's, where the
+owner is. A test asserts each default duty writes its finding into its own team folder.
+
+**Three bounds, because standing work is standing spend.** Each duty has its own
+`budgetUsd`; each charter a `dailyCapUsd` its duties share, so a department that has spent
+its day skips the rest of it; and above both, the park's judge daily cap stops every
+department at once. A duty that does not run **says why, every time** — a skipped duty that
+emitted nothing would read as work done.
+
+A duty is delegated by the Superintendent, because it is the park's standing work rather
+than one Ranger's errand, and it carries no venture: a department's own housekeeping is not
+a business's spend (D183).

@@ -112,7 +112,7 @@ export const ROLE_GRANTS = deepFreeze({
   superintendent: [],
   // D176: plan.read is the read half of plan.submit's replacing write, and crew.retire
   // the undo of crew.hire. Both are the Chief's own alone.
-  chief_ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'crew.set_head', 'brief.decide', 'venture.propose', 'venture.list', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request'],
+  chief_ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'crew.set_head', 'brief.decide', 'venture.propose', 'venture.list', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request', 'charter.read'],
   // D178: every Ranger can see the departments and ask one for what it needs. A Junior gets
   // neither: its work comes from its own Ranger, who holds both tools, and letting the
   // narrowest role open work items across the park is how a one-hop tree turns into
@@ -120,7 +120,7 @@ export const ROLE_GRANTS = deepFreeze({
   // D182: a Ranger can propose a business and read the portfolio. Proposing commits
   // nothing — it puts a card in front of the owner, who alone starts anything — and a
   // department that cannot see what the park already runs will keep proposing it again.
-  ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request', 'venture.propose', 'venture.list'],
+  ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request', 'venture.propose', 'venture.list', 'charter.read'],
   junior_ranger: ['memory.recall'], // a Junior reads its crew's memory; writing is a Ranger's (phase 4 step 11)
 });
 

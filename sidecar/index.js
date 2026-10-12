@@ -30,6 +30,7 @@ import { createAgents } from './agents.js';
 import { createTrails } from './trails.js';
 import { createChief } from './chief.js';
 import { createPortfolio } from './portfolio.js';
+import { createCharters } from './charters.js';
 import { createScheduler } from './scheduler.js';
 import { createReflect } from './reflect.js';
 import { createAway } from './away.js';
@@ -118,11 +119,12 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   const router = createRouter(policy);
   let scoutMemory = null;
   let recipes = null;
+  let charters = null; // D184: declared here so the run manager's systemExtras can read it
   // Phase 4 step 11: Ranger memory. Items are redacted and judge-accepted before storage;
   // the top matches for a run's brief go into its system prompt; 👍 / 👎 on the Ranger card.
   const memory = await createMemory({ store, bus, agents, getLayout: layoutState.get, judge, log }).init();
   Object.assign(registry, memory.tools);
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, alwaysConfirm: config.confirmTools || [], workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(recipes ? recipes.skillLines(agent) : []), ...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...(recipes ? recipes.recipeLines(agent) : []), ...memory.promptLines(agent, info || {})] });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, alwaysConfirm: config.confirmTools || [], workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(charters ? charters.remitLines(agent) : []), ...(recipes ? recipes.skillLines(agent) : []), ...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...(recipes ? recipes.recipeLines(agent) : []), ...memory.promptLines(agent, info || {})] });
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, workspaceRoot }).init();
   toolContext.trails = trails;
   // Phase 4 step 12: recipes (versioned playbooks run as work items along the trails, the
@@ -154,6 +156,28 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     });
   }
   const scheduler = await createScheduler({ store, log }).init();
+  // D184: department charters — a standing remit each head carries into every run, and
+  // duties the scheduler hands it on a cadence, so the park works unwatched. Each duty is
+  // bounded by its own budget and its department's daily cap, and nothing above the judge's
+  // own daily cap runs at all.
+  charters = await createCharters({
+    bus,
+    store,
+    scheduler,
+    trails,
+    agents,
+    getLayout: layoutState.get,
+    ledger,
+    judgeCap: () => {
+      const caps = router.caps();
+      const today = ledger ? ledger.judgeToday() : null;
+      if (!today) return null;
+      if (today.usd >= caps.judgeUsdPerDay) return `the park's judge daily cap is reached ($${today.usd.toFixed(2)} of $${caps.judgeUsdPerDay})`;
+      return null;
+    },
+    log,
+  }).init();
+  Object.assign(registry, charters.tools);
   let connectors = null;
   // Phase 4 step 9: the results engine reads the ledgers and the connector stores; the
   // reflection rolls it up first and reads the Chief rules' verdicts from it.

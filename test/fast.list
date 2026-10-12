@@ -55,6 +55,7 @@ test/results.test.js
 test/scout-memory.test.js
 test/memory.test.js
 test/portfolio.test.js
+test/charters.test.js
 test/recipes.test.js
 test/recipe-race.test.js
 test/listing-pipeline.test.js
