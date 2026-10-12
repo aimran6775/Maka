@@ -351,3 +351,41 @@ test('crew.set_head appoints a head from existing crew, moves it, and stands it 
     await s.cleanup();
   }
 });
+
+// D179: the departments are permanent corporate structure and a venture passes through
+// them. crew.hire required a venture, so every department head was stamped with whichever
+// venture happened to exist the day it was hired — all ten of this park's heads came out
+// labelled "ember-wick", a $3 test venture.
+test('a department head is hired without a venture; only a Ranger working on one names it', async () => {
+  const s = await setup({ chiefScript: () => [[text('noted'), end()]] });
+  try {
+    const hire = s.chief.tools['crew.hire'];
+    const ctx = { agentId: 'chief-ranger', runId: 'r-test' };
+    await s.chief.mission({ text: 'sell lanterns', budgetUsd: 5, horizon: '30 days' });
+
+    // A head serves the whole park: no venture at all, not an empty string.
+    const head = JSON.parse((await hire.run({ name: 'Legal Lead', specialty: 'legal', head: true }, ctx)).output);
+    const rec = s.agents.get(head.agentId);
+    assert.equal(rec.venture, undefined, 'a department head carries no venture');
+    assert.equal(rec.head, true);
+
+    // A Ranger hired for one venture still names it, which is the other half of the rule.
+    const onVenture = JSON.parse((await hire.run({ name: 'Lantern Scout', specialty: 'scout', venture: 'lantern-co' }, ctx)).output);
+    assert.equal(s.agents.get(onVenture.agentId).venture, 'lantern-co');
+
+    // And a venture can be cleared when a Ranger stops serving one venture alone.
+    await s.agents.update(onVenture.agentId, { venture: null }, { by: 'chief-ranger' });
+    assert.equal(s.agents.get(onVenture.agentId).venture, undefined);
+
+    // The schema is what the gate checks before a call ever reaches run(): venture is
+    // optional now, but an empty one is still not a venture.
+    const schema = hire.inputSchema;
+    assert.deepEqual(schema.required, ['name', 'specialty'], 'venture is no longer required');
+    assert.equal(validate(schema, { name: 'A', specialty: 'legal' }).ok, true);
+    assert.equal(validate(schema, { name: 'A', specialty: 'legal', venture: 'lantern-co' }).ok, true);
+    assert.equal(validate(schema, { name: 'A', specialty: 'legal', venture: '' }).ok, false);
+    assert.equal(validate(schema, { specialty: 'legal' }).ok, false, 'a name is still required');
+  } finally {
+    await s.cleanup();
+  }
+});

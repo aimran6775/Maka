@@ -302,15 +302,19 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
     },
     'crew.hire': {
       name: 'crew.hire',
-      description: 'Hire a Ranger with a specialty for a venture. It is created in its department camp (the camp is created if missing) reporting to you. Set head: true to make it the head of that department, which is who receives requests other departments send there (dept.request); appointing a head stands the previous one down. Returns the agent id to delegate to.',
+      description: 'Hire a Ranger with a specialty. It is created in its department camp (the camp is created if missing) reporting to you. Name a venture only if this Ranger works on that one venture; a department head serves the whole park and takes none. Set head: true to make it the head of that department, which is who receives requests other departments send there (dept.request); appointing a head stands the previous one down. Returns the agent id to delegate to.',
       inputSchema: {
         type: 'object',
-        required: ['name', 'specialty', 'venture'],
+        required: ['name', 'specialty'],
         additionalProperties: false,
         properties: {
           name: { type: 'string', minLength: 1, maxLength: 60 },
           specialty: { type: 'string', enum: SPECIALTY_NAMES },
-          venture: { type: 'string', minLength: 1, maxLength: 80, description: 'Venture id from the plan' },
+          // D179: a department is permanent and a venture passes through it, so a Ranger
+          // hired to run a department takes no venture. Only a Ranger hired to work on one
+          // venture names it. Requiring it meant every department head was stamped with
+          // whichever venture happened to exist the day it was hired.
+          venture: { type: 'string', minLength: 1, maxLength: 80, description: 'Venture id from the plan, for a Ranger working on that one venture. Leave it out for a department head or anyone whose work serves the whole park.' },
           persona: { type: 'string', maxLength: 2000, description: 'Optional extra persona; the specialty persona applies by default' },
           budgetUsd: { type: 'number', minimum: 0 },
           // D178: a department needs a head before another department can ask it for

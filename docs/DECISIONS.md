@@ -2263,3 +2263,31 @@ the root. A team path therefore can no more escape into another team than an age
 escape its workspace. Only real department names resolve, so the prefix cannot be used to
 make an arbitrary directory under the workspace root, and an agent in no department may
 read a team folder but write to none.
+
+## D179 — a department is permanent; a venture passes through it
+
+The owner, on seeing the new departments: "It should be generic as this is only a business
+venture in it. This is is just corporate titles."
+
+They were right, and the mistake was mine twice over. `crew.hire` **required** a venture,
+so every Ranger it had ever created was stamped with one — including, after D178, all ten
+department heads, every one labelled `ember-wick`. And ember-wick is not a business the
+owner chose: it is a $3 test venture the Chief invented from a mission line I wrote while
+working through `docs/LIVE_TEST.md` step 61 ("one small venture, budget $3, horizon 30
+days", which does not say what venture). Three of the heads were even named for it —
+"Candle Scout", "Candle Storefront", "Candle Marketing" — so the park's permanent
+structure wore the name of a throwaway test.
+
+`venture` is now optional on `crew.hire`. A Ranger hired to work on one venture names it;
+a department head serves the whole park and takes none. The ten live heads had their
+ventures cleared and the three candle-named ones were renamed to their offices: Research
+Lead, Product & Listings Lead, Marketing Lead.
+
+Their agent ids still read `candle-scout-2bb60f` and so on. An id is immutable and recreating
+the Rangers would throw away their run history and the memory keyed to that id, which is a
+worse trade than a cosmetically stale id. The display name is what the park and the
+directory show.
+
+The distinction this records: a department is an office with a standing remit, and the
+ventures come and go through it. Nothing about Sales, Legal or Finance should change when a
+venture is retired.
