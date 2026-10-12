@@ -4,7 +4,7 @@
 // Messages, the database or macOS to be tested.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createIMessageAdapter, sendScript, osaQuote, inboundQuery, chatTypeOf, parseRows, normalizeHandle, ownerHandles, DEFAULT_DB } from '../sidecar/channels/imessage.js';
+import { createIMessageAdapter, sendScript, osaQuote, inboundQuery, chatTypeOf, parseRows, normalizeHandle, ownerHandles, signed, DEFAULT_DB } from '../sidecar/channels/imessage.js';
 import { assertAdapter } from '../sidecar/channels/adapter.js';
 
 const quiet = { error() {}, info() {} };
@@ -119,7 +119,7 @@ test('sending goes through osascript, and a refused automation prompt is named',
   const res = await a.sendText('me@example.com', 'the Gate has an item');
   assert.equal(res.messageId, 'imessage-7');
   assert.match(sent[0].file, /osascript$/);
-  assert.match(sent[0].args[1], /send "the Gate has an item" to targetBuddy/);
+  assert.match(sent[0].args[1], /send "Maka · the Gate has an item" to targetBuddy/);
 
   let started = false;
   const denied = createIMessageAdapter({
@@ -287,4 +287,36 @@ test('the park does not read its own messages back as the owner talking', async 
   await new Promise((r) => setTimeout(r, 40));
   assert.equal(got.length, 2);
   await a.stop();
+});
+
+test('the park signs its messages, and can send as its own Apple ID when it has one', async () => {
+  const scripts = [];
+  const mk = (keys) => {
+    const a = createIMessageAdapter({
+      exec: async (file, args) => (/sqlite3$/.test(file) ? '[{"rowid":0}]' : (scripts.push(args[1]), '')),
+      log: quiet,
+      clock: { now: () => 1 },
+    });
+    return a.start({ keys, onInbound() {}, log: quiet }).then(() => a);
+  };
+
+  // With no account of its own: the first iMessage account, which on the owner's Mac is
+  // the owner — so the park appears to be messaging itself.
+  const plain = await mk({ imessageHandle: '+18135550000' });
+  await plain.sendText('+18135550000', 'the Gate has an item');
+  assert.match(scripts.at(-1), /1st account whose service type = iMessage/);
+  assert.match(scripts.at(-1), /send "Maka · the Gate has an item"/, 'every message says who is talking');
+  await plain.stop();
+
+  // With its own: Messages sends as that account instead, so the message comes from the
+  // park rather than from the owner.
+  scripts.length = 0;
+  const own = await mk({ imessageHandle: '+18135550000', imessageFrom: 'communications@makapark.com' });
+  await own.sendText('+18135550000', 'hello');
+  assert.match(scripts.at(-1), /service id "E:communications@makapark\.com"/);
+  assert.match(scripts.at(-1), /participant "\+18135550000"/);
+  await own.stop();
+
+  // The signature is added once, never stacked.
+  assert.equal(signed(signed('x')), 'Maka · x');
 });

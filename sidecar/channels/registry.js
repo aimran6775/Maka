@@ -93,6 +93,12 @@ export function createChannels({
   async function keysFor(adapter) {
     const keys = {};
     const missing = [];
+    // D173: an adapter may also name keys it can do without (the Apple ID iMessage sends
+    // as). A missing one is not "not wired"; it just is not set.
+    for (const k of adapter.optionalKeys || []) {
+      const v = await resolveKey(k, { env, keystorePath, warn: (p) => log.warn && log.warn(p) });
+      if (v) keys[k] = v;
+    }
     for (const k of adapter.keys) {
       const v = await resolveKey(k, { env, keystorePath, warn: (p) => log.warn && log.warn(p) });
       if (v) keys[k] = v;

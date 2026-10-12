@@ -73,17 +73,30 @@ export function osaQuote(s) {
   return `"${String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-// The AppleScript that sends one message. Messages picks the buddy on the iMessage
-// service; if the handle is not reachable over iMessage the script fails and the
-// registry records the delivery as failed, which is the truth.
-export function sendScript(handle, text) {
+// The AppleScript that sends one message. `from` (D173) names the Apple ID to send as:
+// Messages files an account as "E:<apple id>", and with a second account signed in the
+// park writes as itself instead of as the owner — which is what stops its messages
+// landing in the owner's own thread with themselves. Without it the first iMessage
+// account is used, which on a Mac signed in as the owner is the owner.
+// If the handle is not reachable over iMessage the script fails and the registry records
+// the delivery as failed, which is the truth.
+export function sendScript(handle, text, from = null) {
+  const service = from ? `service id ${osaQuote(`E:${String(from).trim()}`)}` : '1st account whose service type = iMessage';
   return [
     'tell application "Messages"',
-    '  set targetService to 1st account whose service type = iMessage',
+    `  set targetService to ${service}`,
     `  set targetBuddy to participant ${osaQuote(handle)} of targetService`,
     `  send ${osaQuote(text)} to targetBuddy`,
     'end tell',
   ].join('\n');
+}
+
+// Every message the park sends carries its name. On a thread the owner may share with
+// themselves, "who is talking" is otherwise a guess (D173).
+export const SIGNATURE = 'Maka · ';
+export function signed(text) {
+  const body = String(text || '');
+  return body.startsWith(SIGNATURE) ? body : SIGNATURE + body;
 }
 
 // Messages that arrived after `afterRowId`, newest last. `text` is NULL for messages the
@@ -157,6 +170,7 @@ export function createIMessageAdapter({
   let handle = null;
   let owners = new Set(); // the only handles the park will ever message or listen to
   let primary = null; // the one of them every outgoing message actually goes to
+  let from = null; // D173: the Apple ID the park sends as, when it has one of its own
   const justSent = []; // { text, at } — what the park said, to recognise its own echo
   let onInbound = null;
   let timer = null;
@@ -218,6 +232,7 @@ export function createIMessageAdapter({
     name: 'imessage',
     label: 'iMessage',
     keys: ['imessageHandle'],
+    optionalKeys: ['imessageFrom'],
     buttons: false,
     // D172: this channel carries the owner and nobody else — the handle in the keystore
     // is the credential, checked on every message in and out — so the registry pairs the
@@ -232,6 +247,7 @@ export function createIMessageAdapter({
       // The first handle as the owner wrote it: Messages wants the address in the shape
       // it knows, not the normalised form the allow-list compares with.
       primary = String(handle).split(',')[0].trim();
+      from = String((keys && keys.imessageFrom) || '').trim() || null;
       // Reading the database is the permission people forget, so it is checked first and
       // named exactly: the park would otherwise look connected and never hear anything.
       try {
@@ -247,7 +263,7 @@ export function createIMessageAdapter({
       timer = setInterval(() => void poll(), pollMs);
       if (timer.unref) timer.unref();
       l.info && l.info(`imessage: watching Messages for ${handle}`);
-      return { detail: `Messages on this Mac, to ${primary} only${owners.size > 1 ? ` (replies accepted from ${owners.size} handles)` : ''}` };
+      return { detail: `Messages on this Mac${from ? ` as ${from}` : ''}, to ${primary} only${owners.size > 1 ? ` (replies accepted from ${owners.size} handles)` : ''}` };
     },
 
     async stop() {
@@ -266,12 +282,12 @@ export function createIMessageAdapter({
       // …and it always answers in the one thread, whichever of the owner's handles the
       // chat was filed under, so the same conversation does not arrive twice.
       const target = primary || to;
-      const body = String(text || '').slice(0, MAX_MESSAGE);
+      const body = signed(String(text || '')).slice(0, MAX_MESSAGE);
       // Remembered before the send, so the echo cannot arrive first.
       justSent.push({ text: body, at: clock.now() });
       while (justSent.length > ECHO_MEMORY) justSent.shift();
       try {
-        await exec(osascript, ['-e', sendScript(target, body)]);
+        await exec(osascript, ['-e', sendScript(target, body, from)]);
       } catch (err) {
         const detail = String((err && err.stderr) || (err && err.message) || '');
         if (/Not authori[sz]ed|assistive|1743|–1743/.test(detail)) {

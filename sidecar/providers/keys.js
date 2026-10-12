@@ -52,6 +52,8 @@ export const ENV_VARS = Object.freeze({
   telegramBot: 'TELEGRAM_BOT_TOKEN',
   // D170: not a secret — the owner's own handle, so the park knows who to message.
   imessageHandle: 'MAKA_IMESSAGE_HANDLE',
+  // D173: the Apple ID the park sends as, when it has one of its own.
+  imessageFrom: 'MAKA_IMESSAGE_FROM',
   discordBot: 'DISCORD_BOT_TOKEN',
   slackBot: 'SLACK_BOT_TOKEN',
   slackApp: 'SLACK_APP_TOKEN',

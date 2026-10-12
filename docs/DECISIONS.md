@@ -2026,3 +2026,30 @@ declare `trusted: true`, and the registry pairs its first private message on sig
 acts on that very message. Every other channel is untouched and still pairs by code; the
 test asserts both halves, because this is the one place where loosening the rule is
 correct and it must not leak to the others.
+
+## D173. The park signs its messages, and can speak as itself
+
+The owner asked which number the park messages from. The honest answer was: as them. The
+only Apple ID in Messages on this Mac is the owner's, so the park writes to the owner from
+the owner — a thread the owner shares with themselves, which is why it reads as a muddle
+and why the echo of D172 existed at all.
+
+Two parts, one of them needing a human.
+
+**The signature** costs nothing and happens now: every message the adapter sends is
+prefixed `Maka · ` (added once, never stacked). Whoever the account is, the owner can see
+which lines are the park's.
+
+**The separate identity** is what the owner actually asked for:
+`communications@makapark.com` as an Apple ID of its own, signed into Messages beside
+theirs, so the park's messages arrive from the park. The adapter is ready for it —
+`imessageFrom` (optional; `MAKA_IMESSAGE_FROM`) selects the sending account, which
+Messages files as `E:<apple id>` — but the account cannot be made from here: an Apple ID
+needs its verification mail received at that address (so makapark.com needs MX records,
+which needs the Cloudflare DNS token that is still missing), a password and a second
+factor, and Apple's terms accepted by the person they bind. The adapter falls back to the
+first iMessage account and says in its status line which identity it is using, so the
+park never pretends to be something it is not.
+
+Adapters may now declare `optionalKeys`: a key the channel can do without is not "not
+wired", it is simply unset.
