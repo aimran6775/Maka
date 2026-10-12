@@ -172,3 +172,59 @@ test('crew.spawn_junior: a Ranger creates a Junior through the gate; a Junior do
     await h.cleanup();
   }
 });
+
+// D177: a zone used to be created bare, so a Ranger hired into a department camp held role
+// grants and nothing else. That is why the first venture's market research failed four
+// times: no agent in the park had `web.fetch` at all, and the Scout had no way to know
+// that — the weak worker invented a fetch result, and a capable one correctly reported
+// that the tool was not in its function list.
+test('a new zone is born with its own kit, so a Ranger hired into it can do that department\'s work', async () => {
+  const h = await setup();
+  try {
+    const research = await h.agents.ensureZone('research');
+    const scout = await h.agents.create({ name: 'Scout', role: 'ranger', zoneId: research.id, specialty: 'scout', parentAgentId: 'superintendent' }, { by: 'superintendent' });
+
+    // The whole point: the research kit is reachable from the Research Camp.
+    const grants = h.agents.get(scout.id).grants;
+    for (const t of ['web.fetch', 'web.search', 'web.read', 'web.trends', 'brief.submit']) {
+      assert.ok(grants.includes(t), `a Scout in the Research Camp needs ${t}`);
+    }
+    // And it can still write its brief.
+    assert.ok(grants.includes('fs.write'));
+
+    // Each fixture is announced, because the park shows only what happened.
+    const placements = h.events.filter((e) => e.type === 'object.place' && e.payload.roomId === research.id);
+    assert.deepEqual(placements.map((e) => e.payload.kind).sort(), ['supply_cache', 'trailhead_sign']);
+    // Two fixtures, two tiles: a kit may not stack on one square.
+    const tiles = new Set(placements.map((e) => `${e.payload.x},${e.payload.y}`));
+    assert.equal(tiles.size, placements.length, 'each fixture gets its own tile');
+    for (const e of placements) {
+      assert.ok(e.payload.x >= research.x && e.payload.x < research.x + research.w, 'inside the room');
+      assert.ok(e.payload.y >= research.y && e.payload.y < research.y + research.h, 'inside the room');
+    }
+
+    // The Finance camp gets the read-only books desk; a Marketing camp gets neither it nor
+    // any connector fixture, because those move money or publish and stay the
+    // Superintendent's to place.
+    const finance = await h.agents.ensureZone('finance');
+    const books = await h.agents.create({ name: 'Books', role: 'ranger', zoneId: finance.id, specialty: 'books', parentAgentId: 'superintendent' }, { by: 'superintendent' });
+    assert.ok(h.agents.get(books.id).grants.includes('ledger.read'));
+
+    const marketing = await h.agents.ensureZone('marketing');
+    const ads = await h.agents.create({ name: 'Ads', role: 'ranger', zoneId: marketing.id, specialty: 'marketing', parentAgentId: 'superintendent' }, { by: 'superintendent' });
+    const adGrants = h.agents.get(ads.id).grants;
+    assert.ok(adGrants.includes('fs.write'), 'it can still write deliverables');
+    for (const t of ['meta_ads.create_campaign', 'google_ads.set_budget', 'stripe.refund', 'mail.send', 'shopify.set_price', 'computer.click']) {
+      assert.ok(!adGrants.includes(t), `${t} is never granted by the park itself`);
+    }
+
+    // Asking for a zone that exists returns it and places nothing new: a zone the owner
+    // has curated is not quietly refitted.
+    const before = h.agents.get(scout.id).grants.length;
+    const again = await h.agents.ensureZone('research');
+    assert.equal(again.id, research.id);
+    assert.equal(h.agents.get(scout.id).grants.length, before, 'no second kit');
+  } finally {
+    await h.cleanup();
+  }
+});

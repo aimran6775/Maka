@@ -144,6 +144,39 @@ export const ZONE_LABELS = deepFreeze({
   product_listings: 'Product & Listings Camp',
 });
 
+// D177: the kit a zone is born with. `ensureZone` created a bare room, so every department
+// camp the Chief opened had no fixtures and its Rangers held role grants alone — a Research
+// Camp with no way to reach the web, which is what stalled the first venture: four scout
+// attempts failed because no agent in the park had `web.fetch` at all.
+//
+// Only fixtures whose tools either need no leash or are read-only are placed by the park
+// itself. The connector and machine fixtures — radio_tower, park_store, notice_board,
+// fee_booth, field_office, outpost, control_desk — carry tools that send mail, publish,
+// move money or drive the Mac, and they stay the Superintendent's deliberate placement
+// (the connectors are wired one at a time). `supply_cache` is in every kit because a
+// Ranger that cannot write a file cannot deliver anything, and each of its writes still
+// asks at the Gate (D11).
+export const ZONE_FIXTURES = deepFreeze({
+  // The Scout's research kit. `test/research.test.js` and `scripts/demo-phase4.mjs` both
+  // put the sign in the Research Camp, which is where SPECIALTIES.scout sends its Rangers.
+  research: ['trailhead_sign', 'supply_cache'],
+  // A venture's trailhead is its marker on the map; the sign is research-only, so a Ranger
+  // standing at one can read the public web and submit a brief.
+  trailhead: ['trailhead_sign', 'supply_cache'],
+  // The Books Ranger reads the park's books. `ledger.read` is read-only and has no domain.
+  finance: ['ledger_desk', 'supply_cache'],
+  sales: ['supply_cache'],
+  marketing: ['supply_cache'],
+  operations_support: ['supply_cache'],
+  product_listings: ['supply_cache'],
+  visitor_center: ['supply_cache'],
+  ranger_station: ['supply_cache'],
+});
+
+export function zoneFixtures(kind) {
+  return ZONE_FIXTURES[kind] ? [...ZONE_FIXTURES[kind]] : [];
+}
+
 // A rectangle for a new zone that overlaps no existing room: rooms are laid out on a grid
 // of (w + 2) × (h + 2) cells, left to right, then the next row.
 // Zones keep a tile of clear ground between them, the same gap `freeZoneRect` leaves when

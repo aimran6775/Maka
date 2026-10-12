@@ -2141,3 +2141,42 @@ Added, both granted to `chief_ranger` only:
 
 The Chief's working-order instruction and its follow-up prompt both now say to call
 `plan.read` before revising and that `plan.submit` replaces, so anything left out is lost.
+
+## D177 — a zone is born with its own kit
+
+The root cause of the first venture's four failed scout attempts, found after D175 ruled
+out the network and the adapter.
+
+`ensureZone` created a bare room. The Chief's `crew.hire` opens a department camp on demand
+and puts the new Ranger in it, so every Ranger it hired held role grants and nothing else:
+`delegate`, `work.check`, `memory.*`, `recipe.run`, `crew.spawn_junior`. The research kit —
+`web.fetch`, `web.search`, `web.read`, `web.trends`, `brief.submit` — is a fixture grant
+(`trailhead_sign`), and no fixture was ever placed. **No agent in the park could reach the
+web at all.** The five `supply_cache` fixtures that did exist had been placed by hand.
+
+The task was impossible, and the two models failed at it differently: `qwen2.5:7b` invented
+a fetch result (`"https://www.bls.gov/, 200 OK"`) and wrote a brief of made-up price bands,
+and `claude-haiku-4-5` correctly reported that `web.fetch` was not in its function list and
+stopped. Both writes were refused — the `fs.write` permission card (D11) went to the owner's
+phone and nobody approved a fabrication — so the gate held and nothing false was ever
+stored. But the loop could not progress, and the Chief's honest report that its scout "could
+not open web pages" read as a network fault when it was a missing grant.
+
+`ZONE_FIXTURES` in `shared/world.js` now says which kit each zone kind is born with, and
+`ensureZone` places it, emitting `object.place` per fixture so the park shows only what
+happened. `test/research.test.js` and `scripts/demo-phase4.mjs` already put the sign in the
+Research Camp, which is where `SPECIALTIES.scout` sends its Rangers; that is now what the
+live park does too.
+
+The kit holds only fixtures whose tools need no leash or are read-only: `trailhead_sign`
+(research), `ledger_desk` (`ledger.read`), and `supply_cache` everywhere, because a Ranger
+that cannot write a file cannot deliver anything and each write still asks at the Gate.
+The connector and machine fixtures — `radio_tower`, `park_store`, `notice_board`,
+`fee_booth`, `field_office`, `outpost`, `control_desk` — send mail, publish, move money or
+drive the Mac, and they stay the Superintendent's deliberate placement; the connectors are
+wired one at a time.
+
+A zone that already exists is returned untouched. A camp the owner has curated is not
+quietly refitted, and nothing is added behind their back — so this park's existing bare
+zones were fitted out explicitly through `POST /api/layout/place`, which is an owner
+action and is on the record as five `object.place` events.

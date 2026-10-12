@@ -21,7 +21,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { makeEvent } from '../shared/events.js';
-import { AGENT_ROLES, PARENT_ROLES, SPECIALTIES, SPECIALTY_NAMES, ZONE_KINDS, ZONE_LABELS, LAYOUT_SCHEMA, agentOf, roomOf, childrenOf, freeTile, allGrantsFor, freeZoneRect } from '../shared/world.js';
+import { AGENT_ROLES, PARENT_ROLES, SPECIALTIES, SPECIALTY_NAMES, ZONE_KINDS, ZONE_LABELS, LAYOUT_SCHEMA, agentOf, roomOf, childrenOf, freeTile, allGrantsFor, freeZoneRect, zoneFixtures } from '../shared/world.js';
 import { validate } from '../shared/schema.js';
 import { resolveAllLeash, withAgentLeash, validateLeash, DOMAINS } from '../shared/leash.js';
 
@@ -42,6 +42,8 @@ function slug(name) {
 export function createAgents({ layoutState, leashState = null, bus, clock = { now: () => Date.now() }, activeRunFor = () => null } = {}) {
   if (!layoutState || !bus) throw new TypeError('createAgents needs layoutState and bus');
   const emit = (payload) => bus.emit(makeEvent('crew.agent', payload, { ts: clock.now() }));
+  // D177: the fixtures a new zone is born with are announced like any other placement.
+  const emitWorld = (type, payload) => bus.emit(makeEvent(type, payload, { ts: clock.now() }));
   const layout = () => layoutState.get();
 
   function view(a) {
@@ -113,7 +115,27 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
     if (l.rooms.some((r) => r.id === roomId)) throw fail('CONFLICT', `room "${roomId}" exists with another kind`, 409);
     const room = { id: roomId, name: name || ZONE_LABELS[kind] || kind, kind, ...rect };
     if (venture) room.venture = venture;
-    await layoutState.replace({ ...l, rooms: [...l.rooms, room] });
+    // D177: a zone is born with its own kit. Without this the room was bare, so the
+    // Rangers hired into it held role grants alone — a Research Camp with no `web.fetch`,
+    // which is exactly why the first venture's market research could never be done. The
+    // kit holds only fixtures that need no leash or are read-only; the connector and
+    // machine fixtures stay the Superintendent's to place.
+    const rooms = [...l.rooms, room];
+    const objects = [...l.objects];
+    const placed = [];
+    for (const fixtureKind of zoneFixtures(kind)) {
+      // freeTile reads the objects already on the grid, so it has to see the ones placed
+      // a moment ago or two fixtures would land on the same tile.
+      const tile = freeTile({ ...l, rooms, objects }, room);
+      if (!tile) break; // a zone too small for its whole kit keeps what fits
+      const object = { id: `obj-${randomUUID().slice(0, 8)}`, kind: fixtureKind, roomId: room.id, ...tile };
+      objects.push(object);
+      placed.push(object);
+    }
+    await layoutState.replace({ ...l, rooms, objects });
+    // The park shows only what happened, so each fixture is announced as a placement like
+    // any other (D11's writes still ask at the Gate; this only says the kit is there).
+    for (const o of placed) emitWorld('object.place', { objectId: o.id, kind: o.kind, roomId: o.roomId, x: o.x, y: o.y });
     return room;
   }
 
