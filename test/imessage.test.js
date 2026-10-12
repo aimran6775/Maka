@@ -218,3 +218,31 @@ test('a Gate card goes out as the text a channel without buttons gets', async ()
   // The buttons become the commands that do the same thing, since iMessage has none.
   assert.match(script, /\/approve|approve/i);
 });
+
+test('every message goes to one handle, whichever of the owner\'s the chat is filed under', async () => {
+  const sent = [];
+  const a = createIMessageAdapter({
+    exec: async (file, args) => {
+      if (/sqlite3$/.test(file)) return '[{"rowid":0}]';
+      sent.push(args[1]);
+      return '';
+    },
+    log: quiet,
+    clock: { now: () => 1 },
+  });
+  // The phone first: that is where the park answers. The Apple ID is still the owner.
+  const { detail } = await a.start({ keys: { imessageHandle: '+18135550000, me@example.com' }, onInbound() {}, log: quiet });
+  assert.match(detail, /\+18135550000 only/);
+
+  // A chat filed under the Apple ID is still answered on the phone, so the owner keeps
+  // one conversation instead of collecting a duplicate thread per handle.
+  await a.sendText('me@example.com', 'from the email thread');
+  await a.sendText('+18135550000', 'from the phone thread');
+  assert.equal(sent.length, 2);
+  for (const script of sent) assert.match(script, /participant "\+18135550000"/, 'always the first handle');
+
+  // The allow-list still holds: a stranger is refused, and nothing was sent.
+  await assert.rejects(a.sendText('someone@else.com', 'hi'), (e) => e.code === 'NOT_THE_OWNER');
+  assert.equal(sent.length, 2);
+  await a.stop();
+});

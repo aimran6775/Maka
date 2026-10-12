@@ -148,6 +148,7 @@ export function createIMessageAdapter({
 } = {}) {
   let handle = null;
   let owners = new Set(); // the only handles the park will ever message or listen to
+  let primary = null; // the one of them every outgoing message actually goes to
   let onInbound = null;
   let timer = null;
   let lastRowId = 0;
@@ -207,6 +208,9 @@ export function createIMessageAdapter({
       if (!handle) throw fail('NO_HANDLE', 'iMessage needs the owner handle (an Apple ID email or phone number)');
       owners = ownerHandles(handle);
       if (!owners.size) throw fail('NO_HANDLE', `iMessage cannot read an owner handle from "${handle}"`);
+      // The first handle as the owner wrote it: Messages wants the address in the shape
+      // it knows, not the normalised form the allow-list compares with.
+      primary = String(handle).split(',')[0].trim();
       // Reading the database is the permission people forget, so it is checked first and
       // named exactly: the park would otherwise look connected and never hear anything.
       try {
@@ -222,7 +226,7 @@ export function createIMessageAdapter({
       timer = setInterval(() => void poll(), pollMs);
       if (timer.unref) timer.unref();
       l.info && l.info(`imessage: watching Messages for ${handle}`);
-      return { detail: `Messages on this Mac, to ${[...owners].join(', ')} only` };
+      return { detail: `Messages on this Mac, to ${primary} only${owners.size > 1 ? ` (replies accepted from ${owners.size} handles)` : ''}` };
     },
 
     async stop() {
@@ -238,9 +242,12 @@ export function createIMessageAdapter({
       // The allow-list is checked here, not upstream: whatever the registry decides, the
       // park cannot message anyone but its owner.
       if (!owners.has(normalizeHandle(to))) throw fail('NOT_THE_OWNER', `iMessage only ever writes to the owner; "${to}" is not ${[...owners].join(', ')}`);
+      // …and it always answers in the one thread, whichever of the owner's handles the
+      // chat was filed under, so the same conversation does not arrive twice.
+      const target = primary || to;
       const body = String(text || '').slice(0, MAX_MESSAGE);
       try {
-        await exec(osascript, ['-e', sendScript(to, body)]);
+        await exec(osascript, ['-e', sendScript(target, body)]);
       } catch (err) {
         const detail = String((err && err.stderr) || (err && err.message) || '');
         if (/Not authori[sz]ed|assistive|1743|–1743/.test(detail)) {
