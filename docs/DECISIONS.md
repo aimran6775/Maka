@@ -2341,3 +2341,52 @@ The step is now claimed synchronously — `status: 'delegated'` is written befor
 and the work item id merged in after. `readySteps` counts anything that is not `pending` as
 started, so the window is closed. `test/recipe-race.test.js` drives both orders and asserts
 the old one delegates twice.
+
+## D182 — the portfolio: the park proposes a business, the owner's approval starts it
+
+The owner: "let's build the portfolios and everything. The business should Present me with
+business and I approve and this starts."
+
+Two things were wrong before. The park ran **one** mission with one plan and one budget, so
+a "venture" was a line item inside whatever the Chief last submitted — there was no way to
+hold two businesses with separate money, let alone a hundred. And the go/no-go on a Scout's
+venture brief was the **Chief's** (`brief.decide`), with the owner never asked: the one
+decision that commits the owner's money was being made by an agent.
+
+A venture is now a record of its own in `portfolio.json`, with its own state and its own
+budget: `proposed` → `active` → `paused` / `stopped`, or `declined`.
+
+**Nothing starts itself.** `venture.propose` raises a `venture` item at the Entrance Gate
+carrying the thesis, the budget asked for, the first steps, the risks and the evidence —
+written so the owner can decide without having to ask a question back, because a card they
+cannot judge is a card approved on trust. The proposal schema refuses a thesis under forty
+characters, a missing budget and an empty first-steps list for the same reason.
+
+The proposing run does **not** park on it. A Gate item has no timeout (D37) and a business
+decision can sit for hours; holding a run slot on one would waste a Ranger. `propose()`
+returns the venture id at once and picks up the decision when it lands.
+
+**Approval is what starts the business.** On approve the venture goes active with the
+budget the owner granted, and `onApproved` hands it to the Chief's `startVenture`, whose
+brief carries only the thesis the owner read and the first steps they approved — so the
+Chief cannot start a different business from the one that was approved, and anything bigger
+has to come back as a new proposal. `askUsd` and `budgetUsd` are kept apart so the record
+shows both what was wanted and what was granted.
+
+**The ceiling is checked twice**: when a business is proposed and again when it is
+approved, because the owner may hold several cards at once and approve them hours apart.
+A venture that was affordable when proposed and is not by the time it is approved is
+declined with the arithmetic shown, rather than quietly overcommitting the park.
+`ceilingUsd` (config `portfolioCeilingUsd`, $100 by default) caps the committed total across
+every active and paused venture; a stopped one releases its budget, a paused one keeps it.
+
+Two small contract widenings, both additive as D172's was: `GATE_ITEM_KINDS` gained
+`'venture'`, and `venture.updated` is a new event. A `venture` item is neither of the two
+kinds that existed — no run waits on it, and approving it commits a budget rather than
+letting one call through — and `maybePropose` already ignored anything that was not an
+`action`, so approving a business does not feed the leash approval streak. `gateQueue.submit`
+had hardcoded `kind: 'action'`; it now honours the kind the caller asks for.
+
+A venture still `proposed` after a restart is declined with "propose it again": the Gate
+item's resolver died with the process, so the card is gone and waiting on a decision that
+cannot arrive would be a lie.

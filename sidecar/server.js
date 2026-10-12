@@ -374,7 +374,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, computer = null, importer = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, portfolio = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, computer = null, importer = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -543,6 +543,25 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/mission' && method === 'GET') {
       if (!chief) throw new HttpError(404, 'no Chief Ranger');
       return sendJson(res, 200, chief.state());
+    }
+    // D182: the portfolio. Reading it is open; starting a business is the Gate's alone, so
+    // there is no route here that approves one — a proposal is approved at /api/gate/:id
+    // like anything else the owner decides. Pausing, resuming and stopping are the
+    // owner's, and each takes a reason so the record says why.
+    if (p === '/api/portfolio' && method === 'GET') {
+      if (!portfolio) throw new HttpError(404, 'no portfolio');
+      return sendJson(res, 200, { ...portfolio.state(), ventures: portfolio.list() });
+    }
+    if (p.startsWith('/api/portfolio/') && method === 'POST') {
+      if (!portfolio) throw new HttpError(404, 'no portfolio');
+      const [, , , id, action] = p.split('/');
+      if (!['pause', 'resume', 'stop'].includes(action)) throw new HttpError(404, `unknown portfolio action "${action}"`);
+      const body = await readJsonBody(req);
+      try {
+        return sendJson(res, 200, await portfolio[action](decodeURIComponent(id), String((body && body.reason) || '')));
+      } catch (err) {
+        throw new HttpError(err.status || 400, err.message, err.code);
+      }
     }
     if (p === '/api/mission' && method === 'POST') {
       if (!chief) throw new HttpError(404, 'no Chief Ranger');

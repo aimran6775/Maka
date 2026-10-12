@@ -384,6 +384,32 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
       return this;
     },
     state: () => ({ mission: mission ? { ...mission } : null, plan: plan ? { ...plan } : null, chief: agents.get(CHIEF_ID), caps, judgeToday: ledger ? ledger.judgeToday() : null }),
+    // D182: the owner approved a business, so it starts. The portfolio holds the decision
+    // and the budget; this is the Chief being told to get on with it. The brief carries
+    // only what the owner actually agreed to — the thesis they read and the first steps
+    // they approved — so the Chief does not invent a different business from the one that
+    // was approved.
+    async startVenture(venture) {
+      if (!venture || !venture.id) return null;
+      const prompt = [
+        `The owner approved a new business: ${venture.name} (${venture.id}).`,
+        `They committed $${Number(venture.budgetUsd || 0).toFixed(2)} of model spend to it. Do not spend past that.`,
+        '',
+        'The thesis they approved:',
+        venture.thesis,
+        '',
+        'The first steps they approved:',
+        ...(venture.firstSteps || []).map((s, i) => `  ${i + 1}. ${s}`),
+        ...(venture.risks && venture.risks.length ? ['', 'Risks the proposal named:', ...venture.risks.map((r) => `  · ${r}`)] : []),
+        '',
+        'Start it: open the camps it needs, hire or reuse Rangers (crew.hire names a venture only',
+        'for a Ranger that works on this one business; a department head serves the whole park),',
+        'and delegate the first step that can begin now. Stay inside the budget above, and do not',
+        'widen the business beyond what the owner approved — anything bigger is a new proposal',
+        'for them with venture.propose.',
+      ].join('\n');
+      return startChiefRun(prompt, { budgetUsd: Math.min(Number(venture.budgetUsd) || 0, 2), maxTurns: 14 });
+    },
     // A new mission from the Superintendent, or a re-brief of the current one.
     async mission({ text, budgetUsd, horizon = '30 days' } = {}) {
       if (typeof text !== 'string' || !text.trim()) throw fail('BAD_REQUEST', 'mission text is required');

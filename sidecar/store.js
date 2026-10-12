@@ -78,6 +78,9 @@ export function createStore({ root, fs = fsp }) {
   const gateFile = path.join(root, 'gate-items.json');
   const workFile = path.join(root, 'work-items.json');
   const missionFile = path.join(root, 'mission.json');
+  // D182: the portfolio — every venture the park has been asked to run, each with its own
+  // state and budget, so the park is not one mission at a time.
+  const portfolioFile = path.join(root, 'portfolio.json');
   const planFile = path.join(root, 'plan.json');
   const schedulerFile = path.join(root, 'scheduler.json');
   const awayFile = path.join(root, 'away.json');
@@ -160,6 +163,8 @@ export function createStore({ root, fs = fsp }) {
     saveWorkItems: (items) => writeJsonAtomic(workFile, items, { fs }),
     loadMission: (fallback) => readJson(missionFile, fallback, { fs }),
     saveMission: (mission) => writeJsonAtomic(missionFile, mission, { fs }),
+    loadPortfolio: (fallback) => readJson(portfolioFile, fallback, { fs }),
+    savePortfolio: (portfolio) => writeJsonAtomic(portfolioFile, portfolio, { fs }),
     loadPlan: (fallback) => readJson(planFile, fallback, { fs }),
     savePlan: (plan) => writeJsonAtomic(planFile, plan, { fs }),
     saveRun: async (record) => writeJsonAtomic(runFile(record.runId), record, { fs }),

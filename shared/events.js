@@ -61,7 +61,13 @@ export const RUN_END_REASONS = deepFreeze(['completed', 'cancelled', 'max_turns'
 export const GATE_ITEM_STATUSES = deepFreeze(['pending', 'approved', 'revised', 'rejected', 'allowed', 'refused', 'expired']);
 // 'action' is a tool call under a leash domain; 'proposal' is the ledger asking to loosen a
 // leash after a streak of approvals (approve applies it, reject resets the streak).
-export const GATE_ITEM_KINDS = deepFreeze(['action', 'proposal']);
+// D182 widened this with 'venture': a business the park wants to start, waiting for the
+// owner's word. An enum widening is additive and safe for a frozen contract (as the
+// `channel.delivery.kind` widening was in D172). 'action' is a tool call parked mid-run and
+// 'proposal' a leash loosening; a 'venture' item is neither — no run waits on it, and
+// approving it commits a budget rather than letting one call through.
+export const GATE_ITEM_KINDS = deepFreeze(['action', 'proposal', 'venture']);
+export const VENTURE_STATUSES = deepFreeze(['proposed', 'active', 'paused', 'stopped', 'declined']);
 const LEASH_LEVEL_ENUM = deepFreeze(['observe', 'draft', 'act_capped', 'act_free']);
 
 export const PAYLOAD_SCHEMAS = deepFreeze({
@@ -272,6 +278,29 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     by: str,
     runId: str,
     ventures: { type: 'array', items: { type: 'object', required: ['id', 'name'], additionalProperties: false, properties: { id: nonEmpty, name: nonEmpty, budgetUsd: num0, taskCount: int0, summary: str } } },
+  }),
+  // Added v1 (D182): a venture in the portfolio changed. The park proposes a business, the
+  // owner approves it at the Entrance Gate, and the approval is what starts it — so
+  // `change` is the whole life of a venture: 'proposed' (waiting for the owner), 'approved'
+  // (the owner said yes and it is now active, with the budget they approved), 'declined',
+  // 'paused', 'resumed', 'stopped'. `by` is who caused it: an agent id for a proposal, the
+  // Superintendent for a decision.
+  'venture.updated': payload(['ventureId', 'change', 'status'], {
+    ventureId: nonEmpty,
+    change: { type: 'string', enum: ['proposed', 'approved', 'declined', 'paused', 'resumed', 'stopped'] },
+    status: { type: 'string', enum: VENTURE_STATUSES },
+    name: str,
+    thesis: str,
+    budgetUsd: num0,
+    spentUsd: num0,
+    askUsd: num0,
+    briefId: str,
+    itemId: str,
+    by: str,
+    reason: str,
+    runId: str,
+    // What the owner was shown when they decided, kept so the record says why it started.
+    evidence: { type: 'array', items: { type: 'object', required: ['kind', 'text'], additionalProperties: false, properties: { kind: nonEmpty, text: str, ref: str } } },
   }),
   // Added v1 (phase 2 step 6): spend crossed a budget threshold. `scope` says whose budget
   // (a venture's model spend, the mission's, or the judge's daily cap); `fraction` is

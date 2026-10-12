@@ -138,7 +138,11 @@ export function createGateQueue({ bus, store, ledger, leashState, getLayout = ()
     },
     // Parks an action until the Superintendent decides. Resolves with { decision, notes }.
     submit(item) {
-      const rec = { ...item, itemId: item.itemId || nextId(), kind: 'action', status: 'pending', createdAt: clock.now(), decidedAt: null };
+      // D182: the kind the caller asked for, defaulting to 'action' as every caller before
+      // the portfolio wanted. A 'venture' item is a business waiting for the owner's word:
+      // no run parks on it, and `maybePropose` ignores anything that is not an action, so
+      // approving a business does not feed the leash approval streak.
+      const rec = { ...item, itemId: item.itemId || nextId(), kind: item.kind || 'action', status: 'pending', createdAt: clock.now(), decidedAt: null };
       push(rec);
       return new Promise((resolve) => {
         const timer = timeoutMs ? setTimeout(() => { if (resolvers.has(rec.itemId)) settle(rec, 'expired', { reason: `no decision within ${timeoutMs} ms` }); save(); }, timeoutMs) : null;

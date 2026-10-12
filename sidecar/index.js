@@ -29,6 +29,7 @@ import { createJudge } from './judge.js';
 import { createAgents } from './agents.js';
 import { createTrails } from './trails.js';
 import { createChief } from './chief.js';
+import { createPortfolio } from './portfolio.js';
 import { createScheduler } from './scheduler.js';
 import { createReflect } from './reflect.js';
 import { createAway } from './away.js';
@@ -130,6 +131,19 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   Object.assign(registry, recipes.tools);
   const chief = await createChief({ bus, store, runs, agents, trails, ledger, router, getLayout: layoutState.get, workspaceRoot, log }).init();
   Object.assign(registry, chief.tools);
+  // D182: the portfolio. The park proposes a business, the owner approves it at the
+  // Entrance Gate, and that approval is what starts it — `onApproved` hands the approved
+  // venture to the Chief to staff and begin. The portfolio records the decision and the
+  // money; it does none of the work itself.
+  const portfolio = await createPortfolio({
+    bus,
+    store,
+    gateQueue,
+    ceilingUsd: typeof config.portfolioCeilingUsd === 'number' ? config.portfolioCeilingUsd : undefined,
+    onApproved: (venture) => chief.startVenture(venture),
+    log,
+  }).init();
+  Object.assign(registry, portfolio.tools);
   const scheduler = await createScheduler({ store, log }).init();
   let connectors = null;
   // Phase 4 step 9: the results engine reads the ledgers and the connector stores; the
@@ -220,6 +234,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     agents,
     trails,
     chief,
+    portfolio,
     reflect,
     away,
     mailSetup,
