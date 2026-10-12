@@ -29,18 +29,30 @@ export function toAnthropicTools(tools, names = null) {
 // that name against the same pattern and the same tool list — so the history has to carry
 // the wire name the tool list carries, not Maka's dotted one.
 export function toAnthropicMessages(messages, names = null) {
-  return messages.map((m) => ({
-    role: m.role,
-    content: m.content.map((b) => {
-      if (b.type === 'tool_result') {
-        const out = { type: 'tool_result', tool_use_id: b.tool_use_id, content: b.content ?? '' };
-        if (b.is_error) out.is_error = true;
-        return out;
-      }
-      if (b.type === 'tool_use' && names) return { ...b, name: names.toApi(b.name) };
-      return b;
-    }),
-  }));
+  const out = [];
+  for (const m of messages) {
+    const content = m.content
+      .map((b) => {
+        if (b.type === 'tool_result') {
+          const o = { type: 'tool_result', tool_use_id: b.tool_use_id, content: b.content ?? '' };
+          if (b.is_error) o.is_error = true;
+          return o;
+        }
+        if (b.type === 'tool_use' && names) return { ...b, name: names.toApi(b.name) };
+        return b;
+      })
+      // D175: the API refuses an empty text block, and a worker that answers with nothing
+      // but whitespace leaves exactly that. Dropping it keeps the rest of the turn sendable.
+      .filter((b) => !(b.type === 'text' && !String(b.text || '').trim()));
+    // A turn with nothing left in it cannot be sent at all: the API refuses empty content.
+    // It carried no information, so leaving it out loses nothing — but the turn on either
+    // side of it may now share a role, and those have to be joined into one message.
+    if (!content.length) continue;
+    const prev = out[out.length - 1];
+    if (prev && prev.role === m.role) prev.content.push(...content);
+    else out.push({ role: m.role, content });
+  }
+  return out;
 }
 
 export function createAnthropicProvider({ apiKey, fetch: fetchImpl = globalThis.fetch, baseUrl = DEFAULT_BASE_URL, maxTokens = DEFAULT_MAX_TOKENS } = {}) {

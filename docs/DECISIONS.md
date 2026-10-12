@@ -2074,3 +2074,38 @@ its member count gives it away — so it does not loosen D172's "the owner and n
 
 Proven live: `/status` from the owner's phone paired the chat and the park replied with
 the Gate, mission, spend and attendance, delivered.
+
+## D175 — a turn that produced nothing is not a sendable turn
+
+The first venture stalled at market research. The Chief reported, truthfully, that its
+scout "could not open web pages because of a network issue" and refused to go further
+rather than invent prices — but the network was fine. `example.com`, DuckDuckGo's HTML
+endpoint, BLS, Amazon and real candle-wax suppliers all answer the park's honest
+`Maka/0.1 (+local agent harness)` user agent with HTTP 200.
+
+The real failure was in the provider adapters. The worker (`qwen2.5:7b`) spent a turn and
+emitted nothing usable, leaving an assistant message with **no content blocks**. On the
+next turn, after the judge asked for a revision, that history went back out:
+
+- the OpenAI shape sent `{ role: 'assistant', content: null }` with no `tool_calls`, and
+  Ollama refused the whole request with `HTTP 400: invalid message content type: <nil>`;
+- Anthropic refuses the same turn for its own reason — content may not be empty, and a
+  text block may not be blank.
+
+So any run where the worker produced an empty turn could never be revised: the retry died
+on a 400 before reaching the model. The scout's "network issue" was the model's own guess
+at why its run had died.
+
+`content: null` is now sent only alongside `tool_calls`, which is the one shape that
+allows it; otherwise an assistant turn carries the empty string. On the Anthropic side,
+blank text blocks are dropped, a turn left with no content is omitted, and the turns on
+either side of an omitted one are joined so two messages never arrive sharing a role. A
+`tool_use` turn carries no text and is not an empty turn — it still goes out.
+
+Proven against the live worker: the old shape returns the exact 400 above, the new one
+returns 200. This is the same class of bug as D169 — the fakes accepted a shape no real
+API does.
+
+Note for later, not a code change: a 7B local worker that spends a turn to say nothing is
+what exposed this. The loop now survives it, but the thrash it causes (four rejected scout
+attempts) is a routing question, not a bug.

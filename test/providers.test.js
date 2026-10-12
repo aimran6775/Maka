@@ -224,7 +224,11 @@ test('openrouter adapter: errors and message translation edge cases', async () =
   const fetch2 = fakeFetch(() => sseResponse(sse([[null, { error: { message: 'rate limited' } }]])));
   const p2 = createOpenRouterProvider({ apiKey: 'k', fetch: fetch2 });
   await assert.rejects(collect(p2.stream({ model: 'm', messages: [] })), (e) => e.code === 'STREAM_ERROR');
-  assert.deepEqual(toOpenAIMessages('', [{ role: 'assistant', content: [{ type: 'thinking', thinking: '' }] }]), [{ role: 'assistant', content: null }]);
+  // D175: a turn holding only a thinking block has no text and no tool call. This used to
+  // go out as `content: null`, which Ollama refuses outright
+  // (`HTTP 400: invalid message content type: <nil>`), so it is the empty string now —
+  // null is legal only beside tool_calls.
+  assert.deepEqual(toOpenAIMessages('', [{ role: 'assistant', content: [{ type: 'thinking', thinking: '' }] }]), [{ role: 'assistant', content: '' }]);
   assert.deepEqual(toOpenAITools([]), []);
 });
 

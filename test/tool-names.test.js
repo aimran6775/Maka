@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { safeToolName, toolNameMap, MAX_TOOL_NAME } from '../sidecar/providers/tool-names.js';
-import { toAnthropicTools } from '../sidecar/providers/anthropic.js';
+import { toAnthropicTools, toAnthropicMessages } from '../sidecar/providers/anthropic.js';
 import { toOpenAITools, toOpenAIMessages } from '../sidecar/providers/openai-compat.js';
 
 // Anthropic: ^[a-zA-Z0-9_-]{1,128}$. OpenAI: the same within 64. The stricter one holds.
@@ -86,4 +86,65 @@ test('every tool an OpenAI-shaped API is sent carries a legal name, including th
 test('without a map the raw names still go out, so the helpers stay usable on their own', () => {
   assert.equal(toAnthropicTools([{ name: 'fs.write' }])[0].name, 'fs.write');
   assert.equal(toOpenAITools([{ name: 'fs.write' }])[0].function.name, 'fs.write');
+});
+
+// D175: an empty turn on the wire. A worker that answers with nothing usable leaves an
+// assistant message holding no content blocks. The OpenAI shape then sent
+// `content: null` with no tool_calls and Ollama refused the whole request with
+// `HTTP 400: invalid message content type: <nil>`, so every retry after a judge asked for
+// a revision died — which is what stalled the first venture's market research. Anthropic
+// refuses the same turn for its own reason: content may not be empty.
+// Taken from run-2026-10-12T01-04-14-739Z-9391ba08: [user brief, assistant(no blocks),
+// user judge-feedback].
+const EMPTY_TURN = [
+  { role: 'user', content: [{ type: 'text', text: 'Work item work-466d75e4 from chief-ranger.' }] },
+  { role: 'assistant', content: [] },
+  { role: 'user', content: [{ type: 'text', text: '[Judge review: your answer was sent back for revision]' }] },
+];
+
+test('an assistant turn that produced nothing never goes out as a null content', () => {
+  const msgs = toOpenAIMessages('be good', EMPTY_TURN);
+  for (const m of msgs) {
+    if (m.role === 'assistant' && !m.tool_calls) {
+      assert.equal(typeof m.content, 'string', 'an assistant turn without tool calls must carry a string');
+    }
+    assert.ok(m.content !== null || Array.isArray(m.tool_calls), `${m.role} may only be null alongside tool_calls`);
+    assert.ok(m.content !== undefined, `${m.role} must carry content`);
+  }
+  // A real tool call still gets to use null, which is the one shape that allows it.
+  const withCall = toOpenAIMessages(null, [
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'fs.read', input: {} }] },
+  ]);
+  assert.equal(withCall[0].content, null);
+  assert.equal(withCall[0].tool_calls.length, 1);
+});
+
+test('Anthropic is never sent an empty turn, and the turns around it stay in order', () => {
+  const msgs = toAnthropicMessages(EMPTY_TURN);
+  for (const m of msgs) {
+    assert.ok(m.content.length > 0, 'the API refuses a turn with empty content');
+    for (const b of m.content) {
+      if (b.type === 'text') assert.ok(String(b.text).trim(), 'and refuses an empty text block');
+    }
+  }
+  // The two user turns sat either side of the dropped one: they have to arrive as one
+  // message, not as two in a row, and neither may lose its words.
+  assert.deepEqual(msgs.map((m) => m.role), ['user']);
+  const said = msgs[0].content.map((b) => b.text).join('\n');
+  assert.match(said, /work-466d75e4/);
+  assert.match(said, /Judge review/);
+
+  // Whitespace-only text is the same case and must not survive on its own.
+  const blank = toAnthropicMessages([
+    { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+    { role: 'assistant', content: [{ type: 'text', text: '  \n ' }] },
+  ]);
+  assert.deepEqual(blank.map((m) => m.role), ['user']);
+
+  // A tool_use turn carries no text and must still be sent: it is not an empty turn.
+  const call = toAnthropicMessages([
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'fs.read', input: { path: 'a' } }] },
+  ]);
+  assert.equal(call.length, 1);
+  assert.equal(call[0].content[0].type, 'tool_use');
 });

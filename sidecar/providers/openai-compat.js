@@ -31,7 +31,10 @@ export function toOpenAIMessages(system, messages, names = null) {
       const calls = m.content
         .filter((b) => b.type === 'tool_use')
         .map((b) => ({ id: b.id, type: 'function', function: { name: names ? names.toApi(b.name) : b.name, arguments: JSON.stringify(b.input || {}) } }));
-      const msg = { role: 'assistant', content: text || null };
+      // D175: `content: null` is only legal next to tool_calls. Ollama answers a bare null
+      // with `HTTP 400: invalid message content type: <nil>`, which killed every retry turn
+      // after a worker produced no usable text — the empty string is accepted everywhere.
+      const msg = { role: 'assistant', content: text || (calls.length ? null : '') };
       if (calls.length) msg.tool_calls = calls;
       out.push(msg);
     } else {
