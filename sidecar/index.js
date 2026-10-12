@@ -121,7 +121,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   // the top matches for a run's brief go into its system prompt; 👍 / 👎 on the Ranger card.
   const memory = await createMemory({ store, bus, agents, getLayout: layoutState.get, judge, log }).init();
   Object.assign(registry, memory.tools);
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(recipes ? recipes.skillLines(agent) : []), ...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...(recipes ? recipes.recipeLines(agent) : []), ...memory.promptLines(agent, info || {})] });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent: config.maxConcurrentRuns || undefined, alwaysConfirm: config.confirmTools || [], workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(recipes ? recipes.skillLines(agent) : []), ...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...(recipes ? recipes.recipeLines(agent) : []), ...memory.promptLines(agent, info || {})] });
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, workspaceRoot }).init();
   toolContext.trails = trails;
   // Phase 4 step 12: recipes (versioned playbooks run as work items along the trails, the

@@ -181,7 +181,10 @@ test('permission round trip over HTTP: fs.write prompts, the answer gates the wr
     [...toolCall('c3', 'fs.write', { path: 'outbox/late.txt', content: 'late' }), end('tool_use')],
     [text('finished'), end()],
   ];
-  const srv = await startTestServer({ layout, makeProvider: scripted(turns), permissionTimeoutMs: 150 });
+  // D180: fs.write does not ask per call any more, so the plumbing is exercised over HTTP
+  // through the Superintendent's opt-in. The default (no prompt at all) is covered in
+  // test/capability.test.js.
+  const srv = await startTestServer({ layout, makeProvider: scripted(turns), permissionTimeoutMs: 150, alwaysConfirm: ['fs.write'] });
   try {
     const stream = await srv.sse();
     const { body: { runId } } = await srv.post('/api/run', { prompt: 'write hello' });
@@ -413,16 +416,13 @@ test('concurrency and trails over HTTP: two Rangers run at once under the cap, t
     assert.equal((await srv.get('/api/state')).body.activeRuns.length, 2);
     await stream.waitFor((e) => e.type === 'agent.token' && e.payload.runId === b.body.runId);
     release('scout-model');
-    const p1 = await stream.waitFor((e) => e.type === 'permission.prompt' && e.payload.runId === b.body.runId);
-    await srv.post('/api/permission', { promptId: p1.payload.promptId, runId: b.body.runId, allow: true });
+    // D180: the Scout's write needs no answer from anyone, so the run just ends.
     await stream.waitFor((e) => e.type === 'agent.run.end' && e.payload.runId === b.body.runId);
     const started = await stream.waitFor((e) => e.type === 'agent.run.start' && e.payload.runId === c.body.runId);
     assert.equal(started.payload.agentId, 'chief-ranger', 'the queued run starts when a slot frees');
     release('ranger-model');
     release('chief-model');
     for (const r of [a, c]) {
-      const pr = await stream.waitFor((e) => e.type === 'permission.prompt' && e.payload.runId === r.body.runId, 5000).catch(() => null);
-      if (pr) await srv.post('/api/permission', { promptId: pr.payload.promptId, runId: r.body.runId, allow: true });
       await stream.waitFor((e) => (e.type === 'agent.run.end' || e.type === 'agent.run.error') && e.payload.runId === r.body.runId);
     }
     await srv.runs.waitForIdle();
@@ -442,8 +442,6 @@ test('concurrency and trails over HTTP: two Rangers run at once under the cap, t
     assert.equal(startEv.payload.budgetUsd, 0.2);
     assert.equal((await srv.get('/api/state')).body.work.inTransit.length, 1);
     release('scout-model');
-    const p2 = await stream.waitFor((e) => e.type === 'permission.prompt' && e.payload.runId === w.body.runId);
-    await srv.post('/api/permission', { promptId: p2.payload.promptId, runId: w.body.runId, allow: true });
     const done = await stream.waitFor((e) => e.type === 'work.done' && e.payload.workItemId === w.body.id);
     assert.equal(done.payload.status, 'done');
     assert.deepEqual(done.payload.deliverables, ['outbox/result.md']);
@@ -762,10 +760,11 @@ test('routing over HTTP: default run uses the worker tier and records it; explic
     assert.equal(r.status, 202);
     assert.deepEqual(seen[0], { name: 'ollama', model: 'qwen2.5:7b' });
     assert.equal(r.body.tier, 'worker');
-    const prompt = await stream.waitFor((e) => e.type === 'permission.prompt');
-    assert.equal('leash' in prompt.payload, false, 'fs.write has no leash domain in phase 1');
-    await srv.post('/api/permission', { promptId: prompt.payload.promptId, runId: r.body.runId, allow: true });
+    // D180: no prompt to answer — the write is sandbox-confined. That fs.write carries no
+    // leash domain (D31) is asserted in test/leash-ledger.test.js, where the confirm
+    // payload is still inspected through the Superintendent's opt-in.
     await stream.waitFor((e) => e.type === 'agent.run.end');
+    assert.equal(stream.events.filter((e) => e.type === 'permission.prompt').length, 0, 'a deliverable does not stop to ask');
     const tiers = stream.events.filter((e) => e.type === 'cost.estimate').map((e) => e.payload.tier);
     assert.deepEqual(tiers, ['worker', 'worker']);
     await srv.runs.waitForIdle();

@@ -172,8 +172,22 @@ export const fsWrite = {
       content: { type: 'string', description: 'Full file content' },
     },
   },
-  confirm: true,
-  // D178: refused before the owner is asked, not after they approve.
+  // D180: a write does not wake the owner. `fs.write` was the only tool in the park with
+  // `confirm: true`, so the whole per-call permission card existed for the one act that
+  // cannot reach outside the park: the sandbox confines every write to the agent's own
+  // workspace or its own department folder, and `resolveForAgent` proves it. Everything
+  // that does reach outside — publishing, mail, money in or out, a new account, the
+  // browser, this Mac — is a leash domain and still stops at the Entrance Gate.
+  //
+  // The card was also what made the park unable to work unattended: a standing duty that
+  // runs at 03:00 would have its report refused five minutes later by nobody answering,
+  // which is what left the first venture with no deliverables after fourteen runs.
+  //
+  // Reversible: the Superintendent can name tools in `config.confirmTools` to put the card
+  // back, and the permission plumbing and its iMessage forwarding are untouched.
+  confirm: false,
+  // D178: a write outside the agent's own team folder is refused here, before anything
+  // else runs, rather than after it has been allowed.
   precheck(input, ctx) {
     return teamWriteRefusal(ctx, input.path);
   },

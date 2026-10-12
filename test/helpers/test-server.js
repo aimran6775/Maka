@@ -55,7 +55,7 @@ const refused = async () => { throw new Error('ECONNREFUSED (test)'); };
 // `netGuard`: the outbound URL guard the tools and the browser use (sidecar/netguard.js).
 // The fakes every suite talks to listen on 127.0.0.1, so the default here turns the guard
 // off; a test of the guard itself passes a strict one. The sidecar never turns it off.
-export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, recipes: recipeOpts = null, keys = null, voice: voiceOpts = null, importHome = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
+export async function startTestServer({ makeProvider, env = {}, layout = defaultLayout(), permissionTimeoutMs, alwaysConfirm, clock, localFetch = refused, policy, leash, judgeProvider = null, withChief = false, maxConcurrent, mail = {}, browser = null, connectors: connectorSpecs = null, connectorConfig = {}, research: researchEndpoints = null, creative: creativeOpts = null, ollama: ollamaUrl = null, setup: setupOpts = null, backup: backupOpts = null, channels: channelAdapters = null, mcp: mcpOpts = null, recipes: recipeOpts = null, keys = null, voice: voiceOpts = null, importHome = null, netGuard = createNetGuard({ allowLocal: true }) } = {}) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-srv-'));
   const home = path.join(tmp, 'home');
   const workspaceRoot = path.join(tmp, 'workspace');
@@ -86,7 +86,7 @@ export async function startTestServer({ makeProvider, env = {}, layout = default
   // Phase 4 step 11: Ranger memory, always wired (writes need the judge).
   const memory = await createMemory({ store, bus, agents, getLayout: layoutState.get, judge, clock, log: { error() {} } }).init();
   Object.assign(registry, memory.tools);
-  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, clock, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent, fetch: localFetch, workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(recipes ? recipes.skillLines(agent) : []), ...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...(recipes ? recipes.recipeLines(agent) : []), ...memory.promptLines(agent, info || {})] });
+  const runs = createRunManager({ bus, store, getLayout: layoutState.get, workspaceRoot, env, keystorePath, makeProvider, permissionTimeoutMs, alwaysConfirm, clock, policy, leashState, ledger, gateQueue, judge, agents, toolContext, registry, maxConcurrent, fetch: localFetch, workspaceOnline: () => workspace.state().online, systemExtras: (agent, info) => [...(recipes ? recipes.skillLines(agent) : []), ...(agent && agent.specialty === 'scout' && scoutMemory ? scoutMemory.promptLines() : []), ...(recipes ? recipes.recipeLines(agent) : []), ...memory.promptLines(agent, info || {})] });
   runsRef = runs;
   const trails = await createTrails({ bus, store, runs, agents, getLayout: layoutState.get, clock, workspaceRoot }).init();
   toolContext.trails = trails;

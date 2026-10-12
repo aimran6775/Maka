@@ -270,11 +270,18 @@ test('gate enforcement: observe refuses, draft waits at the Gate, act_capped run
     assert.equal(refusedCampaign.code, 'LEASH_OBSERVE', 'publishing is at observe in this leash');
     assert.deepEqual(await dyn.execute({ id: 'c11', name: 'mail.send', input: { kind: 'reply' } }, { runId: 'run-1' }), { ok: true, output: 'sent' }, 'outbound_messages is act_free for this Ranger');
 
-    // fs.write still confirms per call and carries no leash.
+    // fs.write carries no leash domain (D31), and since D180 it does not confirm per call
+    // either: the sandbox is its boundary. A confirmation the Superintendent asked for
+    // still carries no leash, which is what this checks.
     const asks = [];
-    const confirm = createToolGate({ getLayout: defaultLayout, agentId: 'ranger', workspaceDir: dir, registry: REGISTRY, grants: allGranted, leash: defaultLeash(), ask: async (q) => { asks.push(q); return true; } });
+    const confirm = createToolGate({ getLayout: defaultLayout, agentId: 'ranger', workspaceDir: dir, registry: REGISTRY, grants: allGranted, leash: defaultLeash(), alwaysConfirm: ['fs.write'], ask: async (q) => { asks.push(q); return true; } });
     assert.equal((await confirm.execute({ id: 'c9', name: 'fs.write', input: { path: 'w.txt', content: 'w' } }, { runId: 'r' })).ok, true);
     assert.equal(asks[0].leash, undefined);
+    // Without that opt-in nobody is asked at all.
+    const quiet = [];
+    const open = createToolGate({ getLayout: defaultLayout, agentId: 'ranger', workspaceDir: dir, registry: REGISTRY, grants: allGranted, leash: defaultLeash(), ask: async (q) => { quiet.push(q); return true; } });
+    assert.equal((await open.execute({ id: 'c12', name: 'fs.write', input: { path: 'w2.txt', content: 'w' } }, { runId: 'r' })).ok, true);
+    assert.equal(quiet.length, 0);
     assert.equal(summarizeCall(post, { text: 'hello' }), 'social.post {"text":"hello"}');
   } finally {
     await cleanup();

@@ -76,6 +76,9 @@ export function createToolGate({
   ledger = null,
   submit = null,
   grants = null,
+  // D180: tool names the Superintendent wants confirmed per call even when the tool does
+  // not ask for it. Empty by default: the sandbox and the leash are the boundaries.
+  alwaysConfirm = [],
   toolContext = {},
 } = {}) {
   if (typeof getLayout !== 'function') throw new TypeError('createToolGate needs getLayout()');
@@ -289,7 +292,7 @@ export function createToolGate({
         return runAndRecord(tool, call, ctx, domain, amountUsd);
       }
 
-      if (tool.confirm) {
+      if (tool.confirm || alwaysConfirm.includes(call.name)) {
         if (typeof ask !== 'function') return { ok: false, error: `${call.name} needs user confirmation and no prompt channel is available` };
         let allowed = false;
         try {

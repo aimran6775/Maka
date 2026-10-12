@@ -158,7 +158,10 @@ test('gate: definitions follow the layout, ungranted tools are refused at call t
     let layout = layoutWith(['trailhead_sign']);
     const asks = [];
     let answer = true;
-    const gate = createToolGate({ getLayout: () => layout, agentId: 'ranger', workspaceDir: dir, ask: async (q) => { asks.push(q); return answer; } });
+    // D180: fs.write no longer asks per call, so the confirm mechanism is exercised here
+    // by naming it in alwaysConfirm — the escape hatch the Superintendent has. That the
+    // default does not ask is asserted at the end.
+    const gate = createToolGate({ getLayout: () => layout, agentId: 'ranger', workspaceDir: dir, alwaysConfirm: ['fs.write'], ask: async (q) => { asks.push(q); return answer; } });
     assert.deepEqual(gate.definitions().map((d) => d.name), ['web.fetch']);
     assert.ok(gate.definitions()[0].inputSchema.properties.url);
 
@@ -191,9 +194,26 @@ test('gate: definitions follow the layout, ungranted tools are refused at call t
     assert.equal(escape.ok, false);
     assert.match(escape.error, /escapes/);
 
-    const noAsk = createToolGate({ getLayout: () => layout, agentId: 'ranger', workspaceDir: dir });
-    const noChannel = await noAsk.execute({ id: 'c8', name: 'fs.write', input: { path: 'c.txt', content: 'z' } }, {});
+    // D180: the default. A write the sandbox confines to this agent's own workspace does
+    // not wake the owner — fs.write was the only tool in the park that ever asked, and it
+    // is the one act that cannot reach outside. The park could not work unattended while
+    // every deliverable needed a tap inside five minutes.
+    const quiet = [];
+    const open = createToolGate({ getLayout: () => layout, agentId: 'ranger', workspaceDir: dir, ask: async (q) => { quiet.push(q); return false; } });
+    const unasked = await open.execute({ id: 'c8', name: 'fs.write', input: { path: 'c.txt', content: 'z' } }, { runId: 'r' });
+    assert.equal(unasked.ok, true, 'the write goes through');
+    assert.equal(quiet.length, 0, 'and nobody was asked');
+    assert.equal(await fsp.readFile(path.join(dir, 'c.txt'), 'utf8'), 'z');
+    // With no prompt channel at all it still writes, which is what a 3am duty needs.
+    const headless = createToolGate({ getLayout: () => layout, agentId: 'ranger', workspaceDir: dir });
+    assert.equal((await headless.execute({ id: 'c9', name: 'fs.write', input: { path: 'd.txt', content: 'w' } }, { runId: 'r' })).ok, true);
+
+    // A tool the Superintendent asked to confirm, with no channel to ask on, is refused
+    // rather than run unasked: turning the card back on must mean something.
+    const noAsk = createToolGate({ getLayout: () => layout, agentId: 'ranger', workspaceDir: dir, alwaysConfirm: ['fs.write'] });
+    const noChannel = await noAsk.execute({ id: 'c10', name: 'fs.write', input: { path: 'e.txt', content: 'z' } }, {});
     assert.match(noChannel.error, /no prompt channel/);
+    await assert.rejects(fsp.stat(path.join(dir, 'e.txt')));
     assert.throws(() => createToolGate({ agentId: 'x', workspaceDir: dir }), TypeError);
   } finally {
     await cleanup();

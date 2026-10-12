@@ -2291,3 +2291,53 @@ directory show.
 The distinction this records: a department is an office with a standing remit, and the
 ventures come and go through it. Nothing about Sales, Legal or Finance should change when a
 venture is retired.
+
+## D180 — a write does not wake the owner
+
+The owner asked for a park that manages businesses "fully autonomous ... 24/7". It could
+not, and the reason was one line: `fs.write` was marked `confirm: true`.
+
+It was the **only** tool in the park that was. So the whole per-call permission card — the
+card that goes to the owner's phone and is refused by silence after five minutes (D11, and
+the iMessage forwarding built for it) — existed for the single act that cannot reach
+outside the park. Every write is confined by the sandbox to the agent's own workspace or
+its own department folder, and `resolveForAgent` proves it before anything is opened.
+Meanwhile every act that *does* reach outside — publishing, mail, money in or out, a new
+account, the browser, this Mac — is a leash domain that stops at the Entrance Gate. None of
+those changed.
+
+The card was in the wrong place, and it was expensive. It is what left the first venture
+with no deliverables after fourteen runs: a Ranger would finish its work, the card would go
+out, nobody would answer within five minutes, and the file would be refused. A standing
+department duty that runs at 03:00 could never have worked.
+
+`fs.write` is now `confirm: false`. The mechanism is untouched and still tested: the gate
+takes `alwaysConfirm`, a list of tool names the Superintendent wants a card for anyway
+(`config.confirmTools`), and the permission plumbing, the HTTP round trip and the iMessage
+`/allow` and `/deny` commands all still work — `test/capability.test.js` covers both the
+default and the opt-in, and `test/server.test.js` still drives the full round trip over
+HTTP through it.
+
+What this does **not** relax: the sandbox (a write still cannot leave the agent's own
+workspace or its own team folder, D178), the leash on every outward domain, the judge's
+review of the work, and the Gate on anything that spends, publishes or sends.
+
+## D181 — a recipe step with two dependencies was delegated twice
+
+Found by D180, which is the useful part of removing a round trip.
+
+`delegateReady` read `run.steps` to work out which steps had started, then awaited
+`trails.delegate` before writing the step's new status. Two steps that finish at nearly the
+same moment each bring a `work.done` into the recipes module, and each calls
+`delegateReady` in a detached async call. Both passes read `run.steps` before either had
+marked the fan-in step, both saw it as not started, and both delegated it — double the
+work, double the model spend, and two sets of deliverables for one step.
+
+The permission card had been hiding it. Every write carried an HTTP hop out to the owner and
+back, which serialised the two branches enough that the race almost never opened. With the
+hop gone, the listing pipeline test failed about one run in three.
+
+The step is now claimed synchronously — `status: 'delegated'` is written before the await,
+and the work item id merged in after. `readySteps` counts anything that is not `pending` as
+started, so the window is closed. `test/recipe-race.test.js` drives both orders and asserts
+the old one delegates twice.

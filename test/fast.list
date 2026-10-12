@@ -55,6 +55,7 @@ test/results.test.js
 test/scout-memory.test.js
 test/memory.test.js
 test/recipes.test.js
+test/recipe-race.test.js
 test/listing-pipeline.test.js
 test/voice.test.js
 test/ledger-desk.test.js

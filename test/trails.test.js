@@ -144,10 +144,10 @@ test('trails: delegation rules, briefs, work.handoff → run → work.done with 
     assert.equal(start.payload.prompt, briefFor({ ...item, budgetUsd: 0.3 }));
     assert.match(start.payload.prompt, /Deadline: Friday/);
     assert.deepEqual(h.trails.inTransit().map((it) => it.id), [item.id]);
-    // Allow the write (permission prompt) so the deliverable lands.
-    const prompt = await waitUntil(() => h.events.find((e) => e.type === 'permission.prompt' && e.payload.runId === item.runId));
-    h.runs.answer({ promptId: prompt.payload.promptId, runId: item.runId, allow: true });
+    // D180: the deliverable lands on its own — no prompt to answer, which is what lets a
+    // standing duty run overnight.
     await h.runs.waitForIdle();
+    assert.equal(h.events.filter((e) => e.type === 'permission.prompt').length, 0);
     const done = h.events.find((e) => e.type === 'work.done');
     assert.deepEqual(done.payload, { workItemId: item.id, fromAgentId: 'chief-ranger', toAgentId: 'mark', runId: item.runId, status: 'done', reason: 'completed', deliverables: ['outbox/plan.md'], summary: 'plan written', spentUsd: 0 });
     assert.equal(h.trails.get(item.id).status, 'done');
@@ -168,15 +168,15 @@ test('trails: delegation rules, briefs, work.handoff → run → work.done with 
     assert.equal(out.status, 'running');
     const refused = await CREW_TOOLS.delegate.run({ toAgentId: 'mark', brief: 'x' }, ctx('jr'));
     assert.match(refused.error, /cannot delegate/);
-    const prompt2 = await waitUntil(() => h.events.find((e) => e.type === 'permission.prompt' && e.payload.runId === out.runId));
-    h.runs.answer({ promptId: prompt2.payload.promptId, runId: out.runId, allow: false });
     releaseHold();
     await holding;
     await h.runs.waitForIdle();
     const mine = JSON.parse((await CREW_TOOLS['work.check'].run({}, ctx('mark'))).output);
     assert.deepEqual(mine.map((it) => [it.to, it.status]), [['jr', 'done'], ['mark', 'done']]);
     const one = JSON.parse((await CREW_TOOLS['work.check'].run({ workItemId: out.workItemId }, ctx('jr'))).output);
-    assert.equal(one.deliverables.length, 0, 'the denied write produced no deliverable');
+    // D180: this write used to be denied by nobody answering its card, so the Junior's
+    // work item carried no deliverable. It lands now, which is the whole point.
+    assert.equal(one.deliverables.length, 1, 'the Junior\'s write landed without anyone being asked');
     assert.match((await CREW_TOOLS['work.check'].run({ workItemId: out.workItemId }, ctx('ranger'))).error, /not yours/);
     assert.match((await CREW_TOOLS['work.check'].run({ workItemId: 'nope' }, ctx('ranger'))).error, /no work item/);
     assert.match((await CREW_TOOLS['work.check'].run({}, { agentId: 'x' })).error, /no trails/);

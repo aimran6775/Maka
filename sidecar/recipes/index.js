@@ -223,9 +223,16 @@ export function createRecipes({ store, bus, trails, agents, getLayout, leashStat
       const earlier = (step.dependsOn || []).map((d) => run.steps[d]).filter(Boolean);
       if (earlier.length) context.push(`Earlier steps delivered: ${earlier.map((e) => `${e.deliverables.join(', ') || 'no files'} (${(e.summary || '').slice(0, 200)})`).join(' · ')} — read them with fs.read where you need them.`);
       const brief = `${context.join('\n')}\n\n${substitute(step.brief, run.params)}`;
+      // D181: claim the step before awaiting the delegate. Two steps that finish together
+      // each bring a `work.done` here, and both calls computed `started` from `run.steps`
+      // before either had marked the next step — so a step with two dependencies was
+      // delegated twice, doubling its work and its spend. `started` counts anything not
+      // `pending`, so writing the status synchronously closes the window; the work item id
+      // is merged in once the delegate returns.
+      run.steps[step.id] = { ...run.steps[step.id], status: 'delegated', agentId: target.agentId, delegatedAt: clock.now() };
       try {
         const item = await trails.delegate({ toAgentId: target.agentId, brief, budgetUsd: step.budgetUsd, deadline: step.deadline || null, evidence: step.evidence || [], venture: run.ventureId || null }, { by: run.delegatedBy });
-        run.steps[step.id] = { ...run.steps[step.id], status: 'delegated', workItemId: item.id, agentId: target.agentId, delegatedAt: clock.now() };
+        run.steps[step.id] = { ...run.steps[step.id], workItemId: item.id };
         emit('recipe.run', { recipeRunId: run.id, recipeId: run.recipeId, version: run.version, status: 'step', by: run.by, ventureId: run.ventureId || '', stepId: step.id, workItemId: item.id, agentId: target.agentId, steps: recipe.steps.length, done: done.size });
       } catch (err) {
         run.steps[step.id] = { ...run.steps[step.id], status: 'failed', reason: `${err.code || 'DELEGATE_FAILED'}: ${err.message}` };

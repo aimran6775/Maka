@@ -90,6 +90,7 @@ export function createRunManager({
   clock = { now: () => Date.now() },
   makeProvider = defaultMakeProvider,
   permissionTimeoutMs = PERMISSION_TIMEOUT_MS,
+  alwaysConfirm = [], // D180: tools the Superintendent wants a per-call card for anyway
   systemPrompt = DEFAULT_SYSTEM_PROMPT,
   systemExtras = null, // (agentRecord, { prompt, runId }) => string[] appended to the system prompt (phase 4 step 10: the Scout's memory; step 11: recalled memory)
   policy = defaultPolicy(),
@@ -320,6 +321,7 @@ export function createRunManager({
           agentId,
           workspaceDir,
           workspaceRoot, // D178: so `_teams/<department>/` resolves
+          alwaysConfirm, // D180: tools the Superintendent wants a card for anyway
           fetch: fetchImpl,
           ask,
           registry,
