@@ -471,3 +471,34 @@ test('D171: a per-call confirmation reaches the phone, and /allow answers it fro
     await h.cleanup();
   }
 });
+
+test('D172: a channel that carries only its owner pairs on sight, and every other channel still needs the code', async () => {
+  // iMessage checks the owner's handle on every message in and out, so the handle is the
+  // credential and a pairing code would be asking the owner to prove they are themselves.
+  const trusted = fakeChannel();
+  trusted.trusted = true;
+  const h = await harness({ env: { TELEGRAM_BOT_TOKEN: '123:abc' }, adapters: [trusted] });
+  try {
+    await h.channels.start();
+    assert.equal(h.channels.list()[0].paired.length, 0);
+    // The first message from a private chat is acted on, not answered with "not paired".
+    await trusted.receive({ chatId: 'owner', userId: 'u1', text: '/status', updateId: 't-1' });
+    assert.equal(h.channels.list()[0].paired.length, 1, 'paired on sight');
+    assert.equal(h.ofType('channel.inbound').at(0).outcome, 'paired: the channel only carries the owner');
+    // It answered the command rather than asking for a code.
+    assert.doesNotMatch(JSON.stringify(trusted.state.sent), /pairing code/i);
+  } finally {
+    await h.cleanup();
+  }
+
+  // An untrusted channel is unchanged: no code, no pairing.
+  const h2 = await harness({ env: { TELEGRAM_BOT_TOKEN: '123:abc' } });
+  try {
+    await h2.channels.start();
+    await h2.fake.receive({ chatId: 'stranger', userId: 'u9', text: '/status', updateId: 's-1' });
+    assert.equal(h2.channels.list()[0].paired.length, 0, 'a bot anyone can message still pairs by code');
+    assert.match(JSON.stringify(h2.fake.state.sent), /not paired/i);
+  } finally {
+    await h2.cleanup();
+  }
+});

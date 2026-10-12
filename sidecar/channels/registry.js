@@ -396,7 +396,7 @@ export function createChannels({
       if (!chatId) return null;
       if (replayed(name, message.updateId)) return null;
       const key = chatKey(name, chatId);
-      const paired = isPaired(name, chatId);
+      let paired = isPaired(name, chatId); // D172: a trusted channel pairs itself below
       const messageId = message.messageId !== undefined ? String(message.messageId) : (message.callback && message.callback.messageId !== undefined ? String(message.callback.messageId) : undefined);
       const text = typeof message.text === 'string' ? message.text.trim() : '';
       const chatType = typeof message.chatType === 'string' ? message.chatType : '';
@@ -404,6 +404,21 @@ export function createChannels({
       const base = { channel: name, chatId, userId: userId || 'unknown' };
       if (messageId) base.messageId = messageId;
 
+      if (!paired) {
+        // D172: a channel that authenticates by construction needs no code. The iMessage
+        // adapter only ever hands over messages from the owner's own configured handles
+        // and only from a one-to-one chat — the handle in the keystore IS the credential,
+        // so a pairing code would be asking the owner to prove they are themselves. Every
+        // other channel still pairs: anyone at all can message a bot.
+        if (entry(name).adapter.trusted && isPrivate && userId) {
+          const chats = { ...state.chats, [key]: { channel: name, chatId, userId, pairedAt: clock.now() } };
+          state = { ...state, chats };
+          await save();
+          emit('channel.inbound', { ...base, action: 'pair', paired: true, outcome: 'paired: the channel only carries the owner' });
+          // Fall through: this very message is already the owner's, so act on it.
+          paired = true;
+        }
+      }
       if (!paired) {
         // The one thing an unpaired chat can do is send the pairing code, and only a
         // private chat with a sender id can (H1): a group that sees the right code has

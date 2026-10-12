@@ -246,3 +246,45 @@ test('every message goes to one handle, whichever of the owner\'s the chat is fi
   assert.equal(sent.length, 2);
   await a.stop();
 });
+
+test('the park does not read its own messages back as the owner talking', async () => {
+  // The Mac is signed in as the owner and the park writes to the owner, so Messages
+  // files every outgoing message twice: once sent, once received on the same account
+  // with the owner's handle on it. Read naively the park would answer itself.
+  let table = [];
+  let row = 100;
+  const a = createIMessageAdapter({
+    exec: async (file, args) => {
+      if (/osascript$/.test(file)) {
+        // Messages echoes what was just sent back as an incoming line.
+        const body = (args[1].match(/send "([\s\S]*)" to targetBuddy/) || [])[1] || '';
+        table.push({ rowid: ++row, handle: 'me@example.com', text: body.replace(/\\"/g, '"'), chat: 'me@example.com', style: 43 });
+        return '';
+      }
+      const sql = args[args.length - 1];
+      if (/MAX\(ROWID\)/.test(sql)) return `[{"rowid":${row}}]`;
+      const after = Number((sql.match(/m\.ROWID > (\d+)/) || [])[1] || 0);
+      return JSON.stringify(table.filter((r) => r.rowid > after));
+    },
+    pollMs: 5,
+    log: quiet,
+    clock: { now: () => Date.now() },
+  });
+  const got = [];
+  await a.start({ keys: { imessageHandle: 'me@example.com' }, onInbound: (m) => got.push(m), log: quiet });
+  await a.sendText('me@example.com', 'the Gate has an item: /approve w1');
+  await new Promise((r) => setTimeout(r, 40));
+  assert.deepEqual(got, [], 'its own card did not come back as a question');
+
+  // A real reply from the owner still gets through.
+  table.push({ rowid: ++row, handle: 'me@example.com', text: '/approve w1', chat: 'me@example.com', style: 43 });
+  await new Promise((r) => setTimeout(r, 40));
+  assert.deepEqual(got.map((m) => m.text), ['/approve w1']);
+
+  // And the same words said twice by the owner are not swallowed as an echo: only one
+  // copy of each sent message is ever consumed.
+  table.push({ rowid: ++row, handle: 'me@example.com', text: '/approve w1', chat: 'me@example.com', style: 43 });
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(got.length, 2);
+  await a.stop();
+});

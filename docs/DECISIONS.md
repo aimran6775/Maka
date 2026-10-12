@@ -2003,3 +2003,26 @@ than pretending. `channel.delivery.kind` gained `permission_card` and `permissio
 
 Five minutes is enough to answer from a phone, which is why this is worth doing rather
 than lengthening the timeout.
+
+## D172. No pairing code on iMessage, and the park stops answering itself
+
+Two faults the first real conversation exposed, both from the same root: the Mac is
+signed in as the owner and the park writes to the owner, so the owner is on both ends.
+
+**The echo.** Messages files every outgoing message twice — once as sent, and once as
+*received* on the same Apple ID, carrying the owner's own handle. The adapter would have
+read the park's own Gate cards back as the owner's replies and handed them to the Chief
+as questions. `sendText` now remembers what it just said (text and time, a bounded ring)
+and the poll drops an inbound line that matches one, consuming it once so the owner
+saying the same thing twice still counts twice.
+
+**The code.** The owner: "no need of code". They are right for this channel and only this
+channel. A pairing code exists because anyone at all can message a Telegram bot, so the
+code proves which chat belongs to the owner. The iMessage adapter already refuses to send
+to, or accept from, any handle but the ones in the keystore, and only in a one-to-one
+chat — the handle *is* the credential, checked on every message in both directions, so
+asking for a code is asking the owner to prove they are themselves. An adapter may now
+declare `trusted: true`, and the registry pairs its first private message on sight and
+acts on that very message. Every other channel is untouched and still pairs by code; the
+test asserts both halves, because this is the one place where loosening the rule is
+correct and it must not leak to the others.

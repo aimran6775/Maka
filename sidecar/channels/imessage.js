@@ -30,6 +30,12 @@
 //
 // No buttons: iMessage has none, so the registry renders a card as text with the slash
 // commands that do what the buttons would (`cardText` in adapter.js).
+//
+// The echo (D172): the Mac is signed in as the owner and the park writes to the owner, so
+// Messages files every outgoing message twice — once as sent and once as *received* on
+// the same account, with the owner's handle on it. Read naively the park would take its
+// own Gate cards back as the owner's replies and hand them to the Chief as questions, so
+// what was just sent is remembered briefly and an inbound line matching it is dropped.
 
 import { execFile } from 'node:child_process';
 import os from 'node:os';
@@ -38,6 +44,8 @@ import path from 'node:path';
 export const DEFAULT_DB = path.join(os.homedir(), 'Library', 'Messages', 'chat.db');
 export const POLL_MS = 3000;
 export const MAX_MESSAGE = 8000; // a courtesy limit; iMessage itself is far more generous
+export const ECHO_WINDOW_MS = 120000; // how long the park recognises its own message coming back
+export const ECHO_MEMORY = 50; // how many of its own messages it remembers at once
 
 function fail(code, message) {
   const err = new Error(message);
@@ -149,6 +157,7 @@ export function createIMessageAdapter({
   let handle = null;
   let owners = new Set(); // the only handles the park will ever message or listen to
   let primary = null; // the one of them every outgoing message actually goes to
+  const justSent = []; // { text, at } — what the park said, to recognise its own echo
   let onInbound = null;
   let timer = null;
   let lastRowId = 0;
@@ -177,6 +186,14 @@ export function createIMessageAdapter({
         // And only in the owner's own one-to-one chat: a group the owner happens to be
         // in is not the owner's channel, whoever typed in it.
         if (chatTypeOf(r.style) !== 'private') continue;
+        // The park's own words coming back on the same Apple ID are not the owner
+        // speaking. Matched on the text, within a window, and consumed once.
+        const body = String(r.text || '');
+        const echo = justSent.findIndex((e) => e.text === body && clock.now() - e.at < ECHO_WINDOW_MS);
+        if (body && echo !== -1) {
+          justSent.splice(echo, 1);
+          continue;
+        }
         // The handle is both who sent it and where a reply goes: on a one-to-one chat
         // they are the same, which is the only shape that can pair.
         await onInbound({
@@ -202,6 +219,10 @@ export function createIMessageAdapter({
     label: 'iMessage',
     keys: ['imessageHandle'],
     buttons: false,
+    // D172: this channel carries the owner and nobody else — the handle in the keystore
+    // is the credential, checked on every message in and out — so the registry pairs the
+    // owner's chat on sight instead of asking them to prove they are themselves.
+    trusted: true,
 
     async start({ keys, onInbound: cb, log: l = log }) {
       handle = String((keys && keys.imessageHandle) || '').trim();
@@ -246,6 +267,9 @@ export function createIMessageAdapter({
       // chat was filed under, so the same conversation does not arrive twice.
       const target = primary || to;
       const body = String(text || '').slice(0, MAX_MESSAGE);
+      // Remembered before the send, so the echo cannot arrive first.
+      justSent.push({ text: body, at: clock.now() });
+      while (justSent.length > ECHO_MEMORY) justSent.shift();
       try {
         await exec(osascript, ['-e', sendScript(target, body)]);
       } catch (err) {
