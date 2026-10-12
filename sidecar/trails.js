@@ -68,10 +68,13 @@ async function listOutbox(dir) {
   return out;
 }
 
-export function createTrails({ bus, store, runs, agents = null, getLayout, clock = { now: () => Date.now() }, workspaceRoot, maxItems = 1000, missionBudget = null } = {}) {
+export function createTrails({ bus, store, runs, agents = null, getLayout, clock = { now: () => Date.now() }, workspaceRoot, maxItems = 1000, missionBudget = null, ventureBudget = null } = {}) {
   if (!bus || !store || !runs || typeof getLayout !== 'function' || !workspaceRoot) throw new TypeError('createTrails needs bus, store, runs, getLayout and workspaceRoot');
   let items = [];
   let missionBudgetSource = typeof missionBudget === 'function' ? missionBudget : null;
+  // D183: `ventureBudget(ventureId)` -> { budgetUsd, createdAt } for a venture the owner
+  // approved, or null. Injected like the mission budget so the trails stay a pure core.
+  let ventureBudgetSource = typeof ventureBudget === 'function' ? ventureBudget : null;
 
   // Safety L4: what a delegator may hand out. The Superintendent is unbounded. The Chief
   // draws on the mission budget less the budgets of the items it already delegated for
@@ -79,13 +82,30 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
   // A Ranger draws on its active run: the run's budget less what the run has spent and
   // less the budgets of the items it delegated during the run. No run, or no mission for
   // the Chief, is nothing to draw on.
-  function allowance(from) {
+  function allowance(from, venture = null) {
     if (from.role === 'superintendent') return { remaining: Infinity, source: 'the Superintendent' };
     const live = (it) => it.status !== 'failed' && it.status !== 'cancelled';
     if ((from.role || 'ranger') === 'chief_ranger') {
+      // D183: a venture's budget is its own pot. The owner approves a business and the
+      // money they committed to it is what its work draws on — not the single mission
+      // budget, which is what the park had before there was a portfolio. Without this the
+      // Chief could only hand an approved $20 business $2.15, because one $3 mission
+      // budget was still the only pool in the park, and it said so.
+      if (venture && ventureBudgetSource) {
+        const v = ventureBudgetSource(venture);
+        if (v && typeof v.budgetUsd === 'number') {
+          const spent = items.filter((it) => it.venture === venture && live(it) && it.createdAt >= (v.createdAt || 0)).reduce((n, it) => n + it.budgetUsd, 0);
+          return { remaining: Math.max(0, v.budgetUsd - spent), source: `the budget the owner approved for ${venture} ($${v.budgetUsd.toFixed(2)}, $${spent.toFixed(2)} already delegated)` };
+        }
+      }
       const m = missionBudgetSource ? missionBudgetSource() : null;
-      if (!m || typeof m.budgetUsd !== 'number') return { remaining: null, source: 'the mission' };
-      const delegated = items.filter((it) => it.fromAgentId === from.id && live(it) && it.createdAt >= (m.createdAt || 0)).reduce((n, it) => n + it.budgetUsd, 0);
+      if (!m || typeof m.budgetUsd !== 'number') {
+        return {
+          remaining: null,
+          source: venture && ventureBudgetSource ? `a budget: ${venture} is not an active venture in the portfolio, and there is no mission to draw on` : 'the mission',
+        };
+      }
+      const delegated = items.filter((it) => it.fromAgentId === from.id && live(it) && !it.venture && it.createdAt >= (m.createdAt || 0)).reduce((n, it) => n + it.budgetUsd, 0);
       return { remaining: Math.max(0, m.budgetUsd - delegated), source: `the mission budget ($${m.budgetUsd.toFixed(2)}, $${delegated.toFixed(2)} already delegated)` };
     }
     const run = typeof runs.budgetFor === 'function' ? runs.budgetFor(from.id) : null;
@@ -148,6 +168,11 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
     setMissionBudget(fn) {
       missionBudgetSource = typeof fn === 'function' ? fn : null;
     },
+    // D183: the pool for work that belongs to a venture — the budget the owner approved
+    // for that business. Set by the sidecar once the portfolio exists.
+    setVentureBudget(fn) {
+      ventureBudgetSource = typeof fn === 'function' ? fn : null;
+    },
     list: () => items.slice().reverse(),
     get: (id) => (find(id) ? { ...find(id) } : null),
     forAgent: (agentId) => items.filter((it) => it.fromAgentId === agentId || it.toAgentId === agentId).reverse(),
@@ -167,8 +192,11 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
       const from = by === 'superintendent' ? { id: 'superintendent', role: 'superintendent', roomId: 'entrance-gate' } : agentOf(layout, by);
       if (!from) throw fail('BAD_REQUEST', `unknown delegator "${by}"`);
       if (by !== 'superintendent') mayDelegate(from, to);
-      // Safety L4: a sub-run's budget never exceeds what the delegator has left.
-      const { remaining, source } = allowance(from);
+      // Safety L4: a sub-run's budget never exceeds what the delegator has left. D183: for
+      // work that belongs to a venture, "what it has left" is that venture's own approved
+      // budget — resolved before the item is built, from the same venture the item will carry.
+      const forVenture = venture ? venture.trim() : (to.venture || null);
+      const { remaining, source } = allowance(from, forVenture);
       if (remaining === null) throw fail('BUDGET_UNKNOWN', `${from.id} has no budget to delegate from: it needs ${source}`, 409);
       if (remaining <= 0) throw fail('BUDGET_EXHAUSTED', `${from.id} has nothing left to delegate from ${source}`, 409);
       const budgetCapped = budgetUsd > remaining;

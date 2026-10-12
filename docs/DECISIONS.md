@@ -2397,3 +2397,28 @@ run as provenance and nothing waits on it.
 A venture still `proposed` after a restart is declined with "propose it again": the Gate
 item's resolver died with the process, so the card is gone and waiting on a decision that
 cannot arrive would be a lie.
+
+## D183 — a venture's budget is its own pot
+
+Found live by the Chief, which said it plainly the first time a business was approved:
+"The budget is the main problem. The mission budget is only $3.00, so I could give this
+business $2.15 of your $20.00."
+
+The owner had approved $20 for a business, and safety L4 caps what the Chief may delegate
+at what it has left — which was the single mission budget, the only pool the park had
+before there was a portfolio. So an approved business could be funded only out of whatever
+was left of an unrelated $3 test mission. A portfolio of a hundred businesses needs a
+hundred pools.
+
+Work that belongs to a venture now draws on the budget the owner approved for that venture:
+`trails.setVentureBudget(id)` resolves it, only for an **active** venture (a paused or
+stopped one funds nothing), and the allowance is that budget less what has already been
+delegated to that venture. Work that belongs to no venture still draws on the mission
+budget exactly as before — and the mission's own tally now counts only venture-less items,
+so a venture's spending no longer eats the mission's pool as well as its own.
+
+Safety L4 is unchanged in substance: a sub-run's budget still never exceeds what its
+delegator has left. What changed is which pool "has left" refers to, and every refusal
+names the pool, so `BUDGET_EXHAUSTED` now reads "nothing left to delegate from the budget
+the owner approved for big ($20.00, $20.00 already delegated)" instead of pointing at a
+mission that has nothing to do with the business.

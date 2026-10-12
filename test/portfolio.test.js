@@ -338,3 +338,80 @@ test('a tool call parked at the Gate is still expired when its run ends', async 
     await h.cleanup();
   }
 });
+
+// D183: a venture's budget is its own pot.
+//
+// Found live, by the Chief, which said so plainly: "The budget is the main problem. The
+// mission budget is only $3.00, so I could give this business $2.15 of your $20.00." The
+// owner had approved $20 for a business and the Chief could hand it $2.15, because one
+// mission budget was still the only pool in the park. A portfolio of a hundred businesses
+// needs a hundred pools.
+test('work for a venture draws on the budget the owner approved for it, not on the mission', async () => {
+  const { createTrails } = await import('../sidecar/trails.js');
+  const { createLayoutState } = await import('../sidecar/server.js');
+  const { createAgents } = await import('../sidecar/agents.js');
+  const { defaultLayout } = await import('../shared/world.js');
+
+  const h = await setup();
+  try {
+    // One business approved at $20, a second at $5, and a $3 mission alongside them.
+    const mk = async (name, ask) => {
+      const v = await h.portfolio.propose({ ...PROPOSAL, name, askUsd: ask }, { by: 'business-lead' });
+      await h.gateQueue.resolve(h.portfolio.get(v.id).itemId, { decision: 'approve' });
+      await new Promise((r) => setTimeout(r, 10));
+      return h.portfolio.get(v.id);
+    };
+    const big = await mk('Big', 20);
+    const small = await mk('Small', 5);
+    assert.equal(big.budgetUsd, 20);
+    assert.equal(small.budgetUsd, 5);
+
+    const layout = defaultLayout();
+    layout.rooms.push({ id: 'mountain-peak', name: 'Peak', kind: 'mountain_peak', x: 0, y: 0, w: 2, h: 2 });
+    layout.rooms.push({ id: 'research', name: 'Research', kind: 'research', x: 20, y: 1, w: 6, h: 6 });
+    layout.agents.push({ id: 'chief-ranger', name: 'Chief', roomId: 'mountain-peak', x: 0, y: 0, role: 'chief_ranger' });
+    layout.agents.push({ id: 'scout', name: 'Scout', roomId: 'research', x: 20, y: 1, role: 'ranger', parentAgentId: 'chief-ranger' });
+    const layoutState = createLayoutState({ initial: layout, store: h.store, bus: h.bus, clock: h.clock });
+    const agents = createAgents({ layoutState, bus: h.bus, clock: h.clock });
+    const runs = { onRunEnd() {}, start: async () => ({ runId: 'r', queued: false }), budgetFor: () => null };
+    const trails = await createTrails({ bus: h.bus, store: h.store, runs, agents, getLayout: layoutState.get, clock: h.clock, workspaceRoot: h.dir }).init();
+    trails.setMissionBudget(() => ({ budgetUsd: 3, createdAt: 0 }));
+    trails.setVentureBudget((id) => {
+      const v = h.portfolio.get(id);
+      return v && v.status === 'active' ? { budgetUsd: v.budgetUsd, createdAt: 0 } : null;
+    });
+
+    // The business the owner funded at $20 can be given $15 of it — the mission's $3 is
+    // not what bounds it.
+    const a = await trails.delegate({ toAgentId: 'scout', brief: 'niche research', budgetUsd: 15, venture: big.id }, { by: 'chief-ranger' });
+    assert.equal(a.budgetUsd, 15, 'the venture funded it, not the mission');
+    assert.equal(a.budgetCapped, false);
+
+    // Its own pot is what runs out, and only its own spending counts against it.
+    const b = await trails.delegate({ toAgentId: 'scout', brief: 'more', budgetUsd: 10, venture: big.id }, { by: 'chief-ranger' });
+    assert.equal(b.budgetUsd, 5, 'capped at what is left of that venture');
+    assert.equal(b.budgetCapped, true);
+    await assert.rejects(
+      trails.delegate({ toAgentId: 'scout', brief: 'and more', budgetUsd: 1, venture: big.id }, { by: 'chief-ranger' }),
+      (e) => e.code === 'BUDGET_EXHAUSTED' && /approved for big/.test(e.message),
+    );
+
+    // The other business is untouched: twenty dollars of work on one does not spend the other.
+    const c = await trails.delegate({ toAgentId: 'scout', brief: 'the small one', budgetUsd: 5, venture: small.id }, { by: 'chief-ranger' });
+    assert.equal(c.budgetUsd, 5, 'each business has its own money');
+
+    // Work that belongs to no venture still draws on the mission, as it always did.
+    const d = await trails.delegate({ toAgentId: 'scout', brief: 'park housekeeping', budgetUsd: 10 }, { by: 'chief-ranger' });
+    assert.equal(d.budgetUsd, 3, 'capped at the mission budget');
+    assert.equal(d.venture, null);
+
+    // A venture that is not active funds nothing, and the refusal says why.
+    await h.portfolio.pause(small.id, 'on hold');
+    await assert.rejects(
+      trails.delegate({ toAgentId: 'scout', brief: 'paused work', budgetUsd: 1, venture: small.id }, { by: 'chief-ranger' }),
+      (e) => /not an active venture|BUDGET/.test(e.message + e.code),
+    );
+  } finally {
+    await h.cleanup();
+  }
+});

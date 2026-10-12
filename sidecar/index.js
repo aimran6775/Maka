@@ -144,6 +144,15 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     log,
   }).init();
   Object.assign(registry, portfolio.tools);
+  // D183: work that belongs to a venture draws on the budget the owner approved for that
+  // business, not on the single mission budget. Only an active venture has a pool: a
+  // paused or stopped one funds nothing.
+  if (typeof trails.setVentureBudget === 'function') {
+    trails.setVentureBudget((ventureId) => {
+      const v = portfolio.get(ventureId);
+      return v && v.status === 'active' ? { budgetUsd: v.budgetUsd, createdAt: v.startedAt || v.decidedAt || 0 } : null;
+    });
+  }
   const scheduler = await createScheduler({ store, log }).init();
   let connectors = null;
   // Phase 4 step 9: the results engine reads the ledgers and the connector stores; the
