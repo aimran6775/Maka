@@ -21,7 +21,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { makeEvent } from '../shared/events.js';
-import { AGENT_ROLES, PARENT_ROLES, SPECIALTIES, SPECIALTY_NAMES, ZONE_KINDS, ZONE_LABELS, LAYOUT_SCHEMA, agentOf, roomOf, childrenOf, freeTile, allGrantsFor, freeZoneRect, zoneFixtures } from '../shared/world.js';
+import { AGENT_ROLES, PARENT_ROLES, SPECIALTIES, SPECIALTY_NAMES, ZONE_KINDS, ZONE_LABELS, LAYOUT_SCHEMA, agentOf, roomOf, childrenOf, freeTile, allGrantsFor, freeZoneRect, zoneFixtures, isDepartmentKind } from '../shared/world.js';
 import { validate } from '../shared/schema.js';
 import { resolveAllLeash, withAgentLeash, validateLeash, DOMAINS } from '../shared/leash.js';
 
@@ -143,6 +143,10 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
     PEAK_ROOM_ID,
     CHIEF_ID,
     ensureZone,
+    // D178: the department tools read rooms as well as agents (which camp exists, who
+    // stands in it), so the registry hands out the layout it already reads from rather
+    // than every caller being given getLayout separately.
+    layout,
     list: () => layout().agents.map(view),
     get: (id) => {
       const a = agentOf(layout(), id);
@@ -195,7 +199,7 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
       const l = layout();
       const current = agentOf(l, id);
       if (!current) throw fail('NOT_FOUND', `no agent "${id}"`, 404);
-      const allowed = ['name', 'zoneId', 'parentAgentId', 'venture', 'specialty', 'persona', 'policy', 'budgetUsd', 'x', 'y', 'leash', 'paused', 'skills'];
+      const allowed = ['name', 'zoneId', 'parentAgentId', 'venture', 'specialty', 'persona', 'policy', 'budgetUsd', 'x', 'y', 'leash', 'paused', 'skills', 'head'];
       const unknown = Object.keys(patch).filter((k) => !allowed.includes(k));
       if (unknown.length) throw fail('BAD_REQUEST', `cannot change ${unknown.join(', ')}`);
       if ('role' in patch) throw fail('BAD_REQUEST', 'role cannot change');
@@ -261,10 +265,27 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
         if (patch.paused) record.paused = true;
         else delete record.paused;
       }
-      const next = { ...l, agents: l.agents.map((a) => (a.id === id ? record : a)) };
+      // D178: one head per camp. Only a Ranger may head a department — a Junior's team
+      // would be reporting to someone who cannot hold its work — and appointing one
+      // stands the previous head down rather than leaving a camp with two.
+      let standDown = [];
+      if (patch.head !== undefined) {
+        if (patch.head) {
+          if ((record.role || 'ranger') !== 'ranger') throw fail('BAD_REQUEST', `only a Ranger can head a department; ${id} is a ${record.role || 'ranger'}`);
+          const room = roomOf(l, record.roomId);
+          if (!room || !isDepartmentKind(room.kind)) throw fail('BAD_REQUEST', `${id} does not stand in a department camp, so it cannot head one`);
+          record.head = true;
+          standDown = l.agents.filter((a) => a.id !== id && a.roomId === record.roomId && a.head).map((a) => a.id);
+        } else {
+          delete record.head;
+        }
+      }
+      const standing = new Set(standDown);
+      const next = { ...l, agents: l.agents.map((a) => (a.id === id ? record : standing.has(a.id) ? (({ head, ...rest }) => rest)(a) : a)) };
       const r = validate(LAYOUT_SCHEMA, next);
       if (!r.ok) throw fail('BAD_REQUEST', `agent invalid: ${r.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`);
       await layoutState.replace(next);
+      for (const other of standDown) emit({ agentId: other, change: 'updated', agent: agentOf(layout(), other), by });
       if (patch.leash !== undefined) {
         if (!leashState) throw fail('BAD_REQUEST', 'leash overrides are not available');
         const domains = patch.leash && patch.leash.domains;

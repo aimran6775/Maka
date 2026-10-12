@@ -319,6 +319,7 @@ export function createRunManager({
           getLayout,
           agentId,
           workspaceDir,
+          workspaceRoot, // D178: so `_teams/<department>/` resolves
           fetch: fetchImpl,
           ask,
           registry,

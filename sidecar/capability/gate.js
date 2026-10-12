@@ -35,7 +35,7 @@
 // grants(): optional override of the fixture-derived grant list (roles and connectors in
 //   later steps grant tools without a fixture).
 
-import { grantsFor, agentOf } from '../../shared/world.js';
+import { grantsFor, agentOf, departmentOfAgent } from '../../shared/world.js';
 import { domainOfTool, resolveLeash, defaultLeash, LEASH_LEVEL_LABELS, MONEY_DOMAINS } from '../../shared/leash.js';
 import { TOOLS, inputProblem } from './tools.js';
 
@@ -64,6 +64,10 @@ export function createToolGate({
   agentId,
   registry = TOOLS,
   workspaceDir,
+  // D178: the parent of every agent's workspace, so `_teams/<department>/` can be found.
+  // Absent in a caller that has no team folders; `resolveForAgent` then refuses a team
+  // path rather than guessing a root.
+  workspaceRoot = null,
   fetch: fetchImpl,
   ask,
   fetchTimeoutMs,
@@ -108,7 +112,10 @@ export function createToolGate({
 
   async function run(tool, call, ctx) {
     try {
-      return await tool.run(call.input, { ...toolContext, workspaceDir, fetch: fetchImpl, signal: ctx.signal, runId: ctx.runId, agentId, turn: ctx.turn, fetchTimeoutMs });
+      // D178: the department is read fresh per call, from the layout, so a Ranger that
+      // was moved to another camp writes to its new team's folder and not its old one.
+      const dept = departmentOfAgent(getLayout(), agentId);
+      return await tool.run(call.input, { ...toolContext, workspaceDir, workspaceRoot, department: dept ? dept.kind : null, fetch: fetchImpl, signal: ctx.signal, runId: ctx.runId, agentId, turn: ctx.turn, fetchTimeoutMs });
     } catch (err) {
       return { ok: false, error: err && err.message ? err.message : String(err) };
     }

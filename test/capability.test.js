@@ -5,7 +5,7 @@ import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { validate } from '../shared/schema.js';
 import { OBJECT_KINDS, LAYOUT_SCHEMA, ZONE_KINDS, AGENT_ROLES, defaultLayout, grantsFor, tileInRoom } from '../shared/world.js';
-import { TOOLS, TOOL_NAMES, resolveInWorkspace, htmlToText, READ_LIMIT_BYTES, inputProblem } from '../sidecar/capability/tools.js';
+import { TOOLS, TOOL_NAMES, resolveInWorkspace, resolveForAgent, parseTeamPath, TEAMS_DIR, htmlToText, READ_LIMIT_BYTES, inputProblem } from '../sidecar/capability/tools.js';
 import { createToolGate } from '../sidecar/capability/gate.js';
 import { createNetGuard } from '../sidecar/netguard.js';
 import { runLoop } from '../sidecar/loop.js';
@@ -223,4 +223,84 @@ test('gate through the loop: the model only sees granted tools and an ungranted 
   } finally {
     await cleanup();
   }
+});
+
+// D178: team folders, read shared and write own. The rule has to hold against the same
+// attacks the per-agent sandbox already withstands — `..`, absolute paths and symlinks —
+// because a team folder is a second root, not a relaxation of the first.
+test('a team folder is readable by every team and writable only by its own', async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'maka-teams-'));
+  const mine = path.join(root, 'scout-1');
+  await fsp.mkdir(mine, { recursive: true });
+  // A Scout stands in the Research Camp, so `research` is its own team.
+  const scout = { workspaceDir: mine, workspaceRoot: root, department: 'research' };
+
+  // Writing its own team's folder works, and reading it back gives the same file.
+  const wrote = await resolveForAgent(scout, `${TEAMS_DIR}/research/notes.md`, { write: true });
+  await fsp.writeFile(wrote, 'ours', 'utf8');
+  assert.equal(await fsp.readFile(await resolveForAgent(scout, `${TEAMS_DIR}/research/notes.md`), 'utf8'), 'ours');
+  assert.ok(wrote.startsWith(await fsp.realpath(path.join(root, TEAMS_DIR, 'research'))));
+
+  // Reading another team's folder is allowed: that is the point of read-shared.
+  const theirs = await resolveForAgent(scout, `${TEAMS_DIR}/finance/books.md`);
+  assert.ok(theirs.includes(path.join(TEAMS_DIR, 'finance')));
+
+  // Writing another team's folder is refused, and the message says where to go instead.
+  await assert.rejects(
+    resolveForAgent(scout, `${TEAMS_DIR}/finance/books.md`, { write: true }),
+    (e) => e.code === 'SANDBOX' && /write only your own/.test(e.message) && /finance/.test(e.message),
+  );
+
+  // An agent in no department may read a team folder but write to none.
+  const homeless = { workspaceDir: mine, workspaceRoot: root, department: null };
+  assert.ok(await resolveForAgent(homeless, `${TEAMS_DIR}/research/notes.md`));
+  await assert.rejects(resolveForAgent(homeless, `${TEAMS_DIR}/research/notes.md`, { write: true }), (e) => e.code === 'SANDBOX');
+
+  // Only real departments exist. The Peak and an invented name are both refused, so the
+  // prefix cannot be used to make an arbitrary directory under the workspace root.
+  for (const bad of ['mountain_peak', 'ranger_station', 'etc', '..', 'Research']) {
+    await assert.rejects(resolveForAgent(scout, `${TEAMS_DIR}/${bad}/x`), (e) => e.code === 'SANDBOX', `${bad} must be refused`);
+  }
+  await assert.rejects(resolveForAgent(scout, `${TEAMS_DIR}/`), (e) => e.code === 'SANDBOX');
+  await assert.rejects(resolveForAgent(scout, TEAMS_DIR), (e) => e.code === 'SANDBOX');
+
+  // A team path cannot climb out of its own department, however it is spelled.
+  for (const esc of [
+    `${TEAMS_DIR}/research/../finance/x`,
+    `${TEAMS_DIR}/research/../../scout-1/outbox/x`,
+    `${TEAMS_DIR}/research/a/../../../../etc/passwd`,
+  ]) {
+    await assert.rejects(resolveForAgent(scout, esc, { write: true }), (e) => e.code === 'SANDBOX', `${esc} must be refused`);
+  }
+  // An absolute path is not a team path and is held to the agent's own workspace.
+  await assert.rejects(resolveForAgent(scout, '/etc/passwd'), (e) => e.code === 'SANDBOX');
+
+  // A symlink inside a team folder pointing at another team cannot redirect a write.
+  const link = path.join(root, TEAMS_DIR, 'research', 'sneak');
+  await fsp.mkdir(path.join(root, TEAMS_DIR, 'finance'), { recursive: true });
+  await fsp.symlink(path.join(root, TEAMS_DIR, 'finance'), link, 'dir');
+  await assert.rejects(resolveForAgent(scout, `${TEAMS_DIR}/research/sneak/x`, { write: true }), (e) => e.code === 'SANDBOX');
+
+  // Paths with no team prefix behave exactly as before: the agent's own workspace only.
+  const own = await resolveForAgent(scout, 'outbox/a.md', { write: true });
+  assert.equal(own, path.join(await fsp.realpath(mine), 'outbox/a.md'));
+  await assert.rejects(resolveForAgent(scout, '../scout-2/x', { write: true }), (e) => e.code === 'SANDBOX');
+  // And a caller with no workspaceRoot cannot use a team path at all.
+  await assert.rejects(resolveForAgent({ workspaceDir: mine, department: 'research' }, `${TEAMS_DIR}/research/x`), (e) => e.code === 'SANDBOX');
+
+  await fsp.rm(root, { recursive: true, force: true });
+});
+
+test('only the literal _teams prefix names a team folder', () => {
+  assert.deepEqual(parseTeamPath('_teams/research/a.md'), { dept: 'research', rest: 'a.md' });
+  assert.deepEqual(parseTeamPath('./_teams/finance/deep/b.md'), { dept: 'finance', rest: 'deep/b.md' });
+  assert.deepEqual(parseTeamPath('_teams/sales'), { dept: 'sales', rest: '' });
+  // Not team paths: an ordinary file whose name merely begins with the same letters, and
+  // anything nested below the agent's own workspace.
+  assert.equal(parseTeamPath('_teamsnotes.md'), null);
+  assert.equal(parseTeamPath('outbox/_teams/research/a.md'), null);
+  assert.equal(parseTeamPath('teams/research/a.md'), null);
+  assert.equal(parseTeamPath('outbox/a.md'), null);
+  assert.equal(parseTeamPath(''), null);
+  assert.equal(parseTeamPath(null), null);
 });

@@ -9,7 +9,7 @@ import { createRunManager } from '../sidecar/runs.js';
 import { createTrails, briefFor } from '../sidecar/trails.js';
 import { createLayoutState } from '../sidecar/server.js';
 import { createAgents } from '../sidecar/agents.js';
-import { CREW_TOOLS } from '../sidecar/capability/crew.js';
+import { CREW_TOOLS, deptDirectory, deptRequest } from '../sidecar/capability/crew.js';
 import { defaultLayout, roleGrants } from '../shared/world.js';
 import { fakeProvider, fakeClock, text, toolCall, end, waitUntil } from './helpers/fake-provider.js';
 
@@ -119,7 +119,7 @@ test('trails: delegation rules, briefs, work.handoff → run → work.done with 
     },
   });
   try {
-    assert.deepEqual(roleGrants('chief_ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'brief.decide', 'memory.recall', 'memory.write', 'recipe.run']);
+    assert.deepEqual(roleGrants('chief_ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'brief.decide', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request']);
     await assert.rejects(h.trails.delegate({ toAgentId: 'mark', brief: 'x' }, {}), /needs a delegating agent/);
     await assert.rejects(h.trails.delegate({ toAgentId: 'mark', brief: '' }, { by: 'chief-ranger' }), /brief is required/);
     await assert.rejects(h.trails.delegate({ toAgentId: 'ghost', brief: 'x' }, { by: 'chief-ranger' }), /unknown receiver/);
@@ -233,6 +233,107 @@ test('pause: a paused agent gets no new runs, cancelFor stops its active and que
     assert.equal((await h.store.loadRun(r3.runId)).reason, 'completed');
     assert.equal(h.runs.cancelFor('nobody'), 0);
     await assert.rejects(h.agents.setPaused('ghost', true), (e) => e.status === 404);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+// D178: "if any problems or need anything, it goes through the departments". A Ranger that
+// needs something asks a department, not a person: the request lands with that
+// department's head, who triages it and assigns it to the team. Before this, a Ranger had
+// to already know the agent id of whoever could help.
+test('a request addressed to a department reaches its head, who can assign it onward', async () => {
+  const h = await setup();
+  try {
+    // The marketing camp from the harness gets a head; a second camp is opened for finance
+    // so there are two departments to route between.
+    await h.agents.update('mark', { specialty: 'marketing', head: true }, { by: 'chief-ranger' });
+    const finance = await h.agents.ensureZone('finance');
+    const books = await h.agents.create({ name: 'Books', role: 'ranger', zoneId: finance.id, specialty: 'books', parentAgentId: 'chief-ranger' }, { by: 'chief-ranger' });
+    const helper = await h.agents.create({ name: 'Helper', role: 'junior_ranger', zoneId: finance.id, parentAgentId: books.id }, { by: 'chief-ranger' });
+
+    const ctx = { agentId: 'mark', agents: h.agents, trails: h.trails };
+
+    // The directory says what exists, who answers, and plainly which camps are unbuilt.
+    const dir = JSON.parse((await deptDirectory.run({}, ctx)).output);
+    assert.equal(dir.yours, 'marketing', 'a Ranger knows its own department');
+    const byKind = Object.fromEntries(dir.departments.map((d) => [d.department, d]));
+    assert.equal(byKind.marketing.head, 'Mark (mark)');
+    assert.equal(byKind.marketing.camp, 'camp');
+    assert.equal(byKind.finance.camp, 'finance');
+    assert.equal(byKind.finance.head, null, 'finance has Rangers but no head yet');
+    assert.equal(byKind.sales.camp, 'not built yet', 'and an unbuilt camp says so rather than reading empty');
+    assert.equal(byKind.marketing.folder, '_teams/marketing/');
+    assert.deepEqual(byKind.marketing.teams, ['ads', 'marketing'], 'one camp can house two teams');
+
+    // A department with Rangers but no head cannot take a request, and the error says to
+    // appoint one rather than leaving the caller to retry.
+    const headless = await deptRequest.run({ department: 'finance', need: 'what did we spend on ads last week?' }, ctx);
+    assert.equal(headless.ok, false);
+    assert.match(headless.error, /no head/);
+    assert.match(headless.error, /Chief Ranger/);
+
+    // An unbuilt camp is refused differently: it needs opening, not staffing.
+    const unbuilt = await deptRequest.run({ department: 'legal', need: 'may we say "non-toxic"?' }, ctx);
+    assert.equal(unbuilt.ok, false);
+    assert.match(unbuilt.error, /has not been built yet/);
+
+    // Give finance a head. A request still needs a run to be delegated from: a Ranger
+    // spends its own run's budget, which is what safety L4 bounds (the Chief spends the
+    // mission's). Outside a run the tool says so rather than opening unfunded work.
+    await h.agents.update(books.id, { head: true }, { by: 'chief-ranger' });
+    const unfunded = await deptRequest.run({ department: 'finance', need: 'anything' }, ctx);
+    assert.equal(unfunded.ok, false);
+    assert.match(unfunded.error, /no budget to delegate from/);
+
+    // Inside a run it goes through. The Ranger's own run is what pays for it.
+    const asking = await h.runs.start({ agentId: 'mark', prompt: 'set the budget', budgetUsd: 2 });
+    const sent = await deptRequest.run({
+      department: 'finance',
+      need: 'I need last week\'s ad spend to set this month\'s budget.',
+      budgetUsd: 0.25,
+      evidence: ['the figure with the date range it covers'],
+    }, { ...ctx, runId: asking.runId });
+    assert.equal(sent.ok, true, sent.error);
+    const out = JSON.parse(sent.output);
+    assert.equal(out.toAgentId, books.id, 'it went to the head, not to the Junior');
+    assert.equal(out.department, 'finance');
+    assert.equal(out.triagedBy, 'head');
+
+    // The brief the head receives says it is the head and that it may assign the work on.
+    const item = h.trails.get(out.workItemId);
+    assert.match(item.brief, /Request from mark \(Marketing Camp\) to the Finance Camp/);
+    assert.match(item.brief, /You are the head of this department/);
+    assert.match(item.brief, /assign it to one of your team with delegate/);
+    assert.match(item.brief, /last week's ad spend/);
+    assert.match(item.brief, /the figure with the date range it covers/);
+    assert.match(item.brief, /_teams\/finance\//, 'and where to keep what the department should keep');
+
+    // A head asking its own department is told to handle it rather than looping to itself,
+    // and that check comes before any budget question.
+    const self = await deptRequest.run({ department: 'finance', need: 'anything' }, { ...ctx, agentId: books.id });
+    assert.equal(self.ok, false);
+    assert.match(self.error, /you head the Finance Camp/);
+
+    // One head per camp: appointing another stands the first down.
+    const second = await h.agents.create({ name: 'Books2', role: 'ranger', zoneId: finance.id, specialty: 'books', parentAgentId: 'chief-ranger' }, { by: 'chief-ranger' });
+    await h.agents.update(second.id, { head: true }, { by: 'chief-ranger' });
+    assert.equal(h.agents.get(books.id).head, undefined, 'the previous head stood down');
+    assert.equal(h.agents.get(second.id).head, true);
+    const after = JSON.parse((await deptDirectory.run({ department: 'finance' }, ctx)).output);
+    assert.equal(after.departments.length, 1, 'asking for one department answers for one');
+    assert.match(after.departments[0].head, new RegExp(second.id));
+
+    // Only a Ranger standing in a department camp can head one. A Junior and the Chief
+    // both fail on their role; a Ranger at the Ranger Station fails on its camp, because
+    // the Station is the park's own HQ and not a department.
+    await assert.rejects(h.agents.update(helper.id, { head: true }, { by: 'chief-ranger' }), /only a Ranger can head/);
+    await assert.rejects(h.agents.update('chief-ranger', { head: true }, { by: 'chief-ranger' }), /only a Ranger can head/);
+    await assert.rejects(h.agents.update('ranger', { head: true }, { by: 'chief-ranger' }), /does not stand in a department camp/);
+    // Standing a head down is always allowed and leaves the camp headless.
+    await h.agents.update(second.id, { head: false }, { by: 'chief-ranger' });
+    assert.equal(h.agents.get(second.id).head, undefined);
+    assert.equal(JSON.parse((await deptDirectory.run({ department: 'finance' }, ctx)).output).departments[0].head, null);
   } finally {
     await h.cleanup();
   }

@@ -13,6 +13,7 @@ import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { validate } from '../../shared/schema.js';
 import { guardedFetch, defaultNetGuard } from '../netguard.js';
+import { isDepartmentKind } from '../../shared/world.js';
 
 export const READ_LIMIT_BYTES = 200 * 1024;
 export const WRITE_LIMIT_BYTES = 1024 * 1024;
@@ -61,10 +62,66 @@ export async function resolveInWorkspace(workspaceDir, input) {
   return real;
 }
 
+// D178: team folders. A department's Rangers share one folder under
+// `<workspaceRoot>/_teams/<department>/`, and the rule the owner chose is read shared,
+// write own: any team may read any team's folder, and a team may write only its own.
+// Knowledge compounds across departments while a mistake stays with whoever made it.
+//
+// The folder is addressed by an explicit `_teams/<department>/...` prefix rather than by
+// `../`, so reaching another team's files is a deliberate act that reads as one, and the
+// agent's own workspace keeps working exactly as before for every other path.
+export const TEAMS_DIR = '_teams';
+
+// `_teams/<dept>/rest` -> { dept, rest }, or null when the path is not a team path at all.
+// Only the literal prefix counts: a file called `_teamsnotes` is an ordinary path.
+export function parseTeamPath(input) {
+  if (typeof input !== 'string') return null;
+  const norm = input.replace(/^[./]+/, '');
+  const parts = norm.split('/').filter((p) => p !== '' && p !== '.');
+  if (parts[0] !== TEAMS_DIR) return null;
+  const dept = parts[1] || '';
+  return { dept, rest: parts.slice(2).join('/') };
+}
+
+// Resolves a path for an agent, across its own workspace and the team folders.
+//
+// `write: true` applies the write rule. Every path still ends up proven to sit inside a
+// single named root by `resolveInWorkspace`, which is what makes `..` and symlinks safe —
+// this function only decides which root, it never relaxes the containment.
+export async function resolveForAgent(ctx, input, { write = false } = {}) {
+  const team = parseTeamPath(input);
+  if (!team) return resolveInWorkspace(ctx.workspaceDir, input);
+  if (!ctx.workspaceRoot) throw new SandboxError('team folders are not available here');
+  if (!team.dept) throw new SandboxError(`${TEAMS_DIR}/ needs a department: ${TEAMS_DIR}/<department>/<file>`);
+  if (!isDepartmentKind(team.dept)) throw new SandboxError(`"${team.dept}" is not a department of the park`);
+  if (write && team.dept !== ctx.department) {
+    throw new SandboxError(
+      ctx.department
+        ? `you may read any team's folder but write only your own (${TEAMS_DIR}/${ctx.department}/); ask the ${team.dept} department instead`
+        : `you belong to no department, so you may read a team's folder but write to none`,
+    );
+  }
+  // The department's own folder is the root, so a team path can no more escape into
+  // another team than an agent path can escape the workspace.
+  const root = path.join(ctx.workspaceRoot, TEAMS_DIR, team.dept);
+  await fsp.mkdir(root, { recursive: true });
+  return resolveInWorkspace(root, team.rest || '.');
+}
+
+// What a path reads as in a message back to the agent: team paths keep their prefix so the
+// Ranger sees the name it used, not an absolute path on someone's disk.
+export function displayPath(ctx, input, resolved) {
+  const team = parseTeamPath(input);
+  if (team) return `${TEAMS_DIR}/${team.dept}/${team.rest}`;
+  return path.relative(ctx.workspaceDirReal || ctx.workspaceDir, resolved);
+}
+
 export const fsRead = {
   name: 'fs.read',
   description:
     'Read a UTF-8 text file from your workspace. `path` is relative to the workspace root. ' +
+    'To read a department\'s shared folder, use `_teams/<department>/<file>` — you may read any ' +
+    'team\'s folder, and write only your own. ' +
     `Output is truncated after ${READ_LIMIT_BYTES} bytes and says so.`,
   inputSchema: {
     type: 'object',
@@ -74,7 +131,7 @@ export const fsRead = {
   },
   confirm: false,
   async run(input, ctx) {
-    const file = await resolveInWorkspace(ctx.workspaceDir, input.path);
+    const file = await resolveForAgent(ctx, input.path);
     const handle = await fsp.open(file, 'r');
     try {
       const stat = await handle.stat();
@@ -95,6 +152,8 @@ export const fsWrite = {
   description:
     'Write a UTF-8 text file in your workspace, creating parent directories. `path` is relative ' +
     'to the workspace root. Finished deliverables go under `outbox/`. Overwrites an existing file. ' +
+    'To write something your whole department shares, use `_teams/<your department>/<file>`; you ' +
+    'cannot write into another department\'s folder — ask that department instead. ' +
     `Content is limited to ${WRITE_LIMIT_BYTES} bytes.`,
   inputSchema: {
     type: 'object',
@@ -109,10 +168,10 @@ export const fsWrite = {
   async run(input, ctx) {
     const bytes = Buffer.byteLength(input.content, 'utf8');
     if (bytes > WRITE_LIMIT_BYTES) return { ok: false, error: `content is ${bytes} bytes; limit is ${WRITE_LIMIT_BYTES}` };
-    const file = await resolveInWorkspace(ctx.workspaceDir, input.path);
+    const file = await resolveForAgent(ctx, input.path, { write: true });
     await fsp.mkdir(path.dirname(file), { recursive: true });
     // Re-check after mkdir so a directory created through a link cannot redirect the write.
-    const check = await resolveInWorkspace(ctx.workspaceDir, input.path);
+    const check = await resolveForAgent(ctx, input.path, { write: true });
     if (check !== file) return { ok: false, error: 'path changed while writing' };
     const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
     const handle = await fsp.open(tmp, 'w');
@@ -123,7 +182,7 @@ export const fsWrite = {
       await handle.close();
     }
     await fsp.rename(tmp, file);
-    return { ok: true, output: `wrote ${bytes} bytes to ${path.relative(await fsp.realpath(ctx.workspaceDir), file)}` };
+    return { ok: true, output: `wrote ${bytes} bytes to ${displayPath({ ...ctx, workspaceDirReal: await fsp.realpath(ctx.workspaceDir) }, input.path, file)}` };
   },
 };
 

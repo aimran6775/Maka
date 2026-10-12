@@ -272,7 +272,7 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
     },
     'crew.hire': {
       name: 'crew.hire',
-      description: 'Hire a Ranger with a specialty for a venture. It is created in its department camp (the camp is created if missing) reporting to you. Returns the agent id to delegate to.',
+      description: 'Hire a Ranger with a specialty for a venture. It is created in its department camp (the camp is created if missing) reporting to you. Set head: true to make it the head of that department, which is who receives requests other departments send there (dept.request); appointing a head stands the previous one down. Returns the agent id to delegate to.',
       inputSchema: {
         type: 'object',
         required: ['name', 'specialty', 'venture'],
@@ -283,6 +283,9 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
           venture: { type: 'string', minLength: 1, maxLength: 80, description: 'Venture id from the plan' },
           persona: { type: 'string', maxLength: 2000, description: 'Optional extra persona; the specialty persona applies by default' },
           budgetUsd: { type: 'number', minimum: 0 },
+          // D178: a department needs a head before another department can ask it for
+          // anything, so hiring one is a single call rather than a hire and a patch.
+          head: { type: 'boolean', description: 'Make this Ranger the head of its department (one per camp)' },
         },
       },
       confirm: false,
@@ -291,7 +294,14 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
           const zone = await agents.ensureZone(SPECIALTIES[input.specialty].zoneKind);
           const persona = input.persona ? `${SPECIALTIES[input.specialty].persona} ${input.persona}` : undefined;
           const a = await agents.create({ name: input.name, role: 'ranger', zoneId: zone.id, parentAgentId: ctx.agentId, specialty: input.specialty, venture: input.venture, persona, budgetUsd: input.budgetUsd }, { by: ctx.agentId });
-          return { ok: true, output: JSON.stringify({ agentId: a.id, name: a.name, zone: zone.id, specialty: input.specialty }) };
+          // The head is set after the hire so the Ranger already stands in its camp, which
+          // is the condition the registry checks before it will appoint one.
+          let head = false;
+          if (input.head) {
+            await agents.update(a.id, { head: true }, { by: ctx.agentId });
+            head = true;
+          }
+          return { ok: true, output: JSON.stringify({ agentId: a.id, name: a.name, zone: zone.id, specialty: input.specialty, ...(head ? { head: true } : {}) }) };
         } catch (err) {
           return { ok: false, error: err && err.message ? err.message : String(err) };
         }

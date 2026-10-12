@@ -2180,3 +2180,71 @@ A zone that already exists is returned untouched. A camp the owner has curated i
 quietly refitted, and nothing is added behind their back — so this park's existing bare
 zones were fitted out explicitly through `POST /api/layout/place`, which is an owner
 action and is on the record as five `object.place` events.
+
+## D178 — the park replicates a company: ten departments, heads, and requests that go through them
+
+The owner: "we need to replicate corporate to our park. Need to sales, marketing,
+business, finance, hr etc to manage these business autonomously. If any problems or need
+anything, it goes through the departments." Asked to choose, they picked the full set plus
+IT, head triage, and team folders that are read-shared and write-own.
+
+**The departments.** Five teams were added to the six that existed, and Sales Camp — a
+zone kind that had been defined with nobody homed in it — finally got one:
+
+| Team | Camp | Owns |
+| --- | --- | --- |
+| Sales Ranger | Sales Camp | the pipeline: qualify, reach out, report what closed |
+| People Ranger | People Camp | who the park needs; asks the Chief to hire or retire |
+| Business Ranger | Business Camp | strategy and pricing from the books and the briefs |
+| Legal Ranger | Legal Camp | platform terms, labelling, privacy, what may be claimed |
+| Infrastructure Ranger | Infrastructure Camp | the browser, the connectors' health, the Mac |
+
+`DEPARTMENT_KINDS` is **derived** from `SPECIALTIES` rather than kept as a second list, so
+a department and the team that lives in it cannot drift apart. A zone kind nothing homes in
+— the Ranger Station, the Peak, the Entrance Gate, a trailhead — is not a department and
+never appears. Ten departments, eleven teams: the Marketing Camp houses both Ads and
+Marketing, which the directory shows rather than hides.
+
+Business and Legal are born with a Trailhead sign, because reading the public web is how
+either does its work at all — platform terms, consumer rules, competitor pricing. People
+and Infrastructure get only a supply cache: People asks the Chief to hire or retire rather
+than holding those tools itself, and Infrastructure's browser and Mac fixtures are leashed,
+so both stay the Superintendent's to place (D177).
+
+**Heads.** A department has one head, an optional `head` flag on the agent record. Only a
+Ranger standing in a department camp may hold it: a Junior's parent must be a Ranger, so a
+Junior head would leave a team reporting to someone who cannot hold its work. Appointing a
+head stands the previous one down, announced like any other crew change, so a camp never
+has two. `crew.hire` takes `head: true` so the Chief can open and staff a department in one
+call.
+
+**Requests go through the departments.** `delegate` names one agent and always did, which
+meant a Ranger had to already know who could help. Two tools were added:
+
+- **`dept.directory`** — what each department is for, whether its camp exists, who heads
+  it, who is on its team, and its folder. A camp that was never built reads "not built
+  yet" rather than as an empty one, because the two call for different answers.
+- **`dept.request`** — ask a department, not a person. It lands with the head, whose brief
+  says it is the head and may assign the work on with `delegate`. A department with no camp
+  is told to ask the Chief to open it; one with Rangers but no head is told to ask for a
+  head; a head asking its own department is told to handle it rather than looping to itself.
+
+Both go to `chief_ranger` and `ranger`. A Junior gets neither: its work comes from its own
+Ranger, who holds both, and letting the narrowest role open work items across the park is
+how a one-hop tree turns into unbounded fan-out. A request is still delegated from the
+caller's own run budget, so safety L4 bounds it exactly as `delegate` is bounded — outside a
+run the tool refuses rather than opening unfunded work.
+
+**Team folders.** `<workspace>/_teams/<department>/`, addressed by that explicit prefix
+rather than by `../`, so reaching another team's files reads as the deliberate act it is
+and every other path behaves exactly as before. Read shared, write own: any team may read
+any team's folder, so a Scout's brief is available to Finance without a round trip, and a
+team may write only its own, so a mistake stays with whoever made it.
+
+The containment is unchanged, which is the point: `resolveForAgent` only chooses which root
+a path belongs to and then hands it to `resolveInWorkspace`, the same symlink- and
+`..`-proof check the per-agent sandbox has always used, with the department's own folder as
+the root. A team path therefore can no more escape into another team than an agent path can
+escape its workspace. Only real department names resolve, so the prefix cannot be used to
+make an arbitrary directory under the workspace root, and an agent in no department may
+read a team folder but write to none.

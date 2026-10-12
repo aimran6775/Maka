@@ -11,7 +11,7 @@ import { createAgents, personaLines, PEAK_ROOM_ID, CHIEF_ID } from '../sidecar/a
 import { createToolGate } from '../sidecar/capability/gate.js';
 import { TOOLS } from '../sidecar/capability/tools.js';
 import { CREW_TOOLS } from '../sidecar/capability/crew.js';
-import { defaultLayout, allGrantsFor, roleGrants, freeTile, childrenOf, SPECIALTIES, PARENT_ROLES, LAYOUT_SCHEMA } from '../shared/world.js';
+import { defaultLayout, allGrantsFor, roleGrants, freeTile, childrenOf, SPECIALTIES, SPECIALTY_NAMES, PARENT_ROLES, LAYOUT_SCHEMA, ZONE_KINDS, ZONE_LABELS, DEPARTMENT_KINDS, departments, departmentOf, departmentOfAgent, specialtiesOf, isDepartmentKind } from '../shared/world.js';
 import { defaultLeash, resolveLeash } from '../shared/leash.js';
 import { validate } from '../shared/schema.js';
 import { fakeClock } from './helpers/fake-provider.js';
@@ -33,7 +33,7 @@ async function setup({ layout = defaultLayout() } = {}) {
 
 test('world data: parent roles, role grants, specialties, free tiles, layout fields are additive', () => {
   assert.deepEqual(PARENT_ROLES.junior_ranger, ['ranger']);
-  assert.deepEqual(roleGrants('ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'memory.recall', 'memory.write', 'recipe.run']);
+  assert.deepEqual(roleGrants('ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request']);
   assert.deepEqual(roleGrants('junior_ranger'), ['memory.recall']);
   assert.deepEqual(roleGrants('nobody'), []);
   for (const s of Object.values(SPECIALTIES)) assert.ok(s.persona.length > 20 && s.zoneKind);
@@ -49,7 +49,7 @@ test('world data: parent roles, role grants, specialties, free tiles, layout fie
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, true);
   layout.agents[0].specialty = 'wizard';
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, false);
-  assert.deepEqual(allGrantsFor({ ...defaultLayout(), objects: [{ id: 'o', kind: 'trailhead_sign', roomId: 'ranger-station', x: 1, y: 1 }] }, 'ranger'), ['brief.submit', 'crew.spawn_junior', 'delegate', 'memory.recall', 'memory.write', 'recipe.run', 'web.fetch', 'web.read', 'web.search', 'web.trends', 'work.check']);
+  assert.deepEqual(allGrantsFor({ ...defaultLayout(), objects: [{ id: 'o', kind: 'trailhead_sign', roomId: 'ranger-station', x: 1, y: 1 }] }, 'ranger'), ['brief.submit', 'crew.spawn_junior', 'delegate', 'dept.directory', 'dept.request', 'memory.recall', 'memory.write', 'recipe.run', 'web.fetch', 'web.read', 'web.search', 'web.trends', 'work.check']);
   assert.deepEqual(childrenOf(defaultLayout(), 'ranger'), []);
 });
 
@@ -58,7 +58,7 @@ test('agents: create / get / update / remove with the hierarchy rules, Chief sin
   try {
     assert.equal(h.agents.list().length, 1);
     assert.equal(h.agents.list()[0].role, 'ranger');
-    assert.deepEqual(h.agents.list()[0].grants, ['crew.spawn_junior', 'delegate', 'memory.recall', 'memory.write', 'recipe.run', 'work.check']);
+    assert.deepEqual(h.agents.list()[0].grants, ['crew.spawn_junior', 'delegate', 'dept.directory', 'dept.request', 'memory.recall', 'memory.write', 'recipe.run', 'work.check']);
     await assert.rejects(h.agents.create({ name: 'X', role: 'superintendent', zoneId: 'ranger-station' }), /role must be one of/);
     await assert.rejects(h.agents.create({ name: '', role: 'ranger', zoneId: 'ranger-station' }), /name is required/);
     await assert.rejects(h.agents.create({ name: 'X', zoneId: 'nowhere' }), /unknown zone/);
@@ -149,7 +149,7 @@ test('crew.spawn_junior: a Ranger creates a Junior through the gate; a Junior do
   try {
     const registry = { ...TOOLS, ...CREW_TOOLS };
     const gate = createToolGate({ getLayout: h.layoutState.get, agentId: 'ranger', workspaceDir: h.dir, registry, grants: allGrantsFor, toolContext: { agents: h.agents }, leash: defaultLeash() });
-    assert.deepEqual(gate.definitions().map((d) => d.name), ['crew.spawn_junior', 'delegate', 'work.check']);
+    assert.deepEqual(gate.definitions().map((d) => d.name), ['crew.spawn_junior', 'delegate', 'dept.directory', 'dept.request', 'work.check']);
     const r = await gate.execute({ id: 'c1', name: 'crew.spawn_junior', input: { name: 'Lister', persona: 'write listing drafts', venture: 'Lantern Co' } }, { runId: 'r', turn: 1 });
     assert.equal(r.ok, true);
     const out = JSON.parse(r.output);
@@ -227,4 +227,87 @@ test('a new zone is born with its own kit, so a Ranger hired into it can do that
   } finally {
     await h.cleanup();
   }
+});
+
+// D178: the park replicates a company, so every team has a department and every department
+// is a real place with a head and a staff. The list is derived from SPECIALTIES so it can
+// never drift from the teams that actually exist.
+test('every team has a department, every department has a camp and a label, and the list is derived not copied', () => {
+  // Nothing homes in a zone kind without being a department, and no team is homeless.
+  for (const n of SPECIALTY_NAMES) {
+    const kind = SPECIALTIES[n].zoneKind;
+    assert.ok(ZONE_KINDS.includes(kind), `${n} wants zone kind "${kind}" which is not a zone kind`);
+    assert.ok(ZONE_LABELS[kind], `${kind} has no display label`);
+    assert.ok(isDepartmentKind(kind), `${kind} houses ${n} so it is a department`);
+    assert.ok(specialtiesOf(kind).includes(n));
+  }
+  // The infrastructure of the park is not a department: no team lives at the Peak.
+  for (const kind of ['ranger_station', 'entrance_gate', 'mountain_peak', 'visitor_center', 'trailhead']) {
+    assert.ok(ZONE_KINDS.includes(kind));
+    assert.equal(isDepartmentKind(kind), false, `${kind} is not a department`);
+  }
+  assert.equal(departmentOf(layoutOf([]), 'mountain_peak'), null, 'and asking for one answers nothing');
+
+  // One camp can house more than one team: Ads and Marketing share the Marketing Camp.
+  assert.deepEqual(specialtiesOf('marketing'), ['ads', 'marketing']);
+  // Every department kind is distinct and every one is reachable from a specialty.
+  assert.equal(new Set(DEPARTMENT_KINDS).size, DEPARTMENT_KINDS.length);
+  for (const k of DEPARTMENT_KINDS) assert.ok(specialtiesOf(k).length > 0, `${k} has no team`);
+  // The five departments D178 added, by name, so a rename or a loss is caught here.
+  for (const k of ['sales', 'people', 'business', 'legal', 'infrastructure']) {
+    assert.ok(DEPARTMENT_KINDS.includes(k), `${k} is missing`);
+  }
+});
+
+function layoutOf(rooms, agents = []) {
+  return { ...defaultLayout(), rooms, objects: [], agents };
+}
+
+test('a department reads its camp, head and staff off the layout, and a camp that was never built reads as absent', () => {
+  // A department whose camp does not exist is absent, not empty: the difference matters,
+  // because "no camp" and "a camp with nobody in it" call for different answers.
+  const bare = departmentOf(layoutOf([]), 'finance');
+  assert.equal(bare.roomId, null);
+  assert.equal(bare.head, null);
+  assert.deepEqual(bare.staff, []);
+  assert.equal(bare.label, 'Finance Camp');
+
+  const rooms = [{ id: 'finance', kind: 'finance', x: 1, y: 1, w: 6, h: 6 }];
+  const agents = [
+    { id: 'books-head', name: 'Head', role: 'ranger', roomId: 'finance', specialty: 'books', head: true, x: 1, y: 1 },
+    { id: 'books-2', name: 'Two', role: 'ranger', roomId: 'finance', specialty: 'books', x: 2, y: 1 },
+    { id: 'junior', name: 'J', role: 'junior_ranger', roomId: 'finance', parentAgentId: 'books-head', x: 3, y: 1 },
+    { id: 'elsewhere', name: 'E', role: 'ranger', roomId: 'research', x: 4, y: 1 },
+  ];
+  const d = departmentOf(layoutOf(rooms, agents), 'finance');
+  assert.equal(d.roomId, 'finance');
+  assert.equal(d.head, 'books-head');
+  assert.deepEqual(d.staff.sort(), ['books-2', 'junior'], 'everyone in the camp but the head');
+  assert.ok(!d.staff.includes('elsewhere'), 'a Ranger in another camp is not this team');
+
+  // Only a Ranger heads a department. A Junior flagged as head is ignored, because a team
+  // reporting to a Junior would report to someone who cannot hold its work.
+  const juniorHead = departmentOf(layoutOf(rooms, [{ id: 'j', role: 'junior_ranger', roomId: 'finance', head: true, x: 1, y: 1 }]), 'finance');
+  assert.equal(juniorHead.head, null);
+  assert.deepEqual(juniorHead.staff, ['j'], 'it is still staff');
+
+  // An agent knows its own department, and the Chief at the Peak has none.
+  const l = layoutOf([...rooms, { id: 'mountain-peak', kind: 'mountain_peak', x: 20, y: 1, w: 4, h: 4 }], [...agents, { id: 'chief-ranger', role: 'chief_ranger', roomId: 'mountain-peak', x: 20, y: 1 }]);
+  assert.equal(departmentOfAgent(l, 'books-2').kind, 'finance');
+  assert.equal(departmentOfAgent(l, 'chief-ranger'), null, 'the Chief serves every department and heads none');
+  assert.equal(departmentOfAgent(l, 'nobody'), null);
+
+  // departments() answers for all ten whether or not their camps are built.
+  const all = departments(l);
+  assert.equal(all.length, DEPARTMENT_KINDS.length);
+  assert.equal(all.filter((x) => x.roomId).length, 1, 'only Finance is built in this layout');
+});
+
+test('the head flag is an optional boolean the layout schema accepts', () => {
+  const l = defaultLayout();
+  const withHead = { ...l, agents: l.agents.map((a) => ({ ...a, head: true })) };
+  assert.equal(validate(LAYOUT_SCHEMA, withHead).ok, true);
+  assert.equal(validate(LAYOUT_SCHEMA, l).ok, true, 'and absent is still valid');
+  const bad = { ...l, agents: l.agents.map((a) => ({ ...a, head: 'yes' })) };
+  assert.equal(validate(LAYOUT_SCHEMA, bad).ok, false, 'but not a string');
 });

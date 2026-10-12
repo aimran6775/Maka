@@ -660,6 +660,20 @@ department camps (created on demand) and `delegate` to start tasks. Every versio
 stored and written to the Chief's outbox; `plan.updated` keeps the Peak current; a
 finished delegated item brings the Chief back for a bounded follow-up.
 
+D178 made the park a company. Ten departments, each a camp with one head and its team:
+the six that existed plus Sales (a zone kind that had been defined with nobody homed in
+it), People, Business, Legal and Infrastructure. The list is derived from `SPECIALTIES`, so
+a department and the team living in it cannot drift apart. A Ranger that needs something
+calls `dept.request` and addresses the *department*, not a person: it lands with that
+department's head, who triages it and assigns it to the team with `delegate`, and
+`dept.directory` says which departments exist, who heads them and which camps are not
+built yet. Requests are still paid for out of the caller's own run budget, so safety L4
+bounds them exactly as it bounds `delegate`. Each department also has a shared folder at
+`_teams/<department>/`: read shared so a Scout's brief reaches Finance without a round
+trip, write own so a mistake stays with whoever made it, with the same symlink- and
+`..`-proof containment the per-agent sandbox has always had, rooted at the department's
+own folder.
+
 D176 added the other half of each of those two writes. `plan.submit` replaces the plan
 outright, so `plan.read` returns the stored plan as it is — every venture, task and budget,
 plus the mission ceiling and the version history — and a revision is an edit of what comes

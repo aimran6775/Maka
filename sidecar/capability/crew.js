@@ -4,7 +4,7 @@
 // inside the park, not an outside effect; the registry enforces the one-hop depth and the
 // gate only lists the tool for chief_ranger and ranger roles.
 
-import { SPECIALTY_NAMES } from '../../shared/world.js';
+import { SPECIALTY_NAMES, DEPARTMENT_KINDS, ZONE_LABELS, departments, departmentOf, departmentOfAgent } from '../../shared/world.js';
 
 export const spawnJunior = {
   name: 'crew.spawn_junior',
@@ -95,4 +95,125 @@ export const workCheck = {
   },
 };
 
-export const CREW_TOOLS = Object.freeze({ 'crew.spawn_junior': spawnJunior, delegate, 'work.check': workCheck });
+// D178: the park replicates a company, so a Ranger that needs something asks a department
+// rather than hunting for an agent id. `delegate` names one agent and always did; these two
+// name a department and let the park find the person — which is what "it goes through the
+// departments" means. The owner chose head triage: a request lands with the department's
+// head, who assigns it to its team.
+
+export const deptDirectory = {
+  name: 'dept.directory',
+  description:
+    'List the park\'s departments: what each one is for, whether its camp exists, who heads it and who is on its team. ' +
+    'Read this before asking another department for something, so you address a department that exists and know who will answer.',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: { department: { type: 'string', enum: DEPARTMENT_KINDS, description: 'Optional: just this one' } },
+  },
+  confirm: false,
+  async run(input, ctx) {
+    if (!ctx.agents || typeof ctx.agents.layout !== 'function') return { ok: false, error: 'no crew registry is available in this run' };
+    const layout = ctx.agents.layout();
+    const list = input.department ? [departmentOf(layout, input.department)].filter(Boolean) : departments(layout);
+    const mine = departmentOfAgent(layout, ctx.agentId);
+    const name = (id) => {
+      const a = ctx.agents.get(id);
+      return a ? `${a.name} (${id})` : id;
+    };
+    return {
+      ok: true,
+      output: JSON.stringify({
+        yours: mine ? mine.kind : null,
+        departments: list.map((d) => ({
+          department: d.kind,
+          label: d.label,
+          teams: d.specialties,
+          // The difference between a camp that was never built and one standing empty
+          // changes the answer, so it is said plainly rather than left to be inferred.
+          camp: d.roomId ? d.roomId : 'not built yet',
+          head: d.head ? name(d.head) : null,
+          staff: d.staff.map(name),
+          folder: `_teams/${d.kind}/`,
+        })),
+      }),
+    };
+  },
+};
+
+export const deptRequest = {
+  name: 'dept.request',
+  description:
+    'Ask another department for something you need: a decision, a number, a check, a piece of work. ' +
+    'It goes to that department\'s head, who triages it and assigns it to their team, so you do not need to know who is on it. ' +
+    'Say exactly what you need and why, and what you will do with the answer. Returns the work item id; read it later with work.check. ' +
+    'Use dept.directory first if you are unsure which department owns the question.',
+  inputSchema: {
+    type: 'object',
+    required: ['department', 'need'],
+    additionalProperties: false,
+    properties: {
+      department: { type: 'string', enum: DEPARTMENT_KINDS, description: 'The department you are asking' },
+      need: { type: 'string', minLength: 1, maxLength: 8000, description: 'What you need, why, and what you will do with the answer' },
+      budgetUsd: { type: 'number', minimum: 0, description: 'Model spend the department may use on this (default 0.5); capped at what you have left' },
+      deadline: { type: 'string', description: 'Optional deadline, free text or ISO date' },
+      evidence: { type: 'array', items: { type: 'string' }, description: 'What the answer must show to be usable' },
+    },
+  },
+  confirm: false,
+  async run(input, ctx) {
+    if (!ctx.trails) return { ok: false, error: 'no trails are available in this run' };
+    if (!ctx.agents || typeof ctx.agents.layout !== 'function') return { ok: false, error: 'no crew registry is available in this run' };
+    const layout = ctx.agents.layout();
+    const dept = departmentOf(layout, input.department);
+    if (!dept) return { ok: false, error: `"${input.department}" is not a department of the park` };
+    // A department with no camp or no head cannot take a request. Saying which of the two
+    // it is tells the caller whether to ask the Chief for a camp or for a head, instead of
+    // leaving it to retry the same thing.
+    if (!dept.roomId) return { ok: false, error: `the ${dept.label} has not been built yet; ask the Chief Ranger to open it before sending work there` };
+    if (!dept.head) {
+      return {
+        ok: false,
+        error: dept.staff.length
+          ? `the ${dept.label} has no head, so there is nobody to triage this; ask the Chief Ranger to make one of its ${dept.staff.length} Ranger(s) the head`
+          : `the ${dept.label} is empty; ask the Chief Ranger to staff it`,
+      };
+    }
+    const from = departmentOfAgent(layout, ctx.agentId);
+    if (dept.head === ctx.agentId) return { ok: false, error: `you head the ${dept.label}: handle this yourself or delegate it to your team` };
+    const brief = [
+      `Request from ${ctx.agentId}${from ? ` (${from.label})` : ''} to the ${dept.label}.`,
+      '',
+      'You are the head of this department. Decide whether to answer it yourself or assign it to one of your team with delegate.',
+      '',
+      'WHAT THEY NEED:',
+      input.need,
+      ...(input.evidence && input.evidence.length ? ['', `The answer must show: ${input.evidence.join('; ')}`] : []),
+      '',
+      `Reply by finishing with the answer, and put anything your department should keep in _teams/${dept.kind}/.`,
+    ].join('\n');
+    try {
+      const item = await ctx.trails.delegate(
+        { toAgentId: dept.head, brief, budgetUsd: input.budgetUsd, deadline: input.deadline, evidence: input.evidence },
+        { by: ctx.agentId },
+      );
+      return {
+        ok: true,
+        output: JSON.stringify({
+          workItemId: item.id,
+          department: dept.kind,
+          toAgentId: item.toAgentId,
+          triagedBy: 'head',
+          status: item.status,
+          queued: item.queued,
+          budgetUsd: item.budgetUsd,
+          ...(item.budgetCapped ? { budgetCapped: true, note: `the budget was capped at $${item.budgetUsd.toFixed(2)}, what you have left` } : {}),
+        }),
+      };
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  },
+};
+
+export const CREW_TOOLS = Object.freeze({ 'crew.spawn_junior': spawnJunior, delegate, 'work.check': workCheck, 'dept.directory': deptDirectory, 'dept.request': deptRequest });

@@ -94,6 +94,15 @@ export const SPECIALTIES = deepFreeze({
   marketing: { label: 'Marketing Ranger', zoneKind: 'marketing', persona: 'You do content, social, email campaigns and SEO with original copy and creative, under the publishing and outbound_messages leashes.' },
   support: { label: 'Support Ranger', zoneKind: 'operations_support', persona: 'You handle customer email and chat, returns and reviews, truthfully and politely, and escalate refunds and anything irreversible to the Gate.' },
   books: { label: 'Books Ranger', zoneKind: 'finance', persona: 'You keep orders, refunds, fees and the daily P&L from real connector data only. You never estimate revenue.' },
+  // D178: the departments a company actually needs. Sales Camp existed as a zone kind with
+  // nobody homed in it; the other four camps are new. Each persona says what the department
+  // owns and what it must hand to the Gate, because a department that decides for itself
+  // what it may do is how an autonomous park goes wrong.
+  sales: { label: 'Sales Ranger', zoneKind: 'sales', persona: 'You own the pipeline: find and qualify buyers, write outreach, follow up and report what closed and what did not, from real connector and mail data. You never claim a sale no order record shows, and every message out passes the outbound_messages leash.' },
+  people: { label: 'People Ranger', zoneKind: 'people', persona: 'You own the crew: propose who the park needs and who it no longer needs, write the brief a new Ranger starts from, and keep a plain record of what each department delivered. You do not hire or retire on your own word — you ask the Chief Ranger, who holds those tools.' },
+  business: { label: 'Business Ranger', zoneKind: 'business', persona: 'You own strategy and pricing: read the books and the Scouts\' briefs, say which ventures to grow and which to stop, propose prices from unit economics you can show, and keep a venture\'s plan honest about what it has actually earned. A price change is money_in and a partnership is the Gate\'s.' },
+  legal: { label: 'Legal Ranger', zoneKind: 'legal', persona: 'You own policy and risk: platform terms, consumer and labelling rules, privacy, and what the park may and may not publish or claim. You read the real terms before you answer and you say plainly when something is not allowed or when you do not know. You advise; you never approve on the owner\'s behalf.' },
+  infrastructure: { label: 'Infrastructure Ranger', zoneKind: 'infrastructure', persona: 'You own the machinery: the real browser, the connectors\' health and the Mac itself. You check that a thing works before another department depends on it, and you report a failure as a failure with the exact error. Driving the Mac and the browser is leashed, so you hand a login, a one-time code or a payment page to the owner rather than attempting it.' },
 });
 export const SPECIALTY_NAMES = deepFreeze(Object.keys(SPECIALTIES));
 
@@ -103,8 +112,12 @@ export const ROLE_GRANTS = deepFreeze({
   superintendent: [],
   // D176: plan.read is the read half of plan.submit's replacing write, and crew.retire
   // the undo of crew.hire. Both are the Chief's own alone.
-  chief_ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'brief.decide', 'memory.recall', 'memory.write', 'recipe.run'],
-  ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'memory.recall', 'memory.write', 'recipe.run'],
+  chief_ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'brief.decide', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request'],
+  // D178: every Ranger can see the departments and ask one for what it needs. A Junior gets
+  // neither: its work comes from its own Ranger, who holds both tools, and letting the
+  // narrowest role open work items across the park is how a one-hop tree turns into
+  // unbounded fan-out.
+  ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request'],
   junior_ranger: ['memory.recall'], // a Junior reads its crew's memory; writing is a Ranger's (phase 4 step 11)
 });
 
@@ -127,6 +140,12 @@ export const ZONE_KINDS = deepFreeze([
   'operations_support',
   'research',
   'product_listings',
+  // D178: the departments added to replicate a company. 'sales' was already here with no
+  // team homed in it; these four are new camps.
+  'people',
+  'business',
+  'legal',
+  'infrastructure',
 ]);
 
 // Display names for zone kinds (the park's signage and the Chief's zone creation).
@@ -142,6 +161,11 @@ export const ZONE_LABELS = deepFreeze({
   operations_support: 'Operations & Support Camp',
   research: 'Research Camp',
   product_listings: 'Product & Listings Camp',
+  // D178
+  people: 'People Camp',
+  business: 'Business Camp',
+  legal: 'Legal Camp',
+  infrastructure: 'Infrastructure Camp',
 });
 
 // D177: the kit a zone is born with. `ensureZone` created a bare room, so every department
@@ -169,6 +193,15 @@ export const ZONE_FIXTURES = deepFreeze({
   marketing: ['supply_cache'],
   operations_support: ['supply_cache'],
   product_listings: ['supply_cache'],
+  // D178: the new camps. Legal and Business read the public web to do their work at all —
+  // platform terms, consumer rules, competitor pricing — and the sign is research-only.
+  // People and Infrastructure get no kit beyond their files: People asks the Chief to hire
+  // or retire, and Infrastructure's browser and Mac fixtures are leashed, so both stay the
+  // Superintendent's to place.
+  business: ['trailhead_sign', 'supply_cache'],
+  legal: ['trailhead_sign', 'supply_cache'],
+  people: ['supply_cache'],
+  infrastructure: ['supply_cache'],
   visitor_center: ['supply_cache'],
   ranger_station: ['supply_cache'],
 });
@@ -297,6 +330,10 @@ export const LAYOUT_SCHEMA = deepFreeze({
           specialty: { type: 'string', enum: SPECIALTY_NAMES },
           persona: { type: 'string', maxLength: 4000 },
           skills: { type: 'array', maxItems: 12, items: { type: 'string', minLength: 2, maxLength: 60 } }, // phase 4 step 12: skill ids attached to the persona
+          // D178: this Ranger heads its department. A request addressed to a department
+          // lands with its head, who triages and assigns it to the team. One head per
+          // camp; optional, so a camp without one is simply headless and says so.
+          head: { type: 'boolean' },
           policy: { type: 'object', additionalProperties: false, properties: { worker: { type: 'object', required: ['provider'], additionalProperties: false, properties: { provider: { type: 'string', minLength: 1 }, model: { type: 'string' } } } } },
           createdBy: { type: 'string' },
           createdAt: int0,
@@ -358,6 +395,56 @@ export function allGrantsFor(layout, agentId) {
 // Agents whose parentAgentId is `agentId`.
 export function childrenOf(layout, agentId) {
   return layout.agents.filter((a) => a.parentAgentId === agentId);
+}
+
+// D178: the departments of the park. A department is a zone kind that a specialty calls
+// home — so the list is derived from SPECIALTIES rather than kept as a second copy that
+// could drift from it. `sales` was a zone kind with no team homed in it until D178 gave it
+// one; a zone kind nothing homes in (ranger_station, the Peak, a trailhead) is not a
+// department and never appears here.
+export const DEPARTMENT_KINDS = deepFreeze([...new Set(Object.values(SPECIALTIES).map((s) => s.zoneKind))]);
+
+export function isDepartmentKind(kind) {
+  return DEPARTMENT_KINDS.includes(kind);
+}
+
+// The specialties that call a department home. Marketing Camp houses two (ads, marketing).
+export function specialtiesOf(kind) {
+  return SPECIALTY_NAMES.filter((n) => SPECIALTIES[n].zoneKind === kind);
+}
+
+// A department as it stands in this layout: its camp (null when the camp has not been
+// created yet), its head and its staff. Everything here is read off the layout, so a
+// department the park has not built reads as absent rather than as empty-but-present.
+export function departmentOf(layout, kind) {
+  if (!isDepartmentKind(kind)) return null;
+  const room = (layout.rooms || []).find((r) => r.kind === kind) || null;
+  const members = room ? (layout.agents || []).filter((a) => a.roomId === room.id) : [];
+  // Only a Ranger heads a department: a Junior reports to a Ranger, so a Junior head would
+  // leave the team reporting to someone who cannot hold its work.
+  const head = members.find((a) => a.head && (a.role || 'ranger') === 'ranger') || null;
+  return {
+    kind,
+    label: ZONE_LABELS[kind] || kind,
+    specialties: specialtiesOf(kind),
+    roomId: room ? room.id : null,
+    head: head ? head.id : null,
+    staff: members.filter((a) => !head || a.id !== head.id).map((a) => a.id),
+  };
+}
+
+export function departments(layout) {
+  return DEPARTMENT_KINDS.map((k) => departmentOf(layout, k));
+}
+
+// The department an agent belongs to, by the kind of the camp it stands in. An agent at the
+// Peak or the Ranger Station belongs to no department.
+export function departmentOfAgent(layout, agentId) {
+  const agent = agentOf(layout, agentId);
+  if (!agent) return null;
+  const room = roomOf(layout, agent.roomId);
+  if (!room || !isDepartmentKind(room.kind)) return null;
+  return departmentOf(layout, room.kind);
 }
 
 // First free tile inside a room (not under an object or an agent), scanning row by row.
