@@ -115,6 +115,10 @@ test('a duty falling due is handed to the department head, and the spend counts 
     assert.match(item.brief, /Standing duty "Daily books"/);
     assert.match(item.brief, /Nobody asked for this/);
     assert.match(item.brief, /_teams\/finance\//, 'and where its work belongs');
+    // A duty is asked to date its report, and a model left to guess writes the wrong year:
+    // the first live health check dated itself 2024.
+    assert.match(item.brief, /Today is \d{4}-\d{2}-\d{2}\./, 'it is told the date');
+    assert.match(item.brief, /not one you remember/);
     assert.match(item.brief, /never estimate a figure you cannot read/i, 'the duty\'s own instructions');
 
     const ran = dutyEvents(h.events).filter((e) => e.change === 'ran');

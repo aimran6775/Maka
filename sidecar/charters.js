@@ -202,6 +202,9 @@ export function createCharters({
     const budgetUsd = typeof duty.budgetUsd === 'number' ? duty.budgetUsd : 0.2;
     const brief = [
       `Standing duty "${duty.title}" of the ${d.label} (${dept}). Nobody asked for this: it is what your department does on its own.`,
+      // The date, because a duty is asked to date its report and a model left to guess
+      // writes the wrong year — the first live health check dated itself 2024.
+      `Today is ${dayKey(clock.now())}. Use that date, not one you remember.`,
       '',
       duty.brief,
       '',
