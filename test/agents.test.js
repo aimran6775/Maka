@@ -210,6 +210,12 @@ test('a new zone is born with its own kit, so a Ranger hired into it can do that
     const books = await h.agents.create({ name: 'Books', role: 'ranger', zoneId: finance.id, specialty: 'books', parentAgentId: 'superintendent' }, { by: 'superintendent' });
     assert.ok(h.agents.get(books.id).grants.includes('ledger.read'));
 
+    // D184: Infrastructure gets the sign too — it cannot check the park can reach the
+    // internet without web.fetch, and that tool is research with no leash.
+    const infra = await h.agents.ensureZone('infrastructure');
+    const infraRanger = await h.agents.create({ name: 'Infra', role: 'ranger', zoneId: infra.id, specialty: 'infrastructure', parentAgentId: 'superintendent' }, { by: 'superintendent' });
+    assert.ok(h.agents.get(infraRanger.id).grants.includes('web.fetch'), 'it can check the park can reach the internet');
+
     const marketing = await h.agents.ensureZone('marketing');
     const ads = await h.agents.create({ name: 'Ads', role: 'ranger', zoneId: marketing.id, specialty: 'marketing', parentAgentId: 'superintendent' }, { by: 'superintendent' });
     const adGrants = h.agents.get(ads.id).grants;

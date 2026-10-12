@@ -82,7 +82,7 @@ export const DEFAULT_CHARTERS = Object.freeze({
   infrastructure: {
     remit: 'You own the machinery: the browser, the connectors\' health and this Mac. You check a thing works before another department depends on it, and you report a failure as a failure with its exact error.',
     duties: [
-      { id: 'morning-check', title: 'Morning health check', schedule: { daily: '06:45' }, budgetUsd: 0.1, brief: 'Check the park can do its work: fetch https://example.com/ and report the HTTP status you actually got, then read connector.status for every connector and say which are connected and which are not. Write it to _teams/infrastructure/health.md with the date and the exact errors. If something is broken, say what depends on it.' },
+      { id: 'morning-check', title: 'Morning health check', schedule: { daily: '06:45' }, budgetUsd: 0.1, brief: 'Check the park can do its work: fetch https://example.com/ and report the HTTP status you actually got, then read connector.status for every connector where you have that tool and say which are connected and which are not. Write it to _teams/infrastructure/health.md with the date and the exact errors. Where a tool you need is not granted to your camp, say which tool and what it would have told you — that is a gap for the owner to close, not something to work around. If something is broken, say what depends on it.' },
     ],
   },
   sales: {

@@ -2463,3 +2463,13 @@ emitted nothing would read as work done.
 A duty is delegated by the Superintendent, because it is the park's standing work rather
 than one Ranger's errand, and it carries no venture: a department's own housekeeping is not
 a business's spend (D183).
+
+The first live duty found a gap of its own making. Infrastructure's health check ran
+unattended, wrote `_teams/infrastructure/health.md`, and reported — correctly — that it had
+no tool to fetch anything with: D177 had given its camp only a supply cache, because its
+browser and Mac fixtures are leashed and were left to the Superintendent. So its charter
+asked for work its kit could not do. Infrastructure now gets the Trailhead sign as well
+(`web.fetch` is research and carries no leash), and the duty says that where a tool is not
+granted it should name the tool and what it would have told the park, because that is a gap
+for the owner to close rather than something to work around. That it reported the gap
+instead of inventing a status is the behaviour worth keeping.

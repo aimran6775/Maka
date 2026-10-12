@@ -204,7 +204,12 @@ export const ZONE_FIXTURES = deepFreeze({
   business: ['trailhead_sign', 'supply_cache'],
   legal: ['trailhead_sign', 'supply_cache'],
   people: ['supply_cache'],
-  infrastructure: ['supply_cache'],
+  // D184: Infrastructure checks that the park can reach the internet before another
+  // department depends on it, so it needs the sign — `web.fetch` is research and carries
+  // no leash. Its browser and Mac fixtures are leashed and stay the Superintendent's
+  // (D177); its first live health check reported it had no way to fetch anything at all,
+  // which was a kit that could not do its own charter.
+  infrastructure: ['trailhead_sign', 'supply_cache'],
   visitor_center: ['supply_cache'],
   ranger_station: ['supply_cache'],
 });
