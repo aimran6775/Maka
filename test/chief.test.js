@@ -83,7 +83,7 @@ test('plan schema, markdown and zone grid helpers', () => {
   assert.match(md, /## Lantern Co \(lantern-co\) · \$3.00/);
   assert.match(md, /- \[t2\] Draft three listings → storefront · \$1.50 · by in 3 days · after t1/);
   assert.match(md, /## Needs the Superintendent/);
-  assert.deepEqual(roleGrants('chief_ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'brief.decide', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request']);
+  assert.deepEqual(roleGrants('chief_ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'crew.set_head', 'brief.decide', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request']);
   const layout = defaultLayout();
   assert.deepEqual(freeZoneRect(layout), { x: 21, y: 1, w: 8, h: 6 }, 'to the right of the station');
   assert.deepEqual(freeZoneRect({ rooms: [{ x: 1, y: 1, w: 12, h: 8 }, { x: 21, y: 1, w: 8, h: 6 }, { x: 31, y: 1, w: 8, h: 6 }] }), { x: 41, y: 1, w: 8, h: 6 });
@@ -304,6 +304,49 @@ test('plan.read returns the stored plan so a revision is an edit, and crew.retir
     // An id that was never an agent is an error, not a silent success.
     assert.equal((await retire.run({ agentId: 'not-an-agent' }, ctx)).ok, false);
     assert.ok(child.id);
+  } finally {
+    await s.cleanup();
+  }
+});
+
+// D178: a head has to be appointable from existing crew, not only settable at hire time.
+// Four camps in the live park were staffed before heads existed; without this they would
+// be headless for good and no department could ask anything of them.
+test('crew.set_head appoints a head from existing crew, moves it, and stands it down', async () => {
+  const s = await setup({ chiefScript: () => [[text('noted'), end()]] });
+  try {
+    const setHead = s.chief.tools['crew.set_head'];
+    const hire = s.chief.tools['crew.hire'];
+    const ctx = { agentId: 'chief-ranger', runId: 'r-test' };
+    await s.chief.mission({ text: 'sell lanterns', budgetUsd: 5, horizon: '30 days' });
+
+    // Hired without a head, then appointed: the path the existing camps need.
+    const a = JSON.parse((await hire.run({ name: 'Ada', specialty: 'books', venture: 'lantern-co' }, ctx)).output);
+    assert.ok(!s.agents.get(a.agentId).head, 'not a head on hire');
+    const up = await setHead.run({ agentId: a.agentId }, ctx);
+    assert.equal(up.ok, true, up.error);
+    assert.equal(JSON.parse(up.output).department, 'finance');
+    assert.equal(s.agents.get(a.agentId).head, true);
+
+    // Hiring with head: true is the one-call form, and it stands Ada down.
+    const b = JSON.parse((await hire.run({ name: 'Bea', specialty: 'books', venture: 'lantern-co', head: true }, ctx)).output);
+    assert.equal(b.head, true);
+    assert.equal(s.agents.get(b.agentId).head, true);
+    assert.ok(!s.agents.get(a.agentId).head, 'one head per camp: Ada stood down');
+
+    // Standing the head down leaves the camp headless, which is a legal state.
+    assert.equal((await setHead.run({ agentId: b.agentId, head: false }, ctx)).ok, true);
+    assert.ok(!s.agents.get(b.agentId).head);
+
+    // A Ranger in another camp is a different department's head, not this one's.
+    const c = JSON.parse((await hire.run({ name: 'Cy', specialty: 'scout', venture: 'lantern-co', head: true }, ctx)).output);
+    assert.equal(JSON.parse((await setHead.run({ agentId: c.agentId }, ctx)).output).department, 'research');
+
+    // And the guards hold through the tool, not only through the registry.
+    const bad = await setHead.run({ agentId: 'chief-ranger' }, ctx);
+    assert.equal(bad.ok, false);
+    assert.match(bad.error, /only a Ranger can head/);
+    assert.equal((await setHead.run({ agentId: 'not-an-agent' }, ctx)).ok, false);
   } finally {
     await s.cleanup();
   }

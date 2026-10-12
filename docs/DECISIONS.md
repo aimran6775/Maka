@@ -2218,6 +2218,11 @@ head stands the previous one down, announced like any other crew change, so a ca
 has two. `crew.hire` takes `head: true` so the Chief can open and staff a department in one
 call.
 
+`crew.set_head` appoints a head from existing crew or stands one down. Without it the only
+head a camp could ever have is one created by `crew.hire head: true`, so the four camps
+this park staffed before heads existed would have stayed headless for good and nothing
+could have been asked of them.
+
 **Requests go through the departments.** `delegate` names one agent and always did, which
 meant a Ranger had to already know who could help. Two tools were added:
 

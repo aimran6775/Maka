@@ -28,7 +28,7 @@ import { promises as fsp } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { makeEvent } from '../shared/events.js';
 import { validate } from '../shared/schema.js';
-import { SPECIALTIES, SPECIALTY_NAMES, ZONE_LABELS, agentOf } from '../shared/world.js';
+import { SPECIALTIES, SPECIALTY_NAMES, ZONE_LABELS, agentOf, departmentOfAgent } from '../shared/world.js';
 import { CHIEF_ID } from './agents.js';
 
 export const PLAN_SCHEMA = Object.freeze({
@@ -265,6 +265,36 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
           const a = agents.get ? agents.get(input.agentId) : null;
           await agents.remove(input.agentId, { by: ctx.agentId });
           return { ok: true, output: JSON.stringify({ retired: input.agentId, name: (a && a.name) || null, reason: input.reason || '' }) };
+        } catch (err) {
+          return { ok: false, error: err && err.message ? err.message : String(err) };
+        }
+      },
+    },
+    // D178: a head must be appointable, not only hireable. Without this the only head a
+    // camp could ever have is one created with `crew.hire head: true`, so a camp staffed
+    // before heads existed stays headless for good and nothing can be asked of it.
+    'crew.set_head': {
+      name: 'crew.set_head',
+      description: 'Make one of your Rangers the head of its department, or stand the current head down. The head is who receives what other departments ask of that department (dept.request) and assigns it to the team. One head per camp: appointing a new one stands the previous one down. Only a Ranger standing in a department camp can head it.',
+      inputSchema: {
+        type: 'object',
+        required: ['agentId'],
+        additionalProperties: false,
+        properties: {
+          agentId: { type: 'string', minLength: 1, maxLength: 120, description: 'The Ranger to appoint' },
+          head: { type: 'boolean', description: 'true to appoint (the default), false to stand the current head down' },
+        },
+      },
+      confirm: false,
+      async run(input, ctx) {
+        const head = input.head !== false;
+        try {
+          const a = await agents.update(input.agentId, { head }, { by: ctx.agentId });
+          const dept = departmentOfAgent(agents.layout(), input.agentId);
+          return {
+            ok: true,
+            output: JSON.stringify({ agentId: a.id, name: a.name, department: dept ? dept.kind : null, head, ...(head && dept ? { nowHeads: dept.label } : {}) }),
+          };
         } catch (err) {
           return { ok: false, error: err && err.message ? err.message : String(err) };
         }

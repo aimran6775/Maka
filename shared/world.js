@@ -112,7 +112,7 @@ export const ROLE_GRANTS = deepFreeze({
   superintendent: [],
   // D176: plan.read is the read half of plan.submit's replacing write, and crew.retire
   // the undo of crew.hire. Both are the Chief's own alone.
-  chief_ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'brief.decide', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request'],
+  chief_ranger: ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'crew.set_head', 'brief.decide', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request'],
   // D178: every Ranger can see the departments and ask one for what it needs. A Junior gets
   // neither: its work comes from its own Ranger, who holds both tools, and letting the
   // narrowest role open work items across the park is how a one-hop tree turns into
