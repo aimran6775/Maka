@@ -12,7 +12,7 @@ import { createFirstRun } from './ui/firstrun.js';
 import { createVoice } from './ui/voice.js';
 import { createNav } from './ui/nav.js';
 import { el, setChildren } from './ui/windows.js';
-import { tileToWorld, TILE_WORLD } from './park/placement.js';
+import { tileToWorld, worldToTile, TILE_WORLD } from './park/placement.js';
 import { parkOptions } from './park/gpu.js';
 import { isTyping } from './park/controls.js';
 
@@ -93,6 +93,21 @@ function tileFromPoint(room, point) {
 }
 
 async function onPick(info) {
+  // D168: a zone is waiting for somewhere to go. The click's world point becomes the
+  // zone's new top-left tile; the sidecar refuses an overlap or an off-grid move and
+  // says so, so nothing has to be guessed here.
+  const moving = inspect.movingZone();
+  if (moving && info && info.point) {
+    const room = (state.layout.rooms || []).find((r) => r.id === moving);
+    const tile = worldToTile(info.point);
+    if (!room) return inspect.cancelMove();
+    const r = await api.post('/api/layout/move', { roomId: moving, x: Math.max(0, tile.tx - Math.floor(room.w / 2)), y: Math.max(0, tile.ty - Math.floor(room.h / 2)) });
+    if (r.ok) {
+      flash(`${room.name} moved`);
+      inspect.cancelMove();
+    } else showError(r);
+    return;
+  }
   if (info && build.activeKind() && (info.type === 'zone' || info.type === 'ground') && info.point) {
     const room = info.room || null;
     if (!room) return flash('Place fixtures inside a zone clearing.', 'warn');

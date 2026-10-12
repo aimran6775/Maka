@@ -86,10 +86,14 @@ export function createAgents({ layoutState, leashState = null, bus, clock = { no
     const l = layout();
     let peak = l.rooms.find((r) => r.kind === 'mountain_peak');
     if (peak) return peak;
-    // Place the Peak room clear of every existing room: to the north-west of the layout.
-    const minX = Math.min(...l.rooms.map((r) => r.x), 1);
-    const minY = Math.min(...l.rooms.map((r) => r.y), 1);
-    peak = { id: PEAK_ROOM_ID, name: 'Mountain Peak', kind: 'mountain_peak', x: Math.max(0, minX - 8), y: Math.max(0, minY - 8), w: 4, h: 4 };
+    // Place the Peak room clear of every existing room. It used to be put north-west of
+    // the lowest corner and clamped at zero, which on the default layout dropped it
+    // straight on top of the Ranger Station — invisible, because the park derives the
+    // Peak's world position from the first zone rather than from these tiles, but a lie
+    // in the layout all the same (D168).
+    const rect = freeZoneRect(l, { w: 4, h: 4 });
+    if (!rect) throw fail('CONFLICT', 'no room left on the layout grid for the Mountain Peak', 409);
+    peak = { id: PEAK_ROOM_ID, name: 'Mountain Peak', kind: 'mountain_peak', ...rect };
     if (l.rooms.some((r) => r.id === PEAK_ROOM_ID)) throw fail('CONFLICT', `room "${PEAK_ROOM_ID}" exists but is not the Mountain Peak`, 409);
     await layoutState.replace({ ...l, rooms: [...l.rooms, peak] });
     return peak;

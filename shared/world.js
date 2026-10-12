@@ -144,6 +144,64 @@ export const ZONE_LABELS = deepFreeze({
 
 // A rectangle for a new zone that overlaps no existing room: rooms are laid out on a grid
 // of (w + 2) × (h + 2) cells, left to right, then the next row.
+// Zones keep a tile of clear ground between them, the same gap `freeZoneRect` leaves when
+// it finds a new one: in the park a clearing is a circle around the zone's rectangle, and
+// two that touch merge into one shapeless opening (D168).
+export const ZONE_GAP = 1;
+
+export function roomsOverlap(a, b, gap = ZONE_GAP) {
+  return a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
+}
+
+// The first pair of zones that overlap, or null.
+export function overlappingRooms(layout, gap = ZONE_GAP) {
+  const rooms = (layout && layout.rooms) || [];
+  for (let i = 0; i < rooms.length; i++) {
+    for (let j = i + 1; j < rooms.length; j++) {
+      if (roomsOverlap(rooms[i], rooms[j], gap)) return [rooms[i], rooms[j]];
+    }
+  }
+  return null;
+}
+
+// Every overlapping pair, as sorted "a|b" id keys. Used to compare one layout against
+// another: a park saved before zones had to keep their distance may already hold an
+// overlap, and refusing the whole layout for it would freeze that park for good — no
+// camp could be hired, nothing could be moved. Only a *new* overlap is a mistake worth
+// refusing (D168).
+export function overlappingPairs(layout, gap = ZONE_GAP) {
+  const rooms = (layout && layout.rooms) || [];
+  const out = new Set();
+  for (let i = 0; i < rooms.length; i++) {
+    for (let j = i + 1; j < rooms.length; j++) {
+      if (roomsOverlap(rooms[i], rooms[j], gap)) out.add([rooms[i].id, rooms[j].id].sort().join('|'));
+    }
+  }
+  return out;
+}
+
+// A layout with one zone moved to (x, y), carrying everything that stands in it: a zone
+// is a team, so its fixtures and its crew keep their places within it rather than being
+// left behind on the grass (D168). Pure — the caller validates and persists the result.
+// Returns null when the zone is unknown or the move would push anything off the grid.
+export function moveRoom(layout, roomId, { x, y }) {
+  const room = (layout.rooms || []).find((r) => r.id === roomId);
+  if (!room || !Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0) return null;
+  const dx = x - room.x;
+  const dy = y - room.y;
+  if (!dx && !dy) return layout;
+  const shift = (item) => (item.roomId === roomId ? { ...item, x: item.x + dx, y: item.y + dy } : item);
+  const objects = (layout.objects || []).map(shift);
+  const agents = (layout.agents || []).map(shift);
+  if ([...objects, ...agents].some((i) => i.x < 0 || i.y < 0)) return null;
+  return {
+    ...layout,
+    rooms: layout.rooms.map((r) => (r.id === roomId ? { ...r, x, y } : r)),
+    objects,
+    agents,
+  };
+}
+
 export function freeZoneRect(layout, { w = 8, h = 6 } = {}) {
   const overlaps = (r) => layout.rooms.some((o) => r.x < o.x + o.w + 1 && o.x < r.x + r.w + 1 && r.y < o.y + o.h + 1 && o.y < r.y + r.h + 1);
   for (let row = 0; row < 20; row++) {

@@ -9,6 +9,7 @@ import { SPECIALTIES } from '../../shared/world.js';
 import { LEASH_LEVEL_LABELS, LEASH_LEVELS, DOMAINS, resolveAllLeash, resolveLeash } from '../../shared/leash.js';
 
 export function createInspect({ parent, getState, api, x, y, w }) {
+  let moving = null; // D168: the zone waiting for a spot to be clicked
   const { body, setTitle } = createWindow({ id: 'inspect', title: 'INSPECT', x, y, w, parent });
   let selection = null;
 
@@ -352,6 +353,23 @@ export function createInspect({ parent, getState, api, x, y, w }) {
       row('kind', room.kind ? room.kind.replace(/_/g, ' ') : 'zone'),
       room.venture ? row('venture', room.venture) : null,
       row('size', `${room.w} × ${room.h} tiles`),
+      // D168: the park's arrangement is the Superintendent's. "Move here" waits for the
+      // next click on open ground and takes the zone's fixtures and crew with it.
+      el(
+        'div',
+        { class: 'row' },
+        el('button', {
+          class: `btn small ${moving === room.id ? 'active' : ''}`,
+          text: moving === room.id ? 'click the ground…' : 'Move here',
+          title: 'Move this zone: click a spot on open ground in the park',
+          onclick: () => {
+            moving = moving === room.id ? null : room.id;
+            render();
+          },
+        }),
+        moving === room.id ? el('button', { class: 'btn small', text: 'cancel', onclick: () => { moving = null; render(); } }) : null,
+        el('span', { class: 'muted small', text: moving === room.id ? 'the zone takes its fixtures and Rangers with it' : `at ${room.x},${room.y}` }),
+      ),
       row('budget burn', `${fmtUsd(spent)} spent by its Rangers${budget ? ` of $${budget.toFixed(2)} in their budgets` : ' (no Ranger budgets set)'}`),
       row('rangers', roster.length ? roster.map((a) => `${a.name} (${s.agentStates[a.id] || 'idle'})`).join(', ') : 'none'),
       row('fixtures', fixtures.length ? fixtures.map((o) => `${(s.objectKinds[o.kind] || {}).label || o.kind} @ ${o.x},${o.y}`).join('; ') : 'none'),
@@ -883,6 +901,12 @@ export function createInspect({ parent, getState, api, x, y, w }) {
   }
 
   return {
+    // D168: which zone is waiting for a destination, and dropping it there.
+    movingZone: () => moving,
+    cancelMove() {
+      moving = null;
+      this.render();
+    },
     // Phase 4 step 14: a dictated mission lands in the form; the Superintendent still clicks "Brief the Chief".
     setMissionDraft(text) {
       missionText.value = String(text || '');

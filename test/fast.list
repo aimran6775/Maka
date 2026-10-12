@@ -14,6 +14,7 @@ test/assets.test.js
 test/park.test.js
 test/surface.test.js
 test/controls.test.js
+test/zones.test.js
 test/leash-ledger.test.js
 test/judge.test.js
 test/agents.test.js

@@ -180,6 +180,15 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
   }),
   // Added v1 (additive): the Superintendent re-rolled the park seed.
   'layout.seed': payload(['seed'], { seed: int1 }),
+  // Added v1 (additive, D168): a zone appeared, moved or went. Without it the page only
+  // ever knew the zones the snapshot it booted with carried, so the camps the Chief hires
+  // into were invisible — Rangers stood on open grass — until somebody reloaded. `room`
+  // is the zone's record; a removal carries only its id.
+  'layout.room': payload(['change', 'roomId'], {
+    change: { type: 'string', enum: ['created', 'moved', 'removed'] },
+    roomId: nonEmpty,
+    room: { type: 'object' },
+  }),
   // Added v1 (additive): the workspace root (an external drive, say) became unreachable.
   // Runs are stopped and no new run starts until workspace.online follows.
   'workspace.offline': payload(['root', 'reason'], { root: nonEmpty, reason: str }),

@@ -125,7 +125,7 @@ import { promises as fsp } from 'node:fs';
 import { randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
 import { makeEvent, CONTRACT_VERSION, PAYLOAD_SCHEMAS } from '../shared/events.js';
 import { validate } from '../shared/schema.js';
-import { LAYOUT_SCHEMA, OBJECT_KINDS, roomOf, tileInRoom, PEAK_REFUSED_KINDS, peakConnectorProblem } from '../shared/world.js';
+import { LAYOUT_SCHEMA, OBJECT_KINDS, roomOf, tileInRoom, PEAK_REFUSED_KINDS, peakConnectorProblem, overlappingPairs, moveRoom, ZONE_GAP } from '../shared/world.js';
 import { validateLeash } from '../shared/leash.js';
 
 const BODY_LIMIT = 1024 * 1024;
@@ -284,9 +284,41 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
       if (!r.ok) throw new HttpError(400, `layout invalid: ${r.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`);
       const atPeak = peakConnectorProblem(next);
       if (atPeak) throw new HttpError(400, `layout invalid: ${OBJECT_KINDS[atPeak.kind].label} "${atPeak.id}" stands at the Mountain Peak; connector fixtures do not belong there (the Chief is unjudged, safety L5)`, 'PEAK_NO_CONNECTOR');
+      // D168: zones keep a tile between them — two that touch merge into one shapeless
+      // clearing and the org chart stops reading as an org chart. Only an overlap this
+      // change introduces is refused: a park saved before the rule existed may already
+      // hold one, and refusing the whole layout for it would freeze that park for good.
+      const had = overlappingPairs(layout);
+      const fresh = [...overlappingPairs(next)].filter((k) => !had.has(k));
+      if (fresh.length) {
+        const [a, b] = fresh[0].split('|');
+        throw new HttpError(400, `layout invalid: zones "${a}" and "${b}" would overlap; zones keep ${ZONE_GAP} tile between them`, 'ZONES_OVERLAP');
+      }
+      // Every path that changes a zone comes through here (the Chief hiring into a new
+      // camp, the Superintendent moving one, a hand-written layout), so the page hears
+      // about it from one place rather than only at the snapshot it booted with (D168).
+      const before = new Map((layout.rooms || []).map((r) => [r.id, r]));
+      const after = new Map((next.rooms || []).map((r) => [r.id, r]));
+      const changes = [];
+      for (const [id, room] of after) {
+        const was = before.get(id);
+        if (!was) changes.push({ change: 'created', roomId: id, room });
+        else if (was.x !== room.x || was.y !== room.y || was.w !== room.w || was.h !== room.h) changes.push({ change: 'moved', roomId: id, room });
+      }
+      for (const id of before.keys()) if (!after.has(id)) changes.push({ change: 'removed', roomId: id });
       layout = next;
       await store.saveLayout(layout);
+      for (const c of changes) emit('layout.room', c);
       return layout;
+    },
+
+    // D168: the Superintendent arranges the park. The zone moves with everything standing
+    // in it; `replace` does the validating, so an overlap or an off-grid move is refused
+    // here for the same reason it would be refused from anywhere else.
+    async move({ roomId, x, y }) {
+      const next = moveRoom(layout, roomId, { x, y });
+      if (!next) throw new HttpError(400, `cannot move "${roomId}" to ${x},${y}: unknown zone or off the grid`, 'BAD_MOVE');
+      return this.replace(next);
     },
     setObjectCheck(fn) {
       checkObject = typeof fn === 'function' ? fn : null;
@@ -458,6 +490,7 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/layout/place' && method === 'POST') return sendJson(res, 201, await layoutState.place(await readJsonBody(req)));
     if (p === '/api/layout/reclaim' && method === 'POST') return sendJson(res, 200, await layoutState.reclaim(await readJsonBody(req)));
     if (p === '/api/layout/reroll' && method === 'POST') return sendJson(res, 200, await layoutState.reroll(await readJsonBody(req)));
+    if (p === '/api/layout/move' && method === 'POST') return sendJson(res, 200, await layoutState.move(await readJsonBody(req)));
     if (p === '/api/permission' && method === 'POST') {
       const body = await readJsonBody(req);
       const r = validate(PAYLOAD_SCHEMAS['permission.response'], body);

@@ -19,6 +19,7 @@ const SAMPLES = {
   'object.reclaim': { objectId: 'o1', roomId: 'room-1' },
   'work.handoff': { fromAgentId: 'chief', toAgentId: 'ranger', fromRoomId: 'ranger-station', toRoomId: 'camp', trailId: 't1', workItemId: 'w1', summary: 'draft listings' },
   'layout.seed': { seed: 42 },
+  'layout.room': { change: 'moved', roomId: 'camp', room: { id: 'camp', name: 'Camp', x: 4, y: 4, w: 4, h: 4 } },
   'workspace.offline': { root: '/Volumes/LaCie/Maka/workspace', reason: 'ENOENT' },
   'workspace.online': { root: '/Volumes/LaCie/Maka/workspace' },
   'gate.item': { itemId: 'g1', agentId: 'ranger', kind: 'action', domain: 'money_out', tool: 'pay.supplier', summary: 'pay $12', status: 'pending', runId: 'r1', callId: 'c1', turn: 2, level: 'draft', amountUsd: 12, evidence: [{ kind: 'said', text: 'ordering stock', ref: 'r1' }], reason: 'leash is draft' },

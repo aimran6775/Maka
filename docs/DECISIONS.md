@@ -1890,3 +1890,31 @@ panels was going to fix that.
 same key typed into a brief does not, and a jump lands on the Peak. Those assertions poll
 for the camera to arrive rather than sleeping, because software GL draws about a frame a
 second and every fixed timeout here was wrong at that rate.
+
+## D168. Zones reach the page, keep their distance, and the Superintendent can move them
+
+Found while making the park arrangeable: **the page never learned about a new zone.** It
+knew only the zones the snapshot it booted with carried, so every camp the Chief hired
+into was invisible — its Rangers stood on open grass with no clearing under them — until
+somebody reloaded. `layout.room` (additive: created / moved / removed) fixes that, emitted
+from one place, `layoutState.replace`, which diffs the zones it is given; every path that
+changes one (the Chief hiring, a move, a hand-written layout) therefore reports itself.
+
+Two more things fell out of it:
+
+- **Zones keep a tile between them** (`roomsOverlap`, `overlappingPairs`, the gap
+  `freeZoneRect` already left). Two clearings that touch merge into one shapeless opening
+  and the org chart stops reading as an org chart. Only an overlap a change *introduces*
+  is refused: a park saved before the rule existed may already hold one, and refusing the
+  whole layout for it would freeze that park for good — no camp hired, nothing moved.
+- **The Mountain Peak was placed on top of the Ranger Station.** `ensurePeak` put it
+  north-west of the lowest corner and clamped at zero, which on the default layout is the
+  station's own tiles. It was invisible because the park derives the Peak's world position
+  from the first zone rather than from these tiles, but the layout said something false.
+  It now takes a free rectangle like every other zone.
+
+Moving: `moveRoom(layout, roomId, { x, y })` is pure and carries the zone's fixtures and
+crew with it (a zone is a team, not an empty rectangle); `POST /api/layout/move` validates
+through the same `replace`, so an overlap or an off-grid move is refused for the same
+reason from anywhere. The page applies the very same `moveRoom` to its own copy rather
+than restating the shift and drifting from it.

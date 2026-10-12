@@ -29,6 +29,16 @@ export function tileToWorld(tx, ty) {
   return { x: (tx + 0.5 - TILE_ORIGIN) * TILE_WORLD, z: (ty + 0.5 - TILE_ORIGIN) * TILE_WORLD };
 }
 
+// The tile a point in the park falls on: `tileToWorld` backwards (D168, moving a zone to
+// where the Superintendent clicked). Tiles run from 0, so a point west or north of the
+// grid's origin clamps there rather than naming a negative tile.
+export function worldToTile({ x, z }) {
+  return {
+    tx: Math.max(0, Math.round(x / TILE_WORLD + TILE_ORIGIN - 0.5)),
+    ty: Math.max(0, Math.round(z / TILE_WORLD + TILE_ORIGIN - 0.5)),
+  };
+}
+
 // Clearings: one per zone, plus the Entrance Gate clearing south of the first zone. Their
 // heights are chosen from the raw terrain so they sit naturally, then the terrain is
 // flattened to them (see terrain.heightAt). A room of kind 'mountain_peak' (the Chief

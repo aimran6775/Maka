@@ -7,6 +7,7 @@
 //   - nothing is marked "done" or "error" without the matching run.end / run.error.
 
 import { validateEvent } from '../shared/events.js';
+import { moveRoom } from '../shared/world.js';
 
 export const AGENT_STATES = Object.freeze(['idle', 'thinking', 'tool-running', 'waiting', 'done', 'error']);
 
@@ -333,6 +334,26 @@ export function applyEvent(state, event) {
     }
     case 'object.reclaim': {
       next.layout = { ...next.layout, objects: next.layout.objects.filter((o) => o.id !== p.objectId) };
+      break;
+    }
+    // D168: a zone appeared, moved or went. Before this the page knew only the zones the
+    // snapshot it booted with carried, so a camp the Chief hired into was never drawn and
+    // its Rangers stood on open grass until somebody reloaded.
+    case 'layout.room': {
+      const rooms = next.layout.rooms || [];
+      if (p.change === 'removed') next.layout = { ...next.layout, rooms: rooms.filter((r) => r.id !== p.roomId) };
+      else if (p.room) {
+        const idx = rooms.findIndex((r) => r.id === p.roomId);
+        if (idx === -1) next.layout = { ...next.layout, rooms: [...rooms, p.room] };
+        else {
+          // A zone carries its fixtures and its crew. The sidecar shifted them with
+          // shared/world.js `moveRoom`; the page applies the very same function to its
+          // own copy rather than restating the rule and drifting from it.
+          const moved = moveRoom({ ...next.layout, rooms }, p.roomId, { x: p.room.x, y: p.room.y });
+          const base = moved || next.layout;
+          next.layout = { ...base, rooms: base.rooms.map((r) => (r.id === p.roomId ? p.room : r)) };
+        }
+      }
       break;
     }
     case 'layout.seed': {

@@ -113,12 +113,12 @@ test('agents: create / get / update / remove with the hierarchy rules, Chief sin
     await assert.rejects(h.agents.update(scout.id, { leash: { domains: { piloting: { level: 'draft' } } } }), /unknown leash domain/);
     await assert.rejects(h.agents.update(junior.id, { parentAgentId: null }), /keeps a parent/);
     await assert.rejects(h.agents.update('ghost', { name: 'x' }), (e) => e.status === 404);
-    await h.layoutState.replace({ ...h.layoutState.get(), rooms: [...h.layoutState.get().rooms, { id: 'research', name: 'Research', kind: 'research', x: 20, y: 1, w: 4, h: 4 }] });
+    await h.layoutState.replace({ ...h.layoutState.get(), rooms: [...h.layoutState.get().rooms, { id: 'research', name: 'Research', kind: 'research', x: 40, y: 20, w: 4, h: 4 }] });
     const moved = await h.agents.update(scout.id, { zoneId: 'research' });
     assert.equal(moved.roomId, 'research');
-    assert.deepEqual([moved.x, moved.y], [20, 1]);
+    assert.deepEqual([moved.x, moved.y], [40, 20]);
     await assert.rejects(h.agents.update(scout.id, { x: 99 }), /outside the zone/);
-    assert.equal((await h.agents.update(scout.id, { x: 21, y: 2 })).x, 21);
+    assert.equal((await h.agents.update(scout.id, { x: 41, y: 21 })).x, 41);
     assert.equal(h.events.filter((e) => e.type === 'crew.agent' && e.payload.change === 'updated').length, 4);
 
     // Remove: not with reports, not while running, never the last agent.
