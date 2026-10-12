@@ -374,7 +374,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, portfolio = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, computer = null, importer = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, portfolio = null, charters = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, computer = null, importer = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -543,6 +543,38 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/mission' && method === 'GET') {
       if (!chief) throw new HttpError(404, 'no Chief Ranger');
       return sendJson(res, 200, chief.state());
+    }
+    // D184: department charters — the standing remit and duties the owner can read, edit
+    // and run on demand. Editing a charter is the owner's: it is what the park does while
+    // they are not watching, so it is not something a Ranger may rewrite for itself.
+    if (p === '/api/charters' && method === 'GET') {
+      if (!charters) throw new HttpError(404, 'no charters');
+      return sendJson(res, 200, { ...charters.state(), charters: charters.list() });
+    }
+    if (p.startsWith('/api/charters/') && (method === 'GET' || method === 'PATCH' || method === 'PUT' || method === 'DELETE' || method === 'POST')) {
+      if (!charters) throw new HttpError(404, 'no charters');
+      const parts = p.split('/').slice(3).map(decodeURIComponent); // <dept>[/duties/<id>[/run]]
+      const dept = parts[0];
+      try {
+        if (parts.length === 1 && method === 'GET') {
+          const c = charters.get(dept);
+          if (!c) throw new HttpError(404, `no charter for "${dept}"`);
+          return sendJson(res, 200, c);
+        }
+        if (parts.length === 1 && method === 'PATCH') return sendJson(res, 200, await charters.setCharter(dept, await readJsonBody(req)));
+        if (parts.length === 3 && parts[1] === 'duties' && method === 'PUT') {
+          return sendJson(res, 200, await charters.setDuty(dept, { ...(await readJsonBody(req)), id: parts[2] }));
+        }
+        if (parts.length === 3 && parts[1] === 'duties' && method === 'DELETE') return sendJson(res, 200, await charters.removeDuty(dept, parts[2]));
+        if (parts.length === 4 && parts[1] === 'duties' && parts[3] === 'run' && method === 'POST') {
+          const out = await charters.runNow(dept, parts[2]);
+          return sendJson(res, out.ran ? 202 : 409, out);
+        }
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw new HttpError(err.status || 400, err.message, err.code);
+      }
+      throw new HttpError(404, `no charter route for ${method} ${p}`);
     }
     // D182: the portfolio. Reading it is open; starting a business is the Gate's alone, so
     // there is no route here that approves one — a proposal is approved at /api/gate/:id
