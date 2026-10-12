@@ -5,7 +5,7 @@ import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { validate } from '../shared/schema.js';
 import { OBJECT_KINDS, LAYOUT_SCHEMA, ZONE_KINDS, AGENT_ROLES, defaultLayout, grantsFor, tileInRoom } from '../shared/world.js';
-import { TOOLS, TOOL_NAMES, resolveInWorkspace, resolveForAgent, parseTeamPath, TEAMS_DIR, htmlToText, READ_LIMIT_BYTES, inputProblem } from '../sidecar/capability/tools.js';
+import { TOOLS, TOOL_NAMES, resolveInWorkspace, resolveForAgent, parseTeamPath, teamWriteRefusal, TEAMS_DIR, htmlToText, READ_LIMIT_BYTES, inputProblem } from '../sidecar/capability/tools.js';
 import { createToolGate } from '../sidecar/capability/gate.js';
 import { createNetGuard } from '../sidecar/netguard.js';
 import { runLoop } from '../sidecar/loop.js';
@@ -248,7 +248,7 @@ test('a team folder is readable by every team and writable only by its own', asy
   // Writing another team's folder is refused, and the message says where to go instead.
   await assert.rejects(
     resolveForAgent(scout, `${TEAMS_DIR}/finance/books.md`, { write: true }),
-    (e) => e.code === 'SANDBOX' && /write only your own/.test(e.message) && /finance/.test(e.message),
+    (e) => e.code === 'SANDBOX' && /write only your own/.test(e.message) && /finance/.test(e.message) && /dept\.request/.test(e.message),
   );
 
   // An agent in no department may read a team folder but write to none.
@@ -303,4 +303,32 @@ test('only the literal _teams prefix names a team folder', () => {
   assert.equal(parseTeamPath('outbox/a.md'), null);
   assert.equal(parseTeamPath(''), null);
   assert.equal(parseTeamPath(null), null);
+});
+
+// D178: a write the sandbox will refuse is refused before the owner is asked. fs.write
+// needs per-call confirmation (D11), and that card goes to the owner's phone — so an
+// agent writing into another department's folder would otherwise have the owner approve
+// something that could never run, and could fill their phone with impossible writes.
+test('a cross-department write is refused before any permission card, and the refusal names the way round it', () => {
+  const scout = { department: 'research' };
+  // The precheck answers without touching the disk, which is what lets the gate ask early.
+  const refused = teamWriteRefusal(scout, '_teams/legal/note.md');
+  assert.match(refused, /write only your own/);
+  assert.match(refused, /_teams\/research\//, 'it says where the Ranger may write');
+  assert.match(refused, /dept\.request/, 'and the tool that gets it done properly');
+  assert.equal(TOOLS['fs.write'].precheck({ path: '_teams/legal/note.md', content: 'x' }, scout), refused, 'fs.write uses it');
+
+  // Its own folder, its own workspace and a non-team path are all allowed through.
+  assert.equal(teamWriteRefusal(scout, '_teams/research/note.md'), null);
+  assert.equal(teamWriteRefusal(scout, 'outbox/brief.md'), null);
+  assert.equal(TOOLS['fs.write'].precheck({ path: 'outbox/brief.md', content: 'x' }, scout), null);
+
+  // An agent in no department is told which department to ask.
+  assert.match(teamWriteRefusal({ department: null }, '_teams/finance/x'), /no department/);
+  assert.match(teamWriteRefusal({ department: null }, '_teams/finance/x'), /dept\.request/);
+
+  // A path the precheck cannot judge is left to the resolver rather than guessed at here:
+  // an unknown department and a bare prefix are both refused there, with their own reasons.
+  assert.equal(teamWriteRefusal(scout, '_teams/nonsense/x'), null);
+  assert.equal(teamWriteRefusal(scout, '_teams/'), null);
 });

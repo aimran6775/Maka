@@ -94,18 +94,26 @@ export async function resolveForAgent(ctx, input, { write = false } = {}) {
   if (!ctx.workspaceRoot) throw new SandboxError('team folders are not available here');
   if (!team.dept) throw new SandboxError(`${TEAMS_DIR}/ needs a department: ${TEAMS_DIR}/<department>/<file>`);
   if (!isDepartmentKind(team.dept)) throw new SandboxError(`"${team.dept}" is not a department of the park`);
-  if (write && team.dept !== ctx.department) {
-    throw new SandboxError(
-      ctx.department
-        ? `you may read any team's folder but write only your own (${TEAMS_DIR}/${ctx.department}/); ask the ${team.dept} department instead`
-        : `you belong to no department, so you may read a team's folder but write to none`,
-    );
-  }
+  const refusal = teamWriteRefusal(ctx, input);
+  if (write && refusal) throw new SandboxError(refusal);
   // The department's own folder is the root, so a team path can no more escape into
   // another team than an agent path can escape the workspace.
   const root = path.join(ctx.workspaceRoot, TEAMS_DIR, team.dept);
   await fsp.mkdir(root, { recursive: true });
   return resolveInWorkspace(root, team.rest || '.');
+}
+
+// Why a write to this path is refused, or null when it is allowed. Separate from the
+// resolver so the gate can ask before it troubles the owner with a permission card: being
+// told to approve a write that the sandbox was always going to refuse is noise, and an
+// agent could otherwise fill the owner's phone with cards for impossible writes.
+export function teamWriteRefusal(ctx, input) {
+  const team = parseTeamPath(input);
+  if (!team || !team.dept || !isDepartmentKind(team.dept)) return null; // not a team write, or refused elsewhere
+  if (team.dept === ctx.department) return null;
+  return ctx.department
+    ? `you may read any team's folder but write only your own (${TEAMS_DIR}/${ctx.department}/); ask the ${team.dept} department for it with dept.request instead`
+    : `you belong to no department, so you may read a team's folder but write to none; ask the ${team.dept} department for it with dept.request`;
 }
 
 // What a path reads as in a message back to the agent: team paths keep their prefix so the
@@ -165,6 +173,10 @@ export const fsWrite = {
     },
   },
   confirm: true,
+  // D178: refused before the owner is asked, not after they approve.
+  precheck(input, ctx) {
+    return teamWriteRefusal(ctx, input.path);
+  },
   async run(input, ctx) {
     const bytes = Buffer.byteLength(input.content, 'utf8');
     if (bytes > WRITE_LIMIT_BYTES) return { ok: false, error: `content is ${bytes} bytes; limit is ${WRITE_LIMIT_BYTES}` };

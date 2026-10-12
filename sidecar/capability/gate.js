@@ -177,6 +177,18 @@ export function createToolGate({
       }
       const problem = inputProblem(tool, call.input);
       if (problem) return { ok: false, error: `invalid input for ${call.name}: ${problem}` };
+      // D178: a tool may refuse its own input before any leash, Gate item or permission
+      // card. The owner is not asked to approve something that cannot run either way.
+      if (typeof tool.precheck === 'function') {
+        const dept = departmentOfAgent(getLayout(), agentId);
+        let refused = null;
+        try {
+          refused = tool.precheck(call.input, { agentId, department: dept ? dept.kind : null, workspaceDir, workspaceRoot });
+        } catch {
+          refused = null; // a precheck that throws does not block the call; run() still checks
+        }
+        if (refused) return { ok: false, code: 'SANDBOX', error: refused };
+      }
 
       const resolved = domainOf(tool, call.input);
       if (resolved.failed) return { ok: false, code: 'DOMAIN_UNKNOWN', error: `${call.name} could not say which leash domain it falls under (${resolved.error}) and has no known domain to fall back on, so it does not run` };

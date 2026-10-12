@@ -2246,6 +2246,16 @@ and every other path behaves exactly as before. Read shared, write own: any team
 any team's folder, so a Scout's brief is available to Finance without a round trip, and a
 team may write only its own, so a mistake stays with whoever made it.
 
+A write the sandbox will refuse is refused **before** the owner is asked. `fs.write` needs
+per-call confirmation (D11) and that card goes to the owner's phone, so a Ranger writing
+into another department's folder would otherwise have the owner approve something that
+could never run — and an agent could fill their phone with cards for impossible writes.
+Tools may now declare a `precheck(input, ctx)` that the gate calls before any leash, Gate
+item or permission card; `fs.write` uses it for the team rule. A precheck that throws does
+not block the call, because `run()` still checks: it is an early refusal, never the only
+one. The refusal also names `dept.request`, after the live Scout noted that the message
+told it what it could not do without saying what to do instead.
+
 The containment is unchanged, which is the point: `resolveForAgent` only chooses which root
 a path belongs to and then hands it to `resolveInWorkspace`, the same symlink- and
 `..`-proof check the per-agent sandbox has always used, with the department's own folder as
