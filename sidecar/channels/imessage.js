@@ -19,10 +19,14 @@
 //                         without it chat.db cannot be opened and nothing is received.
 //   Automation → Messages the first send raises the prompt; denied, sending fails.
 //
-// `imessageHandle` is the owner's address (an Apple ID email or a phone number). It is
-// the only key: it says who the park may talk to, and nothing is sent anywhere else.
-// Unlike a bot token it is not a secret, but it lives with the others so one place
-// answers "is this channel configured".
+// `imessageHandle` is the owner's address (an Apple ID email or a phone number; several,
+// comma separated, when the owner writes from a phone as well as an Apple ID). It is the
+// only key, and it is an allow-list, not a default: **the park messages the owner and
+// nobody else.** A send to any other handle is refused before Messages is asked, and a
+// message from any other handle is dropped before the registry ever sees it — so the park
+// cannot answer a stranger, not even to say "not paired", and only the owner's own chat
+// can pair. Unlike a bot token the handle is not a secret, but it lives with the others
+// so one place answers "is this channel configured".
 //
 // No buttons: iMessage has none, so the registry renders a card as text with the slash
 // commands that do what the buttons would (`cardText` in adapter.js).
@@ -90,6 +94,28 @@ export function inboundQuery(afterRowId) {
   ].join(' ');
 }
 
+// One handle in a form two spellings of the same person compare equal: an address is
+// lower-cased, a phone number is reduced to its digits (Messages reports "+1 555 0000",
+// "+15550000" and "5550000" for the same contact), with the country code's leading 1
+// dropped for a ten-digit North American number so both spellings meet.
+export function normalizeHandle(h) {
+  const s = String(h || '').trim().toLowerCase();
+  if (!s) return '';
+  if (s.includes('@')) return s;
+  const digits = s.replace(/[^0-9]/g, '');
+  return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+}
+
+// The owner's handles, as an allow-list. Everything else the park sees is not the owner.
+export function ownerHandles(value) {
+  return new Set(
+    String(value || '')
+      .split(',')
+      .map((h) => normalizeHandle(h))
+      .filter(Boolean),
+  );
+}
+
 // chat.style 43 is a one-to-one conversation; 45 is a group. Anything else is unknown,
 // and the registry refuses to pair with anything that is not plainly private
 // (safety 2026-10-11 H1).
@@ -121,6 +147,7 @@ export function createIMessageAdapter({
   log = console,
 } = {}) {
   let handle = null;
+  let owners = new Set(); // the only handles the park will ever message or listen to
   let onInbound = null;
   let timer = null;
   let lastRowId = 0;
@@ -143,6 +170,12 @@ export function createIMessageAdapter({
         lastRowId = Math.max(lastRowId, Number(r.rowid) || 0);
         const chatId = String(r.handle || r.chat || '').trim();
         if (!chatId) continue;
+        // The park answers the owner and nobody else: a message from any other handle is
+        // dropped here, so the registry never sees it and never replies to a stranger.
+        if (!owners.has(normalizeHandle(r.handle)) || !owners.has(normalizeHandle(chatId))) continue;
+        // And only in the owner's own one-to-one chat: a group the owner happens to be
+        // in is not the owner's channel, whoever typed in it.
+        if (chatTypeOf(r.style) !== 'private') continue;
         // The handle is both who sent it and where a reply goes: on a one-to-one chat
         // they are the same, which is the only shape that can pair.
         await onInbound({
@@ -172,6 +205,8 @@ export function createIMessageAdapter({
     async start({ keys, onInbound: cb, log: l = log }) {
       handle = String((keys && keys.imessageHandle) || '').trim();
       if (!handle) throw fail('NO_HANDLE', 'iMessage needs the owner handle (an Apple ID email or phone number)');
+      owners = ownerHandles(handle);
+      if (!owners.size) throw fail('NO_HANDLE', `iMessage cannot read an owner handle from "${handle}"`);
       // Reading the database is the permission people forget, so it is checked first and
       // named exactly: the park would otherwise look connected and never hear anything.
       try {
@@ -187,7 +222,7 @@ export function createIMessageAdapter({
       timer = setInterval(() => void poll(), pollMs);
       if (timer.unref) timer.unref();
       l.info && l.info(`imessage: watching Messages for ${handle}`);
-      return { detail: `Messages on this Mac, as ${handle}` };
+      return { detail: `Messages on this Mac, to ${[...owners].join(', ')} only` };
     },
 
     async stop() {
@@ -200,6 +235,9 @@ export function createIMessageAdapter({
     async sendText(chatId, text) {
       const to = String(chatId || handle || '').trim();
       if (!to) throw fail('NO_HANDLE', 'iMessage has nobody to send to');
+      // The allow-list is checked here, not upstream: whatever the registry decides, the
+      // park cannot message anyone but its owner.
+      if (!owners.has(normalizeHandle(to))) throw fail('NOT_THE_OWNER', `iMessage only ever writes to the owner; "${to}" is not ${[...owners].join(', ')}`);
       const body = String(text || '').slice(0, MAX_MESSAGE);
       try {
         await exec(osascript, ['-e', sendScript(to, body)]);
