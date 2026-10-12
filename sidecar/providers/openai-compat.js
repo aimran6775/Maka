@@ -9,17 +9,20 @@
 //     cost(usage) -> number | undefined : provider-reported or known-zero cost per request
 
 import { parseSSE, errorFromResponse } from './sse.js';
+import { toolNameMap } from './tool-names.js';
 
 const DEFAULT_MAX_TOKENS = 16000;
 
-export function toOpenAITools(tools) {
+// D169: OpenAI-shaped APIs refuse Maka's dotted tool names too, so the wire gets safe
+// ones. `names` is this request's map; without one the names go as they are.
+export function toOpenAITools(tools, names = null) {
   return (tools || []).map((t) => ({
     type: 'function',
-    function: { name: t.name, description: t.description || '', parameters: t.inputSchema || { type: 'object', properties: {} } },
+    function: { name: names ? names.toApi(t.name) : t.name, description: t.description || '', parameters: t.inputSchema || { type: 'object', properties: {} } },
   }));
 }
 
-export function toOpenAIMessages(system, messages) {
+export function toOpenAIMessages(system, messages, names = null) {
   const out = [];
   if (system) out.push({ role: 'system', content: system });
   for (const m of messages) {
@@ -27,7 +30,7 @@ export function toOpenAIMessages(system, messages) {
       const text = m.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
       const calls = m.content
         .filter((b) => b.type === 'tool_use')
-        .map((b) => ({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input || {}) } }));
+        .map((b) => ({ id: b.id, type: 'function', function: { name: names ? names.toApi(b.name) : b.name, arguments: JSON.stringify(b.input || {}) } }));
       const msg = { role: 'assistant', content: text || null };
       if (calls.length) msg.tool_calls = calls;
       out.push(msg);
@@ -52,14 +55,15 @@ export function createOpenAICompatProvider({ name, baseUrl, headers = {}, fetch:
   return {
     name,
     async *stream(request, { signal } = {}) {
+      const names = toolNameMap(request.tools);
       const body = {
         model: request.model,
         max_tokens: request.maxTokens || maxTokens,
         stream: true,
         ...usageOptions,
-        messages: toOpenAIMessages(request.system, request.messages),
+        messages: toOpenAIMessages(request.system, request.messages, names),
       };
-      const tools = toOpenAITools(request.tools);
+      const tools = toOpenAITools(request.tools, names);
       if (tools.length) body.tools = tools;
 
       let res;
@@ -108,7 +112,7 @@ export function createOpenAICompatProvider({ name, baseUrl, headers = {}, fetch:
             const index = 1 + i;
             if (!started.has(i)) {
               started.add(i);
-              yield { type: 'tool_use_start', index, id: tc.id || `call_${i}`, name: (tc.function && tc.function.name) || '' };
+              yield { type: 'tool_use_start', index, id: tc.id || `call_${i}`, name: names.fromApi((tc.function && tc.function.name) || '') };
             }
             const args = tc.function && tc.function.arguments;
             if (args) yield { type: 'tool_input_delta', index, partialJson: args };

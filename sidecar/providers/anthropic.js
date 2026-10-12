@@ -7,21 +7,28 @@
 // and replayed on the next turn as the API requires.
 
 import { parseSSE, errorFromResponse } from './sse.js';
+import { toolNameMap } from './tool-names.js';
 
 export const ANTHROPIC_DEFAULT_MODEL = 'claude-opus-5-5';
 export const ANTHROPIC_API_VERSION = '2023-06-01';
 const DEFAULT_BASE_URL = 'https://api.anthropic.com';
 const DEFAULT_MAX_TOKENS = 16000;
 
-export function toAnthropicTools(tools) {
+// D169: the API refuses Maka's dotted names, so the wire gets safe ones. `names` is the
+// map for this request; without one the names go as they are (the old behaviour, kept so
+// the function stays usable on its own).
+export function toAnthropicTools(tools, names = null) {
   return (tools || []).map((t) => ({
-    name: t.name,
+    name: names ? names.toApi(t.name) : t.name,
     description: t.description || '',
     input_schema: t.inputSchema || { type: 'object', properties: {} },
   }));
 }
 
-export function toAnthropicMessages(messages) {
+// D169: a past turn's tool_use block names the tool the model called, and the API checks
+// that name against the same pattern and the same tool list — so the history has to carry
+// the wire name the tool list carries, not Maka's dotted one.
+export function toAnthropicMessages(messages, names = null) {
   return messages.map((m) => ({
     role: m.role,
     content: m.content.map((b) => {
@@ -30,6 +37,7 @@ export function toAnthropicMessages(messages) {
         if (b.is_error) out.is_error = true;
         return out;
       }
+      if (b.type === 'tool_use' && names) return { ...b, name: names.toApi(b.name) };
       return b;
     }),
   }));
@@ -42,14 +50,15 @@ export function createAnthropicProvider({ apiKey, fetch: fetchImpl = globalThis.
   return {
     name: 'anthropic',
     async *stream(request, { signal } = {}) {
+      const names = toolNameMap(request.tools);
       const body = {
         model: request.model,
         max_tokens: request.maxTokens || maxTokens,
         stream: true,
-        messages: toAnthropicMessages(request.messages),
+        messages: toAnthropicMessages(request.messages, names),
       };
       if (request.system) body.system = request.system;
-      const tools = toAnthropicTools(request.tools);
+      const tools = toAnthropicTools(request.tools, names);
       if (tools.length) body.tools = tools;
 
       let res;
@@ -101,7 +110,7 @@ export function createAnthropicProvider({ apiKey, fetch: fetchImpl = globalThis.
             if (b.type === 'text') {
               if (b.text) yield { type: 'text_delta', index: ev.index, text: b.text };
             } else if (b.type === 'tool_use') {
-              yield { type: 'tool_use_start', index: ev.index, id: b.id, name: b.name };
+              yield { type: 'tool_use_start', index: ev.index, id: b.id, name: names.fromApi(b.name) };
             } else {
               opaque.set(ev.index, { ...b });
             }

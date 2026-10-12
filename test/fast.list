@@ -4,6 +4,7 @@ test/schema.test.js
 test/events.test.js
 test/loop.test.js
 test/providers.test.js
+test/tool-names.test.js
 test/capability.test.js
 test/store.test.js
 test/server.test.js

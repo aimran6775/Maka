@@ -1918,3 +1918,27 @@ crew with it (a zone is a team, not an empty rectangle); `POST /api/layout/move`
 through the same `replace`, so an overlap or an off-grid move is refused for the same
 reason from anywhere. The page applies the very same `moveRoom` to its own copy rather
 than restating the shift and drifting from it.
+
+## D169. Tool names on the wire: the park keeps its dots, the API gets what it accepts
+
+The first real call to Anthropic with tools came back `HTTP 400: tools.0.custom.name:
+String should match pattern '^[a-zA-Z0-9_-]{1,128}$'`. Every Maka tool is dotted —
+`fs.write`, `plan.submit`, `mcp.files.read_file` — because the dot says which kit a tool
+belongs to, and the leash, the Gate, the registry and every event key off that exact
+name. OpenAI-shaped APIs refuse the dot as well, within 64 characters, so OpenRouter was
+broken in the same way. **No run carrying tools had ever reached a real provider.** The
+fakes under `test/helpers/` accept any name and the suite asserted the broken shape back
+to itself, so 373 green tests said nothing about it.
+
+The park keeps its names; the wire gets safe ones. `sidecar/providers/tool-names.js` maps
+each way for one request (dots and anything else outside the set become underscores,
+collisions take a numbered suffix, unknown names coming back pass through untouched so an
+invented tool surfaces as "unknown tool" at the gate rather than silently becoming
+another one). Both adapters use it, and in three places, not one: the tool list, the
+`tool_use` blocks replayed from earlier turns (the API checks those names against the
+same list), and the names coming back, which are mapped to Maka's before anything else
+sees them.
+
+`test/tool-names.test.js` checks the names actually put on the wire against the two APIs'
+own patterns, which is the assertion that was missing: the old provider tests pinned
+`name: 'fs.read'` as the expected request body and so encoded the bug.

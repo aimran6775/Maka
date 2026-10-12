@@ -40,7 +40,7 @@ const ANTHROPIC_TOOL_STREAM = sse([
   ['content_block_delta', { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Reading ' } }],
   ['content_block_delta', { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'now.' } }],
   ['content_block_stop', { type: 'content_block_stop', index: 1 }],
-  ['content_block_start', { type: 'content_block_start', index: 2, content_block: { type: 'tool_use', id: 'toolu_1', name: 'fs.read', input: {} } }],
+  ['content_block_start', { type: 'content_block_start', index: 2, content_block: { type: 'tool_use', id: 'toolu_1', name: 'fs_read', input: {} } }],
   ['content_block_delta', { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"path":' } }],
   ['content_block_delta', { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '"a.txt"}' } }],
   ['content_block_stop', { type: 'content_block_stop', index: 2 }],
@@ -68,7 +68,8 @@ test('anthropic adapter: request shape, headers, normalized chunks, usage incl. 
   assert.equal(call.body.model, 'claude-opus-5-5');
   assert.equal(call.body.max_tokens, 16000);
   assert.equal('thinking' in call.body, false, 'thinking is left to the model default');
-  assert.deepEqual(call.body.tools[0], { name: 'fs.read', description: 'read', input_schema: { type: 'object', properties: { path: { type: 'string' } } } });
+  // D169: the park's `fs.read` goes out as `fs_read` — both APIs refuse the dot.
+  assert.deepEqual(call.body.tools[0], { name: 'fs_read', description: 'read', input_schema: { type: 'object', properties: { path: { type: 'string' } } } });
 
   assert.deepEqual(chunks, [
     { type: 'opaque_block', index: 0, block: { type: 'thinking', thinking: '', signature: 'sig123' } },
@@ -124,7 +125,8 @@ test('anthropic adapter drives the real loop: thinking block is replayed, tool r
   const second = fetch.calls[1].body.messages;
   assert.equal(second[1].role, 'assistant');
   assert.deepEqual(second[1].content[0], { type: 'thinking', thinking: '', signature: 'sig123' });
-  assert.deepEqual(second[1].content[2], { type: 'tool_use', id: 'toolu_1', name: 'fs.read', input: { path: 'a.txt' } });
+  // The replayed call carries the same wire name the tool list did (D169).
+  assert.deepEqual(second[1].content[2], { type: 'tool_use', id: 'toolu_1', name: 'fs_read', input: { path: 'a.txt' } });
   assert.deepEqual(second[2], { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'hi' }] });
   const costs = rec.ofType('cost.estimate').map((e) => e.payload);
   assert.equal(costs[0].reconciled, true);
@@ -144,7 +146,7 @@ const OPENROUTER_TOOL_STREAM = [
   sse([
     [null, { id: 'gen-1', choices: [{ index: 0, delta: { role: 'assistant', content: 'Let me ' }, finish_reason: null }] }],
     [null, { id: 'gen-1', choices: [{ index: 0, delta: { content: 'look.' }, finish_reason: null }] }],
-    [null, { id: 'gen-1', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'call_abc', type: 'function', function: { name: 'web.fetch', arguments: '' } }] }, finish_reason: null }] }],
+    [null, { id: 'gen-1', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'call_abc', type: 'function', function: { name: 'web_fetch', arguments: '' } }] }, finish_reason: null }] }],
     [null, { id: 'gen-1', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"url":"https://e' } }] }, finish_reason: null }] }],
     [null, { id: 'gen-1', choices: [{ index: 0, delta: { tool_calls: [{ index: 1, id: 'call_def', type: 'function', function: { name: 'fs.read', arguments: '{"path":"a"}' } }] }, finish_reason: null }] }],
     [null, { id: 'gen-1', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: 'xample.com"}' } }] }, finish_reason: null }] }],
@@ -168,7 +170,8 @@ test('openrouter adapter: request shape, interleaved tool calls by index, provid
   assert.equal(call.init.headers.authorization, 'Bearer or-test');
   assert.deepEqual(call.body.usage, { include: true });
   assert.deepEqual(call.body.messages, [{ role: 'system', content: 'sys' }, { role: 'user', content: 'go' }]);
-  assert.deepEqual(call.body.tools[0], { type: 'function', function: { name: 'web.fetch', description: 'fetch', parameters: { type: 'object' } } });
+  // D169: dots are illegal in an OpenAI-shaped function name too.
+  assert.deepEqual(call.body.tools[0], { type: 'function', function: { name: 'web_fetch', description: 'fetch', parameters: { type: 'object' } } });
 
   assert.deepEqual(chunks, [
     { type: 'text_delta', index: 0, text: 'Let me ' },
@@ -205,8 +208,8 @@ test('openrouter adapter through the loop: provider cost is reconciled; tool res
     role: 'assistant',
     content: 'Let me look.',
     tool_calls: [
-      { id: 'call_abc', type: 'function', function: { name: 'web.fetch', arguments: '{"url":"https://example.com"}' } },
-      { id: 'call_def', type: 'function', function: { name: 'fs.read', arguments: '{"path":"a"}' } },
+      { id: 'call_abc', type: 'function', function: { name: 'web_fetch', arguments: '{"url":"https://example.com"}' } },
+      { id: 'call_def', type: 'function', function: { name: 'fs_read', arguments: '{"path":"a"}' } },
     ],
   });
   assert.deepEqual(msgs[2], { role: 'tool', tool_call_id: 'call_abc', content: 'page' });
