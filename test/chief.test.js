@@ -83,7 +83,7 @@ test('plan schema, markdown and zone grid helpers', () => {
   assert.match(md, /## Lantern Co \(lantern-co\) · \$3.00/);
   assert.match(md, /- \[t2\] Draft three listings → storefront · \$1.50 · by in 3 days · after t1/);
   assert.match(md, /## Needs the Superintendent/);
-  assert.deepEqual(roleGrants('chief_ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'crew.hire', 'brief.decide', 'memory.recall', 'memory.write', 'recipe.run']);
+  assert.deepEqual(roleGrants('chief_ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'plan.submit', 'plan.read', 'crew.hire', 'crew.retire', 'brief.decide', 'memory.recall', 'memory.write', 'recipe.run']);
   const layout = defaultLayout();
   assert.deepEqual(freeZoneRect(layout), { x: 21, y: 1, w: 8, h: 6 }, 'to the right of the station');
   assert.deepEqual(freeZoneRect({ rooms: [{ x: 1, y: 1, w: 12, h: 8 }, { x: 21, y: 1, w: 8, h: 6 }, { x: 31, y: 1, w: 8, h: 6 }] }), { x: 41, y: 1, w: 8, h: 6 });
@@ -236,5 +236,75 @@ test('at the judge daily cap the mission pauses instead of spending; the follow-
     await assert.rejects(broken.mission({ text: 'x', budgetUsd: 1 }), (e) => e.code === 'NO_KEY');
   } finally {
     await nokey.cleanup();
+  }
+});
+
+// D176: the Chief could submit a plan but never read one back, and could hire but never
+// retire. Both gaps showed up live: asked to revise plan v2, the Chief refused rather than
+// overwrite real venture budgets with remembered ones, and it could see twelve Rangers on
+// one $2.50 venture without being able to do anything about it.
+test('plan.read returns the stored plan so a revision is an edit, and crew.retire undoes a hire', async () => {
+  // The mission run itself does nothing here: the tools are driven directly below so each
+  // guard is checked on its own.
+  const s = await setup({ chiefScript: () => [[text('noted'), end()]] });
+  try {
+    const read = s.chief.tools['plan.read'];
+    const submit = s.chief.tools['plan.submit'];
+    const retire = s.chief.tools['crew.retire'];
+    const hire = s.chief.tools['crew.hire'];
+    const ctx = { agentId: 'chief-ranger', runId: 'r-test' };
+
+    // Before a mission there is nothing to read, and the tool says so instead of inventing one.
+    assert.equal((await read.run({}, ctx)).ok, false);
+
+    await s.chief.mission({ text: 'sell lanterns', budgetUsd: 5, horizon: '30 days' });
+    // A mission with no plan yet is still not a plan: no empty skeleton comes back.
+    const none = await read.run({}, ctx);
+    assert.equal(none.ok, false);
+    assert.match(none.error, /no plan has been submitted/);
+
+    assert.equal((await submit.run(PLAN, ctx)).ok, true);
+    const got = await read.run({}, ctx);
+    assert.equal(got.ok, true);
+    const out = JSON.parse(got.output);
+    // The whole plan, not a summary: this is the shape plan.submit takes back.
+    assert.equal(out.version, 1);
+    assert.deepEqual(out.ventures, PLAN.ventures, 'every venture, task and budget comes back intact');
+    assert.equal(out.summary, PLAN.summary);
+    assert.equal(out.missionBudgetUsd, 5, 'and the ceiling a revision has to stay under');
+
+    // The point of reading: a revision that changes one field keeps the rest exactly.
+    const revised = { ...out.ventures[0], name: 'Lantern Co (revised)' };
+    assert.equal((await submit.run({ summary: out.summary, ventures: [revised, ...out.ventures.slice(1)] }, ctx)).ok, true);
+    const v2 = JSON.parse((await read.run({}, ctx)).output);
+    assert.equal(v2.version, 2);
+    assert.equal(v2.ventures[0].name, 'Lantern Co (revised)');
+    assert.deepEqual(v2.ventures[0].tasks, PLAN.ventures[0].tasks, 'the tasks were not re-guessed');
+    assert.equal(v2.history.length, 1, 'and v1 is still on the record');
+
+    // crew.retire: hire one, retire it, and it is gone from the park.
+    const hired = JSON.parse((await hire.run({ name: 'Surplus', specialty: 'scout', venture: 'lantern-co' }, ctx)).output);
+    assert.ok(s.agents.get(hired.agentId), 'hired');
+    const bye = await retire.run({ agentId: hired.agentId, reason: 'more scouts than the work needs' }, ctx);
+    assert.equal(bye.ok, true);
+    assert.equal(JSON.parse(bye.output).retired, hired.agentId);
+    assert.ok(!s.agents.get(hired.agentId), 'retired for real');
+    assert.ok(s.events.some((e) => e.type === 'crew.agent' && e.payload.change === 'removed' && e.payload.agentId === hired.agentId), 'and it is on the record');
+
+    // The guards. The Chief may not retire itself, however it names itself.
+    assert.equal((await retire.run({ agentId: 'chief-ranger' }, ctx)).ok, false);
+    assert.equal((await retire.run({ agentId: ctx.agentId }, ctx)).ok, false);
+    // A Ranger with reports is refused rather than orphaning them.
+    const parent = JSON.parse((await hire.run({ name: 'Parent', specialty: 'scout', venture: 'lantern-co' }, ctx)).output);
+    const child = await s.agents.create({ name: 'Junior', role: 'junior_ranger', parentAgentId: parent.agentId, zoneId: 'ranger-station' }, { by: 'chief-ranger' });
+    const refused = await retire.run({ agentId: parent.agentId }, ctx);
+    assert.equal(refused.ok, false);
+    assert.match(refused.error, /reports/);
+    assert.ok(s.agents.get(parent.agentId), 'still there');
+    // An id that was never an agent is an error, not a silent success.
+    assert.equal((await retire.run({ agentId: 'not-an-agent' }, ctx)).ok, false);
+    assert.ok(child.id);
+  } finally {
+    await s.cleanup();
   }
 });

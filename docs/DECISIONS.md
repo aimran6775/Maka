@@ -2109,3 +2109,35 @@ API does.
 Note for later, not a code change: a 7B local worker that spends a turn to say nothing is
 what exposed this. The loop now survives it, but the thrash it causes (four rejected scout
 attempts) is a routing question, not a bug.
+
+## D176 — the Chief could hire but not retire, and submit a plan but not read one
+
+Two live refusals from the Chief, both correct, both pointing at a missing tool.
+
+Asked to revise the ember-wick plan to v3, it answered: "Submitting a plan replaces the
+whole thing, and I can't retrieve the v2 contents (other tasks, budgets, the other
+ventures). A v3 built from what I remember would overwrite v2 with guesses." It was right.
+`plan.submit` replaces the plan outright, and nothing could read one back — the follow-up
+prompt carried only `plan.summary.slice(0, 800)`. A replacing write with no matching read
+makes every revision destructive, so the only safe move was not to revise.
+
+Asked to retire eight surplus Rangers it had itself identified, it answered: "I have no
+tool in this run that retires or removes an agent." Also right. `crew.hire` only ever grew
+the crew, which is how twelve Rangers and three scouts accumulated on a $2.50 candle
+venture that had produced nothing.
+
+Added, both granted to `chief_ranger` only:
+
+- **`plan.read`** returns the stored plan exactly as it is — every venture with its roles,
+  tasks and budgets, plus the mission ceiling a revision must stay under and the version
+  history. It returns the shape `plan.submit` accepts, so a revision is an edit of what
+  came back. It refuses when there is no mission and when no plan exists yet, rather than
+  answering with an empty skeleton that could be mistaken for a real plan.
+- **`crew.retire`** is `agents.remove` for the Chief. The existing guards already refuse an
+  agent with reports or with a run in progress and keep at least one Ranger in the park;
+  this adds the one the registry cannot know, that the Chief may not retire itself (checked
+  against both `CHIEF_ID` and the calling `agentId`). Finished work and deliverables stay;
+  only the Ranger goes, recorded as `crew.agent { change: 'removed' }`.
+
+The Chief's working-order instruction and its follow-up prompt both now say to call
+`plan.read` before revising and that `plan.submit` replaces, so anything left out is lost.

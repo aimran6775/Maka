@@ -658,7 +658,16 @@ judge tier's planning model and must call `plan.submit` with a schema-checked pl
 (ventures, roles, tasks, budgets, risks, what needs the owner), then `crew.hire` to staff
 department camps (created on demand) and `delegate` to start tasks. Every version is
 stored and written to the Chief's outbox; `plan.updated` keeps the Peak current; a
-finished delegated item brings the Chief back for a bounded follow-up. The judge daily
+finished delegated item brings the Chief back for a bounded follow-up.
+
+D176 added the other half of each of those two writes. `plan.submit` replaces the plan
+outright, so `plan.read` returns the stored plan as it is — every venture, task and budget,
+plus the mission ceiling and the version history — and a revision is an edit of what comes
+back rather than a reconstruction from memory. `crew.retire` removes a Ranger the work no
+longer needs, refusing one that has reports, one with a run in progress, and the Chief
+itself. Without them the Chief could only grow the crew and could not safely revise a
+plan at all: asked to do both live, it correctly refused rather than overwrite real
+numbers with remembered ones. The judge daily
 cap and a per-mission follow-up cap pause the mission rather than spend past them.
 
 Phase 2 step 4 done: concurrency and handoffs. The run manager runs several Rangers at

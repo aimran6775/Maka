@@ -9,8 +9,12 @@
 //   plan.submit   the structured plan (ventures, roles, tasks, budgets), validated against
 //                 PLAN_SCHEMA by the gate, stored as plan.json (every version kept) and
 //                 written to the Chief's outbox as plan-v<N>.md; emits plan.updated
+//   plan.read     the stored plan as it is, so a revision edits it instead of guessing it
+//                 (D176: plan.submit replaces, and a replacing write needs a read)
 //   crew.hire     creates a Ranger with a specialty in its department camp (the camp is
 //                 created when missing) under the Chief
+//   crew.retire   removes a Ranger that is no longer needed (D176), refusing one with
+//                 reports, with a run in progress, or the Chief itself
 //   delegate      hands a task along a trail (sidecar/trails.js)
 // A finished work item the Chief delegated starts a follow-up run for the Chief with the
 // result, bounded by maxFollowUps per mission and by the judge daily cap: at the cap the
@@ -79,7 +83,7 @@ export const CHIEF_SYSTEM_PROMPT = [
   'You own the portfolio: you read the mission, decide which ventures to pursue within the budget, plan the tasks, staff them with Rangers by specialty, and delegate along trails.',
   'Product laws: truthful telemetry (never claim revenue or results you have not seen in real data); platform-compliant by construction (official APIs under each platform\'s terms, no scraping a platform forbids, no fake engagement); replicate strategies, never property (original listings, copy and creative; no copied brand names); money out always passes the Entrance Gate under the leash model; no income promises.',
   'The Superintendent decides only what a leash or a budget sends to the Entrance Gate; everything else is yours. Do not ask them questions in prose; put genuine owner decisions in needsSuperintendent.',
-  'Work in this order: (1) call plan.submit once with the full plan; (2) call crew.hire for each role that needs a new Ranger (use existing Rangers when one fits); (3) call delegate for the first tasks that can start now, one call per task, using the agent ids returned by crew.hire or listed in the crew; (4) finish with a short status in plain text.',
+  'Work in this order: (1) call plan.submit once with the full plan — when a plan already exists, call plan.read first and send back that plan with your changes applied, because plan.submit replaces every venture, task and budget and anything you leave out is lost; (2) call crew.hire for each role that needs a new Ranger (use existing Rangers when one fits) and crew.retire for any Ranger the work no longer needs, so the crew matches the plan in both directions; (3) call delegate for the first tasks that can start now, one call per task, using the agent ids returned by crew.hire or listed in the crew; (4) finish with a short status in plain text.',
   'Budgets are model-spend budgets in USD; stay within the mission budget. Keep briefs concrete: what to produce, where the evidence must come from, what not to do.',
 ].join('\n');
 
@@ -207,6 +211,65 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
         return { ok: true, output: `plan v${version} stored (${input.ventures.length} venture(s), ${input.ventures.reduce((n, v) => n + v.tasks.length, 0)} task(s)); written to outbox/plan-v${version}.md. Now hire and delegate.` };
       },
     },
+    // D176: plan.submit replaces the plan outright, and until this tool existed nothing
+    // could read one back — the Chief saw only an 800-character summary in its follow-up
+    // prompt. So a revision meant rebuilding every venture, task and budget from memory,
+    // and the Chief rightly refused to do it rather than overwrite real numbers with
+    // guesses. Reading is the other half of a replacing write.
+    'plan.read': {
+      name: 'plan.read',
+      description: 'Read the current plan for this mission exactly as it is stored: every venture with its roles, tasks and budgets, and the version history. Call this before plan.submit when you are revising, so a new version changes what you mean to change and carries the rest across unaltered.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+      confirm: false,
+      async run() {
+        if (!mission) return { ok: false, error: 'there is no mission to read a plan for' };
+        if (!plan) return { ok: false, error: 'no plan has been submitted for this mission yet; plan.submit creates v1' };
+        // The shape plan.submit accepts, so a revision is an edit of what comes back here,
+        // plus the read-only context needed to judge a change (version, budget, history).
+        return {
+          ok: true,
+          output: JSON.stringify({
+            version: plan.version,
+            submittedAt: plan.submittedAt,
+            missionBudgetUsd: mission.budgetUsd,
+            summary: plan.summary,
+            ventures: plan.ventures,
+            history: (plan.history || []).map((h) => ({ version: h.version, submittedAt: h.submittedAt, summary: h.summary })),
+          }),
+        };
+      },
+    },
+    // D176: crew.hire only ever grew the crew. Twelve Rangers accumulated on one $2.50
+    // candle venture because there was no tool to undo a hire, and the Chief could see
+    // that was wrong but not act on it. agents.remove already refuses an agent that has
+    // reports or a run in progress; this adds the one guard it cannot know about, that the
+    // Chief may not retire itself.
+    'crew.retire': {
+      name: 'crew.retire',
+      description: 'Retire a Ranger you no longer need, by agent id. Refused if it has reports, if it has a run in progress, or if it is you. Its finished work and deliverables stay; only the Ranger goes. Retire surplus crew rather than leaving it idle.',
+      inputSchema: {
+        type: 'object',
+        required: ['agentId'],
+        additionalProperties: false,
+        properties: {
+          agentId: { type: 'string', minLength: 1, maxLength: 120, description: 'The id of the Ranger to retire' },
+          reason: { type: 'string', maxLength: 500, description: 'Why it is no longer needed; recorded with the change' },
+        },
+      },
+      confirm: false,
+      async run(input, ctx) {
+        if (input.agentId === ctx.agentId || input.agentId === CHIEF_ID) {
+          return { ok: false, error: 'the Chief Ranger cannot retire itself' };
+        }
+        try {
+          const a = agents.get ? agents.get(input.agentId) : null;
+          await agents.remove(input.agentId, { by: ctx.agentId });
+          return { ok: true, output: JSON.stringify({ retired: input.agentId, name: (a && a.name) || null, reason: input.reason || '' }) };
+        } catch (err) {
+          return { ok: false, error: err && err.message ? err.message : String(err) };
+        }
+      },
+    },
     'crew.hire': {
       name: 'crew.hire',
       description: 'Hire a Ranger with a specialty for a venture. It is created in its department camp (the camp is created if missing) reporting to you. Returns the agent id to delegate to.',
@@ -254,7 +317,7 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
       '',
       'Current plan summary: ' + (plan ? plan.summary.slice(0, 800) : '(no plan)'),
       '',
-      'Decide the next move: delegate the next task(s) that can start now (use work.check if you need details), revise the plan with plan.submit if the result changes it, or, if nothing is left to do, say so and stop. Do not re-delegate finished work.',
+      'Decide the next move: delegate the next task(s) that can start now (use work.check if you need details), revise the plan if the result changes it (plan.read for the plan as it stands, then plan.submit with your changes applied — it replaces the whole plan, so carry the rest across unchanged), retire crew the remaining work does not need with crew.retire, or, if nothing is left to do, say so and stop. Do not re-delegate finished work.',
     ].join('\n');
     return startChiefRun(prompt, { budgetUsd: Math.min(mission.budgetUsd, 2), maxTurns: 10 });
   }
