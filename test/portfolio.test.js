@@ -291,3 +291,50 @@ test('the portfolio has a hard size limit', async () => {
     await h.cleanup();
   }
 });
+
+// D182: the proposing run ending must not decide the business.
+//
+// Found live, and it declined a real proposal. The venture item names the run that proposed
+// it as provenance, and `expireRun` — which releases tool calls parked at the Gate when
+// their run ends — expired it along with them. The Business Lead researched a business for
+// twenty-five tool calls, proposed it, its run ended a second later, and the card died
+// before the owner had seen it: "the run ended before a decision".
+test('a venture card outlives the run that proposed it', async () => {
+  const started = [];
+  const h = await setup({ onApproved: (v) => started.push(v) });
+  try {
+    const v = await h.portfolio.propose(PROPOSAL, { by: 'business-lead', runId: 'run-1' });
+    const item = h.gateQueue.pending()[0];
+    assert.equal(item.kind, 'venture');
+    assert.equal(item.runId, 'run-1', 'the run that proposed it is on the record');
+
+    // The proposing run ends, as it does immediately in practice.
+    await h.gateQueue.expireRun('run-1');
+    assert.equal(h.gateQueue.pending().length, 1, 'the card is still waiting for the owner');
+    assert.equal(h.portfolio.get(v.id).status, 'proposed');
+
+    // And the owner can still approve it, hours later.
+    await h.gateQueue.resolve(item.itemId, { decision: 'approve' });
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(h.portfolio.get(v.id).status, 'active');
+    assert.equal(started.length, 1);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('a tool call parked at the Gate is still expired when its run ends', async () => {
+  const h = await setup();
+  try {
+    // The behaviour D182 must not break: an action has a run waiting on it, so the run
+    // ending has to release it or the call would hang forever.
+    const parked = h.gateQueue.submit({ agentId: 'ranger', kind: 'action', domain: 'publishing', tool: 'social.post', summary: 'post it', runId: 'run-2' });
+    assert.equal(h.gateQueue.pending().length, 1);
+    await h.gateQueue.expireRun('run-2');
+    const decision = await parked;
+    assert.equal(decision.status, 'expired');
+    assert.equal(h.gateQueue.pending().length, 0);
+  } finally {
+    await h.cleanup();
+  }
+});

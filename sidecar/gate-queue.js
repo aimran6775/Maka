@@ -178,11 +178,15 @@ export function createGateQueue({ bus, store, ledger, leashState, getLayout = ()
       await maybePropose(item);
       return { ...item };
     },
-    // The run is over: anything of its still waiting is expired (the tool call gets a reject).
+    // The run is over: any tool call of its still waiting is expired (the call gets a
+    // reject). D182: only an `action` is expired, because only an action has a run parked
+    // on it. A `venture` item names the run that proposed the business as provenance, but
+    // no run waits on it — the owner may take hours, and the proposing Ranger finished long
+    // before. Expiring it here declined a business the owner had not even seen yet.
     async expireRun(runId, reason = 'the run ended before a decision') {
       let changed = false;
       for (const it of items) {
-        if (it.status === 'pending' && it.runId === runId) {
+        if (it.status === 'pending' && it.runId === runId && (it.kind || 'action') === 'action') {
           settle(it, 'expired', { reason });
           changed = true;
         }

@@ -2387,6 +2387,13 @@ letting one call through — and `maybePropose` already ignored anything that wa
 `action`, so approving a business does not feed the leash approval streak. `gateQueue.submit`
 had hardcoded `kind: 'action'`; it now honours the kind the caller asks for.
 
+`expireRun` releases tool calls parked at the Gate when their run ends, and it expired
+venture items too — so the first real proposal died before the owner saw it. The Business
+Lead researched a business over twenty-five tool calls, proposed it, its run ended a second
+later, and the card read "the run ended before a decision". It now expires only `action`
+items, because only an action has a run parked on it; a venture item names its proposing
+run as provenance and nothing waits on it.
+
 A venture still `proposed` after a restart is declined with "propose it again": the Gate
 item's resolver died with the process, so the card is gone and waiting on a decision that
 cannot arrive would be a lie.
