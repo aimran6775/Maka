@@ -1977,3 +1977,29 @@ send fails with AppleEvent timed out, which is what happened on the first real t
 
 Telegram, Discord and Slack stay in the tree, unwired: the registry takes any adapter and
 there is no reason to delete working code the owner may want later.
+
+## D171. The approval that matters most now reaches the phone
+
+The owner: "so i want the maka chief to msg me on this imgs and get the approvals or
+anything i want to talk to as well. its a chatbot for me." Most of that was already the
+registry's job — a paired chat gets Gate cards, `/gate`, `/status`, `/away`, `/back`, and
+anything else typed is a question the Chief answers from recorded data. One thing was
+missing, and it was the commonest approval there is.
+
+A tool with a leash domain raises a **Gate item**, which the channels forward. A tool that
+asks per call — `fs.write`, the thing a Ranger does every time it writes a deliverable —
+raises a **permission.prompt** instead, and the registry only ever listened for
+`gate.item`. So the prompt reached the park page and nowhere else: away from the screen,
+the Superintendent could not let a Ranger write a file, and the prompt timed out as a
+denial five minutes later. That is exactly what happened on the first real run here — the
+Ranger wrote its product sheet, was denied twice by nobody answering, and said so.
+
+The registry now forwards `permission.prompt` as a card and takes `/allow <prompt>` and
+`/deny <prompt>` back, answering through a `permissions` handle (the run manager's own
+`answer`) passed in at boot. `permission.response` closes the card in every chat that
+holds it, whoever answered and wherever. A prompt that already timed out says so rather
+than pretending. `channel.delivery.kind` gained `permission_card` and `permission_update`
+— an enum widening, which is additive and safe for a frozen contract.
+
+Five minutes is enough to answer from a phone, which is why this is worth doing rather
+than lengthening the timeout.

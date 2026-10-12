@@ -188,7 +188,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   layoutState.setObjectCheck((o) => mcp.checkPlacement(o));
   // Phase 4 step 1: the owner channels. Adapters (Telegram, Discord, Slack) register here
   // as they arrive; a channel whose token is not wired says so at the Peak.
-  const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, log }).init();
+  const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, log, permissions: { answer: (a) => runs.answer(a) } }).init();
   // D170: iMessage first — the owner's channel on their own Mac, no bot, no token.
   if (process.platform === 'darwin') channels.register(createIMessageAdapter({ log }));
   channels.register(createTelegramAdapter({ netGuard, log })); // step 2: TELEGRAM_BOT_TOKEN or the keystore

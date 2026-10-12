@@ -60,7 +60,12 @@ function fail(code, message, status = 400) {
 const chatKey = (name, chatId) => `${name}:${chatId}`;
 const clip = (s, n) => (typeof s === 'string' && s.length > n ? `${s.slice(0, n - 1)}…` : String(s ?? ''));
 
-export function createChannels({ bus, store, gateQueue = null, chief = null, reflect = null, away = null, env = process.env, keystorePath, clock = { now: () => Date.now() }, random = (n) => randomBytes(n), log = console } = {}) {
+export function createChannels({
+  // D171: the per-call confirmations (fs.write), so they can be answered from the phone.
+  permissions = null,
+  bus,
+  store,
+  gateQueue = null, chief = null, reflect = null, away = null, env = process.env, keystorePath, clock = { now: () => Date.now() }, random = (n) => randomBytes(n), log = console } = {}) {
   if (!bus || !store) throw new TypeError('createChannels needs bus and store');
   const adapters = new Map(); // name -> { adapter, status, by, detail, lastError, startedAt, pendingItem }
   let state = { version: 1, code: null, chats: {} }; // chats: key -> { channel, chatId, userId, pairedAt }
@@ -181,8 +186,35 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
   }
 
   // The bus feeds the phone: Gate items as cards, decisions, reflections, digests.
+  const prompts = new Map(); // promptId -> the chats holding its card (D171)
   bus.listen((event) => {
     const p = event.payload;
+    // D171: a tool that asks per call (fs.write) raises a permission.prompt, not a Gate
+    // item. It is the commonest approval there is, and until now it reached the park page
+    // only — so a Superintendent away from the screen could not let a Ranger write a
+    // file, and the prompt timed out as a denial five minutes later.
+    if (event.type === 'permission.prompt' && permissions) {
+      const card = {
+        kind: 'permission',
+        title: `${p.tool} needs your word`,
+        lines: [p.reason ? clip(p.reason, 200) : null, p.input ? `Input: ${clip(typeof p.input === 'string' ? p.input : JSON.stringify(p.input), 400)}` : null, 'It is refused on its own in five minutes.'].filter(Boolean),
+        buttons: [{ label: 'allow', data: `allow:${p.promptId}` }, { label: 'deny', data: `deny:${p.promptId}` }],
+        itemId: p.promptId,
+      };
+      broadcast({ kind: 'permission_card', card, itemId: p.promptId })
+        .then((sent) => {
+          if (sent.length) prompts.set(p.promptId, { holders: sent, runId: p.runId });
+        })
+        .catch((err) => log.error('permission card delivery failed:', err));
+      return;
+    }
+    if (event.type === 'permission.response' && prompts.has(p.promptId)) {
+      const { holders } = prompts.get(p.promptId);
+      prompts.delete(p.promptId);
+      const text = `${p.allow ? 'ALLOWED' : 'DENIED'}: ${p.promptId}`;
+      Promise.all(holders.map((h) => send(h.channel, h.chatId, { kind: 'permission_update', text, itemId: p.promptId }))).catch((err) => log.error('permission update delivery failed:', err));
+      return;
+    }
     if (event.type === 'gate.item') {
       if (p.status === 'pending') {
         broadcast({ kind: 'gate_card', card: gateCard(p), itemId: p.itemId }).then((sent) => { if (sent.length) cards.set(p.itemId, sent); }).catch((err) => log.error('gate card delivery failed:', err));
@@ -222,7 +254,7 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
   }
 
   function helpText(name) {
-    return ['Commands: /gate (items waiting), /approve <item> [notes], /revise <item> <notes>, /reject <item> [notes], /status, /away, /back, /help.', 'Anything else is a question for the Chief Ranger at the Peak, answered from recorded data only.'].join('\n');
+    return ['Commands: /gate (items waiting), /approve <item> [notes], /revise <item> <notes>, /reject <item> [notes], /allow <prompt>, /deny <prompt>, /status, /away, /back, /help.', 'Anything else is a question for the Chief Ranger at the Peak, answered from recorded data only.'].join('\n');
   }
 
   async function statusText() {
@@ -472,6 +504,22 @@ export function createChannels({ bus, store, gateQueue = null, chief = null, ref
             return send(name, chatId, { kind: 'notice', text: `Usage: /${command} <item id>${command === 'revise' ? ' <notes>' : ' [notes]'}` });
           }
           return decide(name, chatId, userId, { itemId, decision: command, notes: rest.slice(1).join(' '), messageId });
+        }
+        if (command === 'allow' || command === 'deny') {
+          const promptId = rest[0];
+          if (!permissions) {
+            outcomeOf('refused: no permissions handle');
+            return send(name, chatId, { kind: 'notice', text: 'This park cannot answer per-call confirmations from here.' });
+          }
+          if (!promptId) {
+            outcomeOf('refused: no prompt id');
+            return send(name, chatId, { kind: 'notice', text: `Usage: /${command} <prompt id>` });
+          }
+          const held = prompts.get(promptId);
+          const answered = permissions.answer({ promptId, runId: held ? held.runId : undefined, allow: command === 'allow' });
+          outcomeOf(answered ? `${command}ed ${promptId}` : `refused: ${promptId} is no longer waiting`);
+          if (!answered) return send(name, chatId, { kind: 'notice', text: `${promptId} is no longer waiting: it was answered at the park, or it ran out of time.` });
+          return null; // the permission.response event tells every chat
         }
         if (command === 'gate') {
           const pending = gateQueue ? gateQueue.pending() : [];

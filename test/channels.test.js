@@ -73,11 +73,13 @@ async function harness({ env = {}, adapters = null, chief = null, reflect = null
   const keystorePath = path.join(home, 'keystore.json');
   let seed = 0;
   const random = (n) => Buffer.from(Array.from({ length: n }, (_, i) => (seed * 7 + i * 13) % 251));
-  const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, clock, random: (n) => { seed += 1; return random(n); }, log: { error() {}, warn: (m) => events.push({ type: 'log.warn', message: m }) } }).init();
+  const answered = [];
+  const permissions = { answer: (a) => { answered.push(a); return a.promptId !== 'perm-gone'; } };
+  const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, clock, permissions, random: (n) => { seed += 1; return random(n); }, log: { error() {}, warn: (m) => events.push({ type: 'log.warn', message: m }) } }).init();
   const fake = fakeChannel();
   for (const a of adapters || [fake]) channels.register(a);
   const ofType = (t) => events.filter((e) => e.type === t).map((e) => e.payload);
-  return { dir, home, store, bus, events, ofType, clock, ledger, gateQueue, away, channels, fake, keystorePath, cleanup: async () => { await channels.close(); await fsp.rm(dir, { recursive: true, force: true }); } };
+  return { dir, home, store, bus, events, ofType, clock, ledger, gateQueue, away, channels, fake, keystorePath, answered, cleanup: async () => { await channels.close(); await fsp.rm(dir, { recursive: true, force: true }); } };
 }
 
 test('a channel without its token is "not wired"; with the env var it starts and says where the token came from; a failing start is an error', async () => {
@@ -424,5 +426,48 @@ test('ask the Peak: free text from a paired chat is a bounded, tool-less Chief r
     sse.close();
   } finally {
     await srv.close();
+  }
+});
+
+test('D171: a per-call confirmation reaches the phone, and /allow answers it from there', async () => {
+  const h = await harness({ env: { TELEGRAM_BOT_TOKEN: '123:abc' } });
+  try {
+    await h.channels.start();
+    // Pair the owner's chat the way the registry requires.
+    const { code } = await h.channels.newPairingCode();
+    await h.fake.receive({ chatId: 'c1', userId: 'u1', text: code, updateId: 'p-1' });
+    assert.equal(h.channels.list()[0].paired.length, 1, 'the chat paired');
+    h.fake.state.sent.length = 0;
+
+    // fs.write asks per call: a permission.prompt, not a Gate item. Before D171 this
+    // never left the park page, so a Superintendent away from the screen could not let a
+    // Ranger write a file and the prompt timed out as a denial.
+    h.bus.emit(makeEvent('permission.prompt', { promptId: 'perm-1', runId: 'run-1', callId: 'c', tool: 'fs.write', reason: 'Write a UTF-8 text file', input: { path: 'outbox/sheet.md' } }, { ts: h.clock.now() }));
+    await new Promise((r) => setTimeout(r, 20));
+    const card = h.fake.state.sent.at(-1);
+    assert.ok(card, 'the confirmation reached the chat');
+    assert.match(JSON.stringify(card), /fs\.write/);
+    assert.match(JSON.stringify(card), /perm-1/);
+
+    // Answering from the phone goes back to the run manager as an allow.
+    await h.fake.receive({ chatId: 'c1', userId: 'u1', text: '/allow perm-1', updateId: 'a-1' });
+    assert.deepEqual(h.answered.at(-1), { promptId: 'perm-1', runId: 'run-1', allow: true });
+
+    // The answer, wherever it came from, closes the card in the chat.
+    h.bus.emit(makeEvent('permission.response', { promptId: 'perm-1', runId: 'run-1', allow: true }, { ts: h.clock.now() }));
+    await new Promise((r) => setTimeout(r, 20));
+    assert.match(JSON.stringify(h.fake.state.sent.at(-1)), /ALLOWED/);
+
+    // A prompt that already timed out says so rather than pretending.
+    await h.fake.receive({ chatId: 'c1', userId: 'u1', text: '/deny perm-gone', updateId: 'a-2' });
+    assert.equal(h.answered.at(-1).allow, false);
+    assert.match(JSON.stringify(h.fake.state.sent.at(-1)), /no longer waiting/);
+
+    // And an unpaired chat cannot answer anything.
+    h.fake.state.sent.length = 0;
+    await h.fake.receive({ chatId: 'stranger', userId: 'u9', text: '/allow perm-1', updateId: 'a-3' });
+    assert.equal(h.answered.filter((a) => a.promptId === 'perm-1' && a.allow === true).length, 1, 'the stranger answered nothing');
+  } finally {
+    await h.cleanup();
   }
 });

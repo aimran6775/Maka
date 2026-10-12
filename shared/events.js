@@ -530,7 +530,9 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
   'channel.delivery': payload(['channel', 'chatId', 'kind', 'status'], {
     channel: nonEmpty,
     chatId: nonEmpty,
-    kind: { type: 'string', enum: ['gate_card', 'gate_update', 'reflection', 'digest', 'answer', 'notice', 'pairing'] },
+    // D171 widened this additively with the two permission kinds: a per-call
+    // confirmation (fs.write) sent to a chat, and the word that closed it.
+    kind: { type: 'string', enum: ['gate_card', 'gate_update', 'permission_card', 'permission_update', 'reflection', 'digest', 'answer', 'notice', 'pairing'] },
     status: { type: 'string', enum: ['sent', 'failed'] },
     itemId: str,
     messageId: str,
