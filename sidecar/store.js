@@ -83,6 +83,8 @@ export function createStore({ root, fs = fsp }) {
   const portfolioFile = path.join(root, 'portfolio.json');
   // D184: what each department does without being asked — its standing remit and duties.
   const chartersFile = path.join(root, 'charters.json');
+  // D185: what the park is stuck on and needs a person for.
+  const blockersFile = path.join(root, 'blockers.json');
   const planFile = path.join(root, 'plan.json');
   const schedulerFile = path.join(root, 'scheduler.json');
   const awayFile = path.join(root, 'away.json');
@@ -169,6 +171,8 @@ export function createStore({ root, fs = fsp }) {
     savePortfolio: (portfolio) => writeJsonAtomic(portfolioFile, portfolio, { fs }),
     loadCharters: (fallback) => readJson(chartersFile, fallback, { fs }),
     saveCharters: (charters) => writeJsonAtomic(chartersFile, charters, { fs }),
+    loadBlockers: (fallback) => readJson(blockersFile, fallback, { fs }),
+    saveBlockers: (blockers) => writeJsonAtomic(blockersFile, blockers, { fs }),
     loadPlan: (fallback) => readJson(planFile, fallback, { fs }),
     savePlan: (plan) => writeJsonAtomic(planFile, plan, { fs }),
     saveRun: async (record) => writeJsonAtomic(runFile(record.runId), record, { fs }),

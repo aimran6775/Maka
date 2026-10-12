@@ -384,6 +384,25 @@ export function createChief({ bus, store, runs, agents, trails, ledger = null, r
       return this;
     },
     state: () => ({ mission: mission ? { ...mission } : null, plan: plan ? { ...plan } : null, chief: agents.get(CHIEF_ID), caps, judgeToday: ledger ? ledger.judgeToday() : null }),
+    // D185: the owner cleared a blocker, so the work that was waiting on it starts again.
+    // The brief says what was blocked and what the owner did, and nothing more: the Chief
+    // decides what to pick up, and it may well be that the venture has moved on.
+    async blockerCleared(blocker) {
+      if (!blocker || !blocker.id) return null;
+      const prompt = [
+        `The owner has cleared a blocker: ${blocker.title}`,
+        '',
+        `What was blocked: ${blocker.blocking}`,
+        ...(blocker.note ? ['', `What they said they did: ${blocker.note}`] : []),
+        ...(blocker.ventureId ? ['', `It belonged to venture ${blocker.ventureId}.`] : []),
+        `It was raised by ${blocker.raisedBy}${blocker.department ? ` in the ${blocker.department} department` : ''}.`,
+        '',
+        'Pick the work back up if it is still worth doing: check with work.check and venture.list what',
+        'the park has moved on to, then delegate the step that was waiting. If it is no longer worth',
+        'doing, say so and stop — a cleared blocker is not an instruction to resume.',
+      ].join('\n');
+      return startChiefRun(prompt, { budgetUsd: 1, maxTurns: 10 });
+    },
     // D182: the owner approved a business, so it starts. The portfolio holds the decision
     // and the budget; this is the Chief being told to get on with it. The brief carries
     // only what the owner actually agreed to — the thesis they read and the first steps

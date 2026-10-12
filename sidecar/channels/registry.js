@@ -65,6 +65,9 @@ export function createChannels({
   permissions = null,
   bus,
   store,
+  // D185: so /blocked can list what the park is waiting on the owner for, and /unblock
+  // can clear one.
+  blockers = null,
   gateQueue = null, chief = null, reflect = null, away = null, env = process.env, keystorePath, clock = { now: () => Date.now() }, random = (n) => randomBytes(n), log = console } = {}) {
   if (!bus || !store) throw new TypeError('createChannels needs bus and store');
   const adapters = new Map(); // name -> { adapter, status, by, detail, lastError, startedAt, pendingItem }
@@ -72,7 +75,8 @@ export function createChannels({
   const seenUpdates = new Map(); // name -> Set of recent update ids
   const notesPending = new Map(); // chatKey -> { itemId, at }
   const unpairedReplied = new Map(); // chatKey -> ts of the last "not paired" reply
-  const cards = new Map(); // itemId -> [{ channel, chatId, messageId }]
+  const cards = new Map();
+  const blockerCards = new Map(); // D185: blockerId -> the chats holding its card
   const decidedVia = new Map(); // itemId -> chatKey
   let saving = Promise.resolve();
   const emit = (type, payload) => bus.emit(makeEvent(type, payload, { ts: clock.now() }));
@@ -236,6 +240,19 @@ export function createChannels({
     } else if (event.type === 'reflection.posted') {
       const text = p.status === 'posted' ? `Reflection ${p.reflectionId} (${p.reason}):\n${clip(p.portfolio || '', 1500)}\n${(p.ventures || []).map((v) => `- ${v.id}: plan ${v.planStillRight === false ? 'needs revision' : 'still right'}, $${(v.spentUsd || 0).toFixed(2)} of $${(v.budgetUsd || 0).toFixed(2)}, ${v.itemsDone || 0} done / ${v.itemsFailed || 0} failed`).join('\n')}${p.path ? `\nDocument: ${p.path}` : ''}` : `Reflection ${p.reflectionId} skipped: ${p.skipReason || 'no reason given'}`;
       broadcast({ kind: 'reflection', text, ref: p.reflectionId }).catch((err) => log.error('reflection delivery failed:', err));
+    } else if (event.type === 'blocker.updated') {
+      // D185: the park is stuck on something only the owner can do, and it says so from
+      // the Peak. Not an approval card — there is nothing to approve. The reply that
+      // clears it is `/unblock <key or id>`.
+      if (p.change === 'raised') {
+        const text = [`The park needs you — from the Mountain Peak.`, '', p.title, '', p.card, '', `Reply: /unblock ${p.key}   (add a note after it if you want to say what you did)`].join('\n');
+        broadcast({ kind: 'blocker_card', text, ref: p.blockerId }).then((sent) => { if (sent.length) blockerCards.set(p.blockerId, sent); }).catch((err) => log.error('blocker delivery failed:', err));
+      } else if (p.change === 'resolved' || p.change === 'cancelled') {
+        const holders = blockerCards.get(p.blockerId) || [];
+        blockerCards.delete(p.blockerId);
+        const text = `${p.change === 'resolved' ? 'CLEARED' : 'NO LONGER NEEDED'}: ${clip(p.title, 160)}${p.reason ? `\n${clip(p.reason, 300)}` : ''}${p.change === 'resolved' ? '\nThe work waiting on it starts again.' : ''}`;
+        Promise.all(holders.map((h) => send(h.channel, h.chatId, { kind: 'blocker_update', text, ref: p.blockerId }))).catch((err) => log.error('blocker update delivery failed:', err));
+      }
     } else if (event.type === 'away.digest') {
       broadcast({ kind: 'digest', text: `Away digest ${p.digestId}: ${p.summary || `${p.actions} action(s), ${p.waiting} waiting`}\nFrom ${new Date(p.since).toISOString()} to ${new Date(p.until).toISOString()}${p.path ? `\nDigest: ${p.path}` : ''}`, ref: p.digestId }).catch((err) => log.error('digest delivery failed:', err));
     }
@@ -260,7 +277,7 @@ export function createChannels({
   }
 
   function helpText(name) {
-    return ['Commands: /gate (items waiting), /approve <item> [notes], /revise <item> <notes>, /reject <item> [notes], /allow <prompt>, /deny <prompt>, /status, /away, /back, /help.', 'Anything else is a question for the Chief Ranger at the Peak, answered from recorded data only.'].join('\n');
+    return ['Commands: /gate (items waiting), /approve <item> [notes], /revise <item> <notes>, /reject <item> [notes], /allow <prompt>, /deny <prompt>, /blocked (what the park needs you for), /unblock <key> [what you did], /status, /away, /back, /help.', 'Anything else is a question for the Chief Ranger at the Peak, answered from recorded data only.'].join('\n');
   }
 
   async function statusText() {
@@ -541,6 +558,37 @@ export function createChannels({
           outcomeOf(answered ? `${command}ed ${promptId}` : `refused: ${promptId} is no longer waiting`);
           if (!answered) return send(name, chatId, { kind: 'notice', text: `${promptId} is no longer waiting: it was answered at the park, or it ran out of time.` });
           return null; // the permission.response event tells every chat
+        }
+        // D185: the owner clears a blocker — the park was stuck on something only they
+        // could do, and they have done it. Named by key, which is what the card tells them
+        // to type, or by id.
+        if (command === 'unblock' || command === 'blocked') {
+          if (!blockers) {
+            outcomeOf('refused: no blockers handle');
+            return send(name, chatId, { kind: 'notice', text: 'This park cannot answer blockers from here.' });
+          }
+          if (command === 'blocked') {
+            const open = blockers.open();
+            outcomeOf(`listed ${open.length}`);
+            if (!open.length) return send(name, chatId, { kind: 'notice', text: 'The park is not waiting on you for anything.' });
+            for (const b of open.slice(0, 5)) {
+              await send(name, chatId, { kind: 'blocker_card', text: [b.title, '', blockers.cardFor(b), '', `Reply: /unblock ${b.key}`].join('\n'), ref: b.id });
+            }
+            return null;
+          }
+          const which = rest[0];
+          if (!which) {
+            outcomeOf('refused: no blocker named');
+            return send(name, chatId, { kind: 'notice', text: 'Usage: /unblock <key or id> [what you did]. /blocked lists what the park is waiting on.' });
+          }
+          try {
+            const b = await blockers.resolve(which, { note: rest.slice(1).join(' '), by: 'superintendent' });
+            outcomeOf(`cleared ${b.id}`);
+            return null; // the blocker.updated event tells every chat
+          } catch (err) {
+            outcomeOf(`refused: ${err.code || 'failed'}`);
+            return send(name, chatId, { kind: 'notice', text: err.code === 'NOT_FOUND' ? `Nothing open called "${which}". /blocked lists what the park is waiting on.` : err.message });
+          }
         }
         if (command === 'gate') {
           const pending = gateQueue ? gateQueue.pending() : [];

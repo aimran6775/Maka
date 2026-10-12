@@ -374,7 +374,7 @@ export function createLayoutState({ initial, store, bus, clock = { now: () => Da
   };
 }
 
-export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, portfolio = null, charters = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, computer = null, importer = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
+export function createApp({ bus, store, runs, layoutState, leashState = null, ledger = null, gateQueue = null, agents = null, trails = null, chief = null, portfolio = null, charters = null, blockers = null, reflect = null, away = null, mailSetup = null, mail = null, browser = null, connectors = null, channels = null, mcp = null, research = null, creative = null, results = null, purchases = null, computer = null, importer = null, scoutMemory = null, memory = null, recipes = null, voice = null, workspace = null, setup = null, ollama = null, backup = null, restart = null, providerStatus, keystoreStatus, staticRoot, sharedRoot, home, workspaceRoot, token = makeToken() }) {
   const staticReal = path.resolve(staticRoot);
   const sharedReal = path.resolve(sharedRoot);
   if (typeof token !== 'string' || token.length < 32) throw new TypeError('createApp needs a token of at least 32 characters');
@@ -543,6 +543,25 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
     if (p === '/api/mission' && method === 'GET') {
       if (!chief) throw new HttpError(404, 'no Chief Ranger');
       return sendJson(res, 200, chief.state());
+    }
+    // D185: what the park is waiting on a person for, and clearing one. There is no route
+    // that raises a blocker: the park raises its own, from a Ranger that is actually stuck.
+    if (p === '/api/blockers' && method === 'GET') {
+      if (!blockers) throw new HttpError(404, 'no blockers');
+      return sendJson(res, 200, { ...blockers.state(), blockers: url.searchParams.get('all') === '1' ? blockers.list() : blockers.open() });
+    }
+    if (p.startsWith('/api/blockers/') && method === 'POST') {
+      if (!blockers) throw new HttpError(404, 'no blockers');
+      const [, , , id, action] = p.split('/').map(decodeURIComponent);
+      const body = await readJsonBody(req);
+      try {
+        if (action === 'resolve') return sendJson(res, 200, await blockers.resolve(id, { note: String((body && body.note) || ''), by: 'superintendent' }));
+        if (action === 'cancel') return sendJson(res, 200, await blockers.cancel(id, { reason: String((body && body.reason) || ''), by: 'superintendent' }));
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw new HttpError(err.status || 400, err.message, err.code);
+      }
+      throw new HttpError(404, `unknown blocker action "${action}"`);
     }
     // D184: department charters — the standing remit and duties the owner can read, edit
     // and run on demand. Editing a charter is the owner's: it is what the park does while

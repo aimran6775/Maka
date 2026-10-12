@@ -31,6 +31,7 @@ import { createTrails } from './trails.js';
 import { createChief } from './chief.js';
 import { createPortfolio } from './portfolio.js';
 import { createCharters } from './charters.js';
+import { createBlockers } from './blockers.js';
 import { createScheduler } from './scheduler.js';
 import { createReflect } from './reflect.js';
 import { createAway } from './away.js';
@@ -146,6 +147,18 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     log,
   }).init();
   Object.assign(registry, portfolio.tools);
+  // D185: the park runs itself, and when it cannot it says so from the Peak. Clearing a
+  // blocker tells the Chief, so the work that was waiting starts again instead of waiting
+  // for someone to remember it.
+  const blockers = await createBlockers({
+    bus,
+    store,
+    agents,
+    getLayout: layoutState.get,
+    onResolved: (b) => chief.blockerCleared(b),
+    log,
+  }).init();
+  Object.assign(registry, blockers.tools);
   // D183: work that belongs to a venture draws on the budget the owner approved for that
   // business, not on the single mission budget. Only an active venture has a pool: a
   // paused or stopped one funds nothing.
@@ -235,7 +248,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   layoutState.setObjectCheck((o) => mcp.checkPlacement(o));
   // Phase 4 step 1: the owner channels. Adapters (Telegram, Discord, Slack) register here
   // as they arrive; a channel whose token is not wired says so at the Peak.
-  const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, log, permissions: { answer: (a) => runs.answer(a) } }).init();
+  const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, blockers, env, keystorePath, log, permissions: { answer: (a) => runs.answer(a) } }).init();
   // D170: iMessage first — the owner's channel on their own Mac, no bot, no token.
   if (process.platform === 'darwin') channels.register(createIMessageAdapter({ log }));
   channels.register(createTelegramAdapter({ netGuard, log })); // step 2: TELEGRAM_BOT_TOKEN or the keystore
@@ -269,6 +282,7 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
     chief,
     portfolio,
     charters,
+    blockers,
     reflect,
     away,
     mailSetup,

@@ -27,6 +27,8 @@ const SAMPLES = {
   'work.done': { workItemId: 'w1', fromAgentId: 'chief', toAgentId: 'ranger', runId: 'r1', status: 'done', reason: 'completed', deliverables: ['outbox/brief.md'], summary: 'wrote the brief', spentUsd: 0 },
   'agent.run.queued': { runId: 'r2', agentId: 'ranger', position: 0, workItemId: 'w1' },
   'plan.updated': { missionId: 'mission-1', planId: 'plan-1', version: 2, change: 'submitted', status: 'active', summary: 'two ventures', by: 'chief-ranger', runId: 'r1', ventures: [{ id: 'lantern-co', name: 'Lantern Co', budgetUsd: 3, taskCount: 4, summary: 'lanterns' }] },
+  // D185: the park is stuck on something only a person can do.
+  'blocker.updated': { blockerId: 'blocker-ab12cd34', key: 'stripe-account', change: 'raised', status: 'open', title: 'Stripe needs you', card: 'what is wrong and what to do', department: 'finance', ventureId: 'trail-maps', by: 'finance-lead', reason: '', runId: 'r1', waiting: 1 },
   // D184: a department's standing work.
   'charter.duty': { department: 'finance', dutyId: 'daily-books', change: 'ran', title: 'Daily books', reason: '', trigger: 'due', workItemId: 'work-1', agentId: 'finance-lead', budgetUsd: 0.15 },
   // D182: a business the park proposed and the owner decided on.

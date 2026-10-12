@@ -33,7 +33,7 @@ async function setup({ layout = defaultLayout() } = {}) {
 
 test('world data: parent roles, role grants, specialties, free tiles, layout fields are additive', () => {
   assert.deepEqual(PARENT_ROLES.junior_ranger, ['ranger']);
-  assert.deepEqual(roleGrants('ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request', 'venture.propose', 'venture.list', 'charter.read']);
+  assert.deepEqual(roleGrants('ranger'), ['crew.spawn_junior', 'delegate', 'work.check', 'memory.recall', 'memory.write', 'recipe.run', 'dept.directory', 'dept.request', 'venture.propose', 'venture.list', 'charter.read', 'blocker.raise', 'blocker.list']);
   assert.deepEqual(roleGrants('junior_ranger'), ['memory.recall']);
   assert.deepEqual(roleGrants('nobody'), []);
   for (const s of Object.values(SPECIALTIES)) assert.ok(s.persona.length > 20 && s.zoneKind);
@@ -49,7 +49,7 @@ test('world data: parent roles, role grants, specialties, free tiles, layout fie
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, true);
   layout.agents[0].specialty = 'wizard';
   assert.equal(validate(LAYOUT_SCHEMA, layout).ok, false);
-  assert.deepEqual(allGrantsFor({ ...defaultLayout(), objects: [{ id: 'o', kind: 'trailhead_sign', roomId: 'ranger-station', x: 1, y: 1 }] }, 'ranger'), ['brief.submit', 'charter.read', 'crew.spawn_junior', 'delegate', 'dept.directory', 'dept.request', 'memory.recall', 'memory.write', 'recipe.run', 'venture.list', 'venture.propose', 'web.fetch', 'web.read', 'web.search', 'web.trends', 'work.check']);
+  assert.deepEqual(allGrantsFor({ ...defaultLayout(), objects: [{ id: 'o', kind: 'trailhead_sign', roomId: 'ranger-station', x: 1, y: 1 }] }, 'ranger'), ['blocker.list', 'blocker.raise', 'brief.submit', 'charter.read', 'crew.spawn_junior', 'delegate', 'dept.directory', 'dept.request', 'memory.recall', 'memory.write', 'recipe.run', 'venture.list', 'venture.propose', 'web.fetch', 'web.read', 'web.search', 'web.trends', 'work.check']);
   assert.deepEqual(childrenOf(defaultLayout(), 'ranger'), []);
 });
 
@@ -58,7 +58,7 @@ test('agents: create / get / update / remove with the hierarchy rules, Chief sin
   try {
     assert.equal(h.agents.list().length, 1);
     assert.equal(h.agents.list()[0].role, 'ranger');
-    assert.deepEqual(h.agents.list()[0].grants, ['charter.read', 'crew.spawn_junior', 'delegate', 'dept.directory', 'dept.request', 'memory.recall', 'memory.write', 'recipe.run', 'venture.list', 'venture.propose', 'work.check']);
+    assert.deepEqual(h.agents.list()[0].grants, ['blocker.list', 'blocker.raise', 'charter.read', 'crew.spawn_junior', 'delegate', 'dept.directory', 'dept.request', 'memory.recall', 'memory.write', 'recipe.run', 'venture.list', 'venture.propose', 'work.check']);
     await assert.rejects(h.agents.create({ name: 'X', role: 'superintendent', zoneId: 'ranger-station' }), /role must be one of/);
     await assert.rejects(h.agents.create({ name: '', role: 'ranger', zoneId: 'ranger-station' }), /name is required/);
     await assert.rejects(h.agents.create({ name: 'X', zoneId: 'nowhere' }), /unknown zone/);

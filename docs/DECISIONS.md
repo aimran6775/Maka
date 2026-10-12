@@ -2473,3 +2473,55 @@ asked for work its kit could not do. Infrastructure now gets the Trailhead sign 
 granted it should name the tool and what it would have told the park, because that is a gap
 for the owner to close rather than something to work around. That it reported the gap
 instead of inventing a status is the behaviour worth keeping.
+
+## D185 — when the park cannot, it says so from the Peak
+
+The owner: "It should be autonomous with human contact needed... If a human contact is
+needed, it msgs from the peak what is wrong with what. And how a human would be required
+for that to continue."
+
+Everything the park could already ask for was an **approval**. A Gate item asks "may I do
+this". A permission card asked "may I write this". Neither fits the case that actually
+stops an autonomous park: it is **stuck on something only a person can do**, and no
+approval would help. Stripe will not issue a key without a bank account, a legal name and
+an identity check. Canva returns HTTP 403 to every automated client. A Google Ads developer
+token is reviewed by hand over days. Those are jobs for the owner, not decisions.
+
+A blocker is a fourth thing, and the schema requires everything the owner needs to act
+without asking the park a question back:
+
+| | |
+| --- | --- |
+| `what` | what is wrong, with what — the thing and its exact error |
+| `needs` | what the owner must do, as steps they can follow |
+| `blocking` | what cannot continue until then |
+| `tried` | what the Ranger already tried, so they do not repeat it |
+
+A thesis of "it broke", an empty list of steps and a `blocking` of "stuff" are all refused:
+a message missing any of the four would send the owner back to the park to ask, which is
+the opposite of the point.
+
+**It does not stop the park.** The one piece of work that depends on it waits; every other
+department carries on, and the tool says so to the Ranger that raised it — "do what you can
+without this and say in your summary what you could not".
+
+**One message, however many Rangers hit the wall.** A blocker carries a stable `key`
+(`stripe-account`, `canva-licensing`). A second raise on an open key *joins* it: the Ranger
+is added to who is waiting and the owner hears nothing new, because ten Rangers hitting one
+missing key is one job. The card then says how many parts of the park are waiting on it.
+
+**Clearing it starts the work again.** The owner replies `/unblock stripe-account account
+open, key pasted` from their phone, or posts to `/api/blockers/:id/resolve`. That calls
+`chief.blockerCleared`, which briefs the Chief with what was blocked and what the owner
+said they did — and says plainly that a cleared blocker is not an instruction to resume:
+the Chief checks what the park has moved on to first.
+
+`/blocked` lists what the park is waiting on. Two additive contract widenings, as before:
+`blocker.updated` is a new event, and `channel.delivery.kind` gained `blocker_card` and
+`blocker_update`.
+
+Every Ranger has `blocker.raise` and `blocker.list` — a Ranger in any department can hit a
+wall only a person can clear, and reads the list first so it joins rather than reports
+again. A Junior has neither: its work comes from its own Ranger, which is who it tells.
+There is no API route that *raises* one; a blocker comes from a Ranger that is actually
+stuck, not from outside the park.

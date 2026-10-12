@@ -279,6 +279,24 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     runId: str,
     ventures: { type: 'array', items: { type: 'object', required: ['id', 'name'], additionalProperties: false, properties: { id: nonEmpty, name: nonEmpty, budgetUsd: num0, taskCount: int0, summary: str } } },
   }),
+  // Added v1 (D185): the park is stuck on something only a person can do, and says so from
+  // the Peak. Not an approval — a Gate item asks "may I", a blocker says "I cannot, and
+  // here is what you must do". 'joined' is a second Ranger hitting the same `key`, which
+  // adds them to who is waiting rather than telling the owner twice.
+  'blocker.updated': payload(['blockerId', 'key', 'change', 'status'], {
+    blockerId: nonEmpty,
+    key: nonEmpty,
+    change: { type: 'string', enum: ['raised', 'joined', 'resolved', 'cancelled'] },
+    status: { type: 'string', enum: ['open', 'resolved', 'cancelled'] },
+    title: str,
+    card: str, // what the owner reads: what is wrong, what to do, what it blocks
+    department: str,
+    ventureId: str,
+    by: str,
+    reason: str,
+    runId: str,
+    waiting: int0,
+  }),
   // Added v1 (D184): a department's standing work. 'ran' means a duty was handed to the
   // department's head (`workItemId` says which item); 'skipped' says why it was not, and is
   // emitted every time, because a duty that quietly did not run would read as work done.
@@ -576,7 +594,9 @@ export const PAYLOAD_SCHEMAS = deepFreeze({
     chatId: nonEmpty,
     // D171 widened this additively with the two permission kinds: a per-call
     // confirmation (fs.write) sent to a chat, and the word that closed it.
-    kind: { type: 'string', enum: ['gate_card', 'gate_update', 'permission_card', 'permission_update', 'reflection', 'digest', 'answer', 'notice', 'pairing'] },
+    // D185 widened this additively again with the two blocker kinds: the park telling the
+    // owner it is stuck on something only they can do, and the word that cleared it.
+    kind: { type: 'string', enum: ['gate_card', 'gate_update', 'permission_card', 'permission_update', 'reflection', 'digest', 'answer', 'notice', 'pairing', 'blocker_card', 'blocker_update'] },
     status: { type: 'string', enum: ['sent', 'failed'] },
     itemId: str,
     messageId: str,
