@@ -51,6 +51,7 @@ import { createRecipes } from './recipes/index.js';
 import { createVoice } from './voice.js';
 import { createChannels } from './channels/registry.js';
 import { createTelegramAdapter } from './channels/telegram.js';
+import { createIMessageAdapter } from './channels/imessage.js';
 import { createDiscordAdapter } from './channels/discord.js';
 import { createSlackAdapter } from './channels/slack.js';
 import { createMcpManager } from './mcp/manager.js';
@@ -188,6 +189,8 @@ export async function boot({ env = process.env, port = Number(env.PORT) || 8790,
   // Phase 4 step 1: the owner channels. Adapters (Telegram, Discord, Slack) register here
   // as they arrive; a channel whose token is not wired says so at the Peak.
   const channels = await createChannels({ bus, store, gateQueue, chief, reflect, away, env, keystorePath, log }).init();
+  // D170: iMessage first — the owner's channel on their own Mac, no bot, no token.
+  if (process.platform === 'darwin') channels.register(createIMessageAdapter({ log }));
   channels.register(createTelegramAdapter({ netGuard, log })); // step 2: TELEGRAM_BOT_TOKEN or the keystore
   channels.register(createDiscordAdapter({ netGuard, log })); // step 3: DISCORD_BOT_TOKEN
   channels.register(createSlackAdapter({ netGuard, log })); // step 3: SLACK_BOT_TOKEN + SLACK_APP_TOKEN

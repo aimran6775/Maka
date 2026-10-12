@@ -1,0 +1,145 @@
+// The iMessage owner channel (D170): the park talks to the owner through Messages on
+// their own Mac. The pure parts — the AppleScript it writes, the query it runs, the chat
+// kinds it reports — plus the adapter driven over a fake `exec`, so none of this needs
+// Messages, the database or macOS to be tested.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createIMessageAdapter, sendScript, osaQuote, inboundQuery, chatTypeOf, parseRows, DEFAULT_DB } from '../sidecar/channels/imessage.js';
+import { assertAdapter } from '../sidecar/channels/adapter.js';
+
+const quiet = { error() {}, info() {} };
+
+test('it is a well-formed adapter the registry will take', () => {
+  const a = createIMessageAdapter({});
+  assertAdapter(a);
+  assert.equal(a.name, 'imessage');
+  assert.equal(a.buttons, false, 'iMessage has no buttons, so cards go as text with slash commands');
+  assert.deepEqual(a.keys, ['imessageHandle']);
+  assert.match(DEFAULT_DB, /Library\/Messages\/chat\.db$/);
+});
+
+test('the AppleScript quotes whatever a Ranger wrote, so a message cannot become script', () => {
+  assert.equal(osaQuote('hello'), '"hello"');
+  assert.equal(osaQuote('say "hi"'), '"say \\"hi\\""');
+  assert.equal(osaQuote('back\\slash'), '"back\\\\slash"');
+  const nasty = 'Gate item" \n tell application "Finder" to delete';
+  const script = sendScript('me@example.com', nasty);
+  // The quote the message tried to close with is escaped, so the whole body stays one
+  // literal and the second `tell` is text, not a command.
+  assert.ok(script.includes('\\"'), 'the quote is escaped');
+  assert.equal(script.split('tell application "Messages"').length, 2, 'exactly one tell block, the one we wrote');
+  assert.ok(script.includes('send "Gate item\\" \n tell application \\"Finder\\" to delete"'));
+  assert.ok(script.includes('service type = iMessage'), 'sent over iMessage, not SMS');
+});
+
+test('the query asks only for messages that came in after a point, and never for our own', () => {
+  const q = inboundQuery(1234);
+  assert.match(q, /is_from_me = 0/, 'what the park sent is not inbound');
+  assert.match(q, /m\.ROWID > 1234/);
+  assert.match(q, /LIMIT 50/, 'a long backlog cannot flood one poll');
+  // The row id is a number in the SQL, never pasted text.
+  assert.match(inboundQuery('7; DROP TABLE message'), /m\.ROWID > 0/, 'a non-number becomes 0');
+  assert.match(inboundQuery(null), /m\.ROWID > 0/);
+});
+
+test('only a one-to-one conversation counts as private, so nothing else can pair', () => {
+  assert.equal(chatTypeOf(43), 'private');
+  assert.equal(chatTypeOf(45), 'group');
+  assert.equal(chatTypeOf(0), 'unknown');
+  assert.equal(chatTypeOf(undefined), 'unknown');
+});
+
+test('rows parse, and an empty result is not an error', () => {
+  assert.deepEqual(parseRows(''), []);
+  assert.deepEqual(parseRows('   '), []);
+  assert.deepEqual(parseRows('not json'), []);
+  assert.deepEqual(parseRows('[{"rowid":2,"text":"hi"}]'), [{ rowid: 2, text: 'hi' }]);
+});
+
+test('start reads where the history ends, then hands on only what arrives after it', async () => {
+  const calls = [];
+  // A stand-in for the Messages database that honours the watermark the adapter asks
+  // with, so a row is handed on once and only once however often the poll runs.
+  let table = [];
+  const exec = async (file, args) => {
+    calls.push({ file, args });
+    const sql = args[args.length - 1];
+    if (/MAX\(ROWID\)/.test(sql)) return '[{"rowid":100}]';
+    const after = Number((sql.match(/m\.ROWID > (\d+)/) || [])[1] || 0);
+    return JSON.stringify(table.filter((r) => r.rowid > after));
+  };
+  const got = [];
+  const a = createIMessageAdapter({ exec, pollMs: 5, log: quiet, clock: { now: () => 1 } });
+  const { detail } = await a.start({ keys: { imessageHandle: 'me@example.com' }, onInbound: (m) => got.push(m), log: quiet });
+  assert.match(detail, /me@example\.com/);
+  // Nothing from before the park started: the first query asks after row 100.
+  table = [
+    { rowid: 101, handle: 'me@example.com', text: 'hello park', chat: 'me@example.com', style: 43 },
+    { rowid: 102, handle: '+15550000', text: 'from a group', chat: 'chat9', style: 45 },
+  ];
+  await new Promise((r) => setTimeout(r, 40));
+  await a.stop();
+  assert.ok(calls.some((c) => /m\.ROWID > 100/.test(c.args[c.args.length - 1])), 'asked only for what came after the start');
+  assert.equal(got.length, 2, 'each message is handed on exactly once, however many polls ran');
+  assert.deepEqual(
+    got.map((m) => [m.chatId, m.userId, m.chatType, m.text]),
+    [['me@example.com', 'me@example.com', 'private', 'hello park'], ['+15550000', '+15550000', 'group', 'from a group']],
+  );
+  assert.deepEqual(got.map((m) => m.updateId), ['imessage:101', 'imessage:102'], 'a replayed row is droppable by the registry');
+  // The database is only ever opened read-only.
+  for (const c of calls) if (/sqlite3$/.test(c.file)) assert.ok(c.args.includes('-readonly'), 'chat.db is never opened for writing');
+});
+
+test('without Full Disk Access it refuses to start and says which setting to change', async () => {
+  const exec = async () => {
+    throw Object.assign(new Error('unable to open database file'), { code: 'EXEC' });
+  };
+  const a = createIMessageAdapter({ exec, log: quiet });
+  await assert.rejects(a.start({ keys: { imessageHandle: 'me@example.com' }, onInbound() {}, log: quiet }), (e) => {
+    assert.equal(e.code, 'NO_DISK_ACCESS');
+    assert.match(e.message, /Full Disk Access/);
+    return true;
+  });
+  // And with no handle at all it says that instead of pretending to watch.
+  await assert.rejects(createIMessageAdapter({ exec }).start({ keys: {}, onInbound() {}, log: quiet }), (e) => e.code === 'NO_HANDLE');
+});
+
+test('sending goes through osascript, and a refused automation prompt is named', async () => {
+  const sent = [];
+  const a = createIMessageAdapter({
+    exec: async (file, args) => {
+      sent.push({ file, args });
+      if (/Finder/.test(args[1] || '')) throw Object.assign(new Error('Not authorized to send Apple events'), { stderr: 'Not authorized to send Apple events to Messages. (-1743)' });
+      return '';
+    },
+    log: quiet,
+    clock: { now: () => 7 },
+  });
+  const res = await a.sendText('me@example.com', 'the Gate has an item');
+  assert.equal(res.messageId, 'imessage-7');
+  assert.match(sent[0].file, /osascript$/);
+  assert.match(sent[0].args[1], /send "the Gate has an item" to targetBuddy/);
+
+  const denied = createIMessageAdapter({
+    exec: async () => {
+      throw Object.assign(new Error('x'), { stderr: 'Not authorized to send Apple events to Messages. (-1743)' });
+    },
+    log: quiet,
+  });
+  await assert.rejects(denied.sendText('me@example.com', 'hi'), (e) => {
+    assert.equal(e.code, 'NO_AUTOMATION');
+    assert.match(e.message, /Privacy & Security → Automation/);
+    return true;
+  });
+});
+
+test('a Gate card goes out as the text a channel without buttons gets', async () => {
+  const sent = [];
+  const a = createIMessageAdapter({ exec: async (f, args) => (sent.push(args[1]), ''), log: quiet, clock: { now: () => 1 } });
+  await a.sendCard('me@example.com', { kind: 'action', title: 'fs.write wants to write outbox/plan.md', lines: ['Ranger: Ada', 'Leash: draft'], buttons: [{ label: 'Approve', data: 'approve:w1' }], itemId: 'w1' });
+  const script = sent[0];
+  assert.match(script, /fs\.write wants to write/);
+  assert.match(script, /Ada/);
+  // The buttons become the commands that do the same thing, since iMessage has none.
+  assert.match(script, /\/approve|approve/i);
+});

@@ -50,6 +50,8 @@ export const ENV_VARS = Object.freeze({
   backupKey: 'MAKA_BACKUP_KEY',
   // Phase 4 step 1: the owner channels' bot tokens (sidecar/channels/).
   telegramBot: 'TELEGRAM_BOT_TOKEN',
+  // D170: not a secret — the owner's own handle, so the park knows who to message.
+  imessageHandle: 'MAKA_IMESSAGE_HANDLE',
   discordBot: 'DISCORD_BOT_TOKEN',
   slackBot: 'SLACK_BOT_TOKEN',
   slackApp: 'SLACK_APP_TOKEN',

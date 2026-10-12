@@ -1942,3 +1942,38 @@ sees them.
 `test/tool-names.test.js` checks the names actually put on the wire against the two APIs'
 own patterns, which is the assertion that was missing: the old provider tests pinned
 `name: 'fs.read'` as the expected request body and so encoded the bug.
+
+## D170. The owner channel is iMessage, on the owner's own Mac
+
+The owner: "i dont want to use telegaram. i want to use imessage for anything." Right for
+this park — it is local and personal (no distribution, D-note on the handoff), and an
+owner channel that needs a bot registered with a third party, a token that can leak, and
+somebody else's servers holding every Gate card is the wrong shape for that.
+
+`sidecar/channels/imessage.js` is an adapter like the others, so the registry still owns
+pairing, authorisation and every event; only the transport changes:
+
+- **sending** is `osascript` telling Messages to send over the iMessage service. Every
+  argument goes through `execFile` as an array and every string through `osaQuote`, so a
+  Ranger's words land inside one AppleScript literal and can never become script.
+- **receiving** polls `~/Library/Messages/chat.db` read-only through the `sqlite3` macOS
+  ships, for rows after the one that was newest when the adapter started — so a restart
+  never replays the owner's message history into the Gate.
+- **no buttons**: iMessage has none, so a card goes as the text the registry renders for
+  button-less channels, with the slash commands that do what the buttons would.
+- **pairing** still needs a one-to-one chat: `chat.style` 43 is private, 45 is a group,
+  anything else unknown, and the registry refuses to pair with the last two (safety
+  2026-10-11 H1).
+
+`imessageHandle` is the only key, and unlike a bot token it is not a secret — it is the
+owner's own address, and it says who the park may talk to. It lives with the other keys
+so one place answers "is this channel configured".
+
+Two macOS permissions decide whether it works, and the adapter names the missing one
+rather than looking wired and going quiet: **Full Disk Access** for whatever runs the
+sidecar (without it chat.db cannot be opened and nothing is ever received) and
+**Automation → Messages** (the first send raises the prompt; until it is answered the
+send fails with AppleEvent timed out, which is what happened on the first real try).
+
+Telegram, Discord and Slack stay in the tree, unwired: the registry takes any adapter and
+there is no reason to delete working code the owner may want later.

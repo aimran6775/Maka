@@ -292,6 +292,8 @@ the owner's Mac.
 
 ## Phase 4 so far: beyond StarNet
 
+Owner channels: on a Mac the park talks to you through **iMessage** (D170) — no bot, no token: set `imessageHandle` to your own Apple ID address and the park sends through Messages and reads your replies from the Messages database. It needs Full Disk Access for whatever runs Maka, and Automation permission for Messages on the first send; the Peak says which one is missing. Telegram, Discord and Slack remain available and unwired.
+
 Step 1, the owner channels: `sidecar/channels/` holds the adapter contract and the
 registry. Click the Peak for "owner channels": make a pairing code (single use, ten
 minutes) and send it to the bot from your own private chat with it (a group cannot pair,
