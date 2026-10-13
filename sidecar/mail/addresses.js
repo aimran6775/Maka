@@ -27,6 +27,13 @@ export const STATION_LOCALS = Object.freeze({
   operations_support: 'support',
   research: 'research',
   product_listings: 'listings',
+  // D187: the four departments D178 added. Without these, `ensureStations` skipped them,
+  // so a camp with a head and standing duties had no address and nothing could reach it —
+  // the mailbox said so plainly, which is how it was noticed.
+  people: 'people',
+  business: 'business',
+  legal: 'legal',
+  infrastructure: 'infrastructure',
 });
 export const GATE_STATION = 'entrance-gate';
 export const SYSTEM_STATION = 'system';

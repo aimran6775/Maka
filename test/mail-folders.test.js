@@ -202,3 +202,26 @@ test('a reply to an archived thread brings the thread back to the inbox', async 
     await h.cleanup();
   }
 });
+
+// D187: every department has an address, or nothing can reach it.
+//
+// D178 added Sales, People, Business, Legal and Infrastructure as departments with heads
+// and standing duties, and the mail system did not know about four of them: `ensureStations`
+// maps a zone *kind* to a local part, and those kinds were not in the map. So the camps
+// existed, had heads, ran duties — and had no address. The mailbox said so for each of
+// them, which is how it was noticed.
+test('every department the park can build has a station address', async () => {
+  const { STATION_LOCALS } = await import('../sidecar/mail/addresses.js');
+  const { DEPARTMENT_KINDS, ZONE_LABELS } = await import('../shared/world.js');
+  for (const kind of DEPARTMENT_KINDS) {
+    assert.ok(STATION_LOCALS[kind], `the ${ZONE_LABELS[kind] || kind} has no address: nothing could reach it`);
+    assert.match(STATION_LOCALS[kind], /^[a-z][a-z0-9-]*$/, `${kind}'s local part must be a usable address`);
+  }
+  // And the park's own places keep theirs.
+  for (const kind of ['mountain_peak', 'ranger_station', 'visitor_center']) {
+    assert.ok(STATION_LOCALS[kind], `${kind} has no address`);
+  }
+  // No two departments share one, or their mail would land in the same box.
+  const locals = DEPARTMENT_KINDS.map((k) => STATION_LOCALS[k]);
+  assert.equal(new Set(locals).size, locals.length, 'each department needs its own address');
+});
