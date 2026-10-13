@@ -202,3 +202,49 @@ test('classification: worker first, judge when unsure or unreadable, unclassifie
   assert.match(r.reason, /worker unavailable: ollama down; judge unavailable: anthropic down/);
   assert.equal(events.at(-1).payload.by, 'none');
 });
+
+// D190: mail keeps arriving, poll after poll.
+//
+// Found in production the first time the park ever had inbound mail. Resend lists received
+// mail NEWEST first and `after` is its pagination cursor walking *older* — not "newer than
+// this". The park stored the newest id it had seen and asked for everything after it, which
+// the provider read as "older than the newest" and answered with nothing. So the first test
+// message landed and the second never did, and no test caught it because the fake had
+// `after` backwards: it returned newer, which is what the park wanted to believe.
+test('a second message arrives, and a third, and nothing is ingested twice', async () => {
+  const h = await setup();
+  try {
+    // First arrival, on a park with no cursor at all.
+    h.rs.receive({ id: 'in-1', from: 'first@example.com', to: ['support@makapark.com'], subject: 'One', text: 'the first' });
+    assert.deepEqual(await h.mail.poll(), { received: 1 });
+    assert.equal(h.mail.mailStore.byResendId('in-1').subject, 'One');
+
+    // The one that used to vanish. The cursor now means "I have everything to here".
+    h.rs.receive({ id: 'in-2', from: 'second@example.com', to: ['support@makapark.com'], subject: 'Two', text: 'the second' });
+    assert.deepEqual(await h.mail.poll(), { received: 1 }, 'the second message arrives');
+    assert.equal(h.mail.mailStore.byResendId('in-2').subject, 'Two');
+
+    // And a third, and two at once.
+    h.rs.receive({ id: 'in-3', from: 'third@example.com', to: ['support@makapark.com'], subject: 'Three', text: 'the third' });
+    h.rs.receive({ id: 'in-4', from: 'fourth@example.com', to: ['support@makapark.com'], subject: 'Four', text: 'the fourth' });
+    assert.deepEqual(await h.mail.poll(), { received: 2 });
+
+    // Polling again with nothing new brings nothing, rather than everything again.
+    assert.deepEqual(await h.mail.poll(), { received: 0 });
+    const all = h.mail.mailStore.list({ direction: 'in', limit: 50 });
+    assert.equal(all.length, 4, 'four messages, each held once');
+    assert.equal(new Set(all.map((m) => m.resendId)).size, 4);
+
+    // Oldest first, so a reply can find the message it answers. The store keeps the index
+    // oldest-first, so reading it back in order shows the order they were ingested.
+    assert.deepEqual([...all].reverse().map((m) => m.subject), ['One', 'Two', 'Three', 'Four']);
+
+    // A cursor lost to a restore does not duplicate everything: the messages themselves say
+    // what the park already holds.
+    await h.mail.mailStore.setCursor(null);
+    assert.deepEqual(await h.mail.poll(), { received: 0 }, 'nothing is ingested twice');
+    assert.equal(h.mail.mailStore.list({ direction: 'in', limit: 50 }).length, 4);
+  } finally {
+    await h.cleanup();
+  }
+});

@@ -2647,3 +2647,60 @@ injected into it, and the plain-text version stays one click away.
 Still not there, and said rather than implied: **sending an attachment**. `mail.send` has no
 attachment field and Resend's send API would need one plumbed through the policy and the
 ceilings; reading them is done, sending them is not.
+
+## D189 — attachments, both ways
+
+Reading them was done (D188); sending them was not. Two routes in, because the two senders
+are different:
+
+- **A Ranger** names files by **workspace path** (`mail.send` `attach`). The park reads each
+  through `resolveForAgent`, the same sandbox every other read uses, so a Ranger can only
+  mail a file it could already read — its own workspace or its department's folder (D178).
+  It never pastes bytes.
+- **The owner's client** reads the files in the browser and carries them as base64.
+
+Both go through `normalizeAttachments`, which caps the count at ten and the total at 10 MB
+**before the request is built**: a provider rejection halfway through a send is worse than a
+refusal before it. The sent record names the filenames and sizes and never the bytes — the
+park's own copy of a file it sent is not worth the disk, and the Sent folder showing what
+was attached is what a reader wants.
+
+Two bugs found by doing it rather than reading it. The base64 check was a character-set
+test, and `/` and `+` are base64 characters, so `/etc/passwd` passed it; content is now
+proven base64 by decoding and re-encoding it. And Compose sent `station` where the API wants
+`from`, so every message from the client would have been refused with "from, to and subject
+are required" — the test that caught it was sending a real message.
+
+Still not there: a filename is checked, never sanitised. `../escape.md` is refused rather
+than quietly turned into `escape.md`, because a sender who typed a path meant something by
+it and the park should not guess what.
+
+## D190 — inbound mail arrived once and then never again
+
+The worst kind of bug: one that only appears once the feature works.
+
+Inbound mail was proven end to end — `peak@` to `research@` went out through Resend, back
+through the new MX, and landed with `direction: 'in'`, `status: 'received'`. The second
+message never came. Resend said it had **delivered** it, and its own inbound list held it.
+
+Resend lists received mail **newest first**, and `after` is its pagination cursor walking
+**older** — not "newer than this". The park stored the newest id it had seen and asked for
+everything after it, which the provider read as "older than the newest" and answered with
+nothing. Verified against the live API: with the cursor at the only older message,
+`?after=<that id>` returns zero rows while a bare list returns both.
+
+So inbound worked exactly once, on the first poll, when there was no cursor to send.
+
+**No test caught it because the fake had the parameter backwards.** `after` in
+`test/helpers/fake-resend.js` returned the *newer* slice — which is what the park wanted to
+believe — so the inverted cursor passed every run. This is the same shape as D169 (dotted
+tool names the fakes accepted) and D175 (empty turns the fakes accepted): a fake that
+agrees with the code instead of with the provider.
+
+Fixed on both sides. The fake now paginates the way the provider does, and each arrival gets
+a later timestamp than the last so "newest first" is unambiguous — identical timestamps let
+a poll that depended on list order pass by accident, which is how the first attempt at this
+fix still failed. The poll walks back from the newest until it meets something it already
+holds — by cursor **or** by the message's own id, so a cursor lost to a restore does not
+re-ingest everything — then ingests oldest-first, sorted by each message's own date rather
+than by the list's order, so a reply always finds the message it answers.

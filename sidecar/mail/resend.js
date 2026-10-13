@@ -243,21 +243,46 @@ export function createMailSync({ store, addresses, getResend, bus, clock = { now
       state.polling = true;
       try {
         const resend = await getResend();
-        let after = store.cursor().received || undefined;
-        let received = 0;
+        // D190: Resend lists received mail NEWEST first, and `after` is its pagination
+        // cursor walking *older* — not "newer than this". The park stored the newest id it
+        // had seen and asked for everything after it, which Resend read as "older than the
+        // newest", and answered with nothing. So inbound mail arrived on the first poll
+        // (when there was no cursor) and never again. It took having real inbound mail to
+        // see it: the first test message landed, the second never did.
+        //
+        // The shape that works with a newest-first list: walk back until something already
+        // held turns up, then ingest what is new oldest-first so a reply can find the
+        // message it answers.
+        const seen = store.cursor().received || null;
+        const fresh = [];
         let newest = null;
-        for (let page = 0; page < 20; page++) {
+        let after;
+        let caughtUp = false;
+        for (let page = 0; page < 20 && !caughtUp; page++) {
           const list = await resend.listReceived({ after, limit: 100 });
-          const items = [...(list.data || [])].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+          const items = list.data || []; // newest first, as the provider sends it
           if (!items.length) break;
+          if (!newest) newest = items[0].id;
           for (const item of items) {
-            const full = await resend.getReceived(item.id);
-            const rec = await api.ingest(full, { resend });
-            if (rec) received += 1;
-            newest = item.id;
+            // Two ways to know we have caught up: the cursor, and the message itself. The
+            // second covers a cursor lost to a restore or a message ingested by the webhook.
+            if ((seen && item.id === seen) || store.byResendId(item.id)) {
+              caughtUp = true;
+              break;
+            }
+            fresh.push(item);
           }
-          if (!list.has_more) break;
-          after = newest;
+          if (caughtUp || !list.has_more) break;
+          after = items[items.length - 1].id; // the next page is older
+        }
+        // Ingest oldest first, by each message's own date rather than by the list's order,
+        // so a reply always finds the message it answers however the provider paginates.
+        fresh.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+        let received = 0;
+        for (const { id } of fresh) {
+          const full = await resend.getReceived(id);
+          const rec = await api.ingest(full, { resend });
+          if (rec) received += 1;
         }
         if (newest) await store.setCursor(newest);
         state.lastPollAt = clock.now();

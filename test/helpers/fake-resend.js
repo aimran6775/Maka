@@ -73,13 +73,18 @@ export async function startFakeResend({ apiKey = 're_test_key', domains = [] } =
       const after = url.searchParams.get('after');
       const before = url.searchParams.get('before');
       let list = [...state.received].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)); // newest first
+      // D190: the real API's pagination, which this fake had backwards. In a newest-first
+      // list `after` means "the page after this one", which is OLDER, and `before` means
+      // newer. The fake returned the opposite, so the park's inverted cursor passed every
+      // test and then received exactly one message in production and never another.
+      // Verified against the live API: ?after=<oldest id> answers nothing.
       if (after) {
         const idx = list.findIndex((x) => x.id === after);
-        if (idx !== -1) list = list.slice(0, idx);
+        if (idx !== -1) list = list.slice(idx + 1);
       }
       if (before) {
         const idx = list.findIndex((x) => x.id === before);
-        if (idx !== -1) list = list.slice(idx + 1);
+        if (idx !== -1) list = list.slice(0, idx);
       }
       const page = list.slice(0, limit);
       return send(200, { object: 'list', has_more: list.length > page.length, data: page.map(({ html, text, headers, raw, authentication, html_format, ...rest }) => ({ ...rest, attachments: (rest.attachments || []).map(({ id, filename, content_type, content_id, content_disposition, size }) => ({ id, filename, content_type, content_id, content_disposition, size })) })) });
@@ -109,7 +114,10 @@ export async function startFakeResend({ apiKey = 're_test_key', domains = [] } =
     state,
     // Makes the fake report an email as received; attachments get bytes to download.
     receive(email, files = {}) {
-      const e = receivedEmail(email);
+      // D190: each arrival gets a later timestamp than the last, so "newest first" is
+      // unambiguous the way it is at the provider. Identical timestamps let a poll that
+      // depended on list order pass by accident.
+      const e = receivedEmail({ createdAt: new Date(Date.UTC(2026, 0, 1) + state.received.length * 60_000).toISOString(), ...email });
       for (const a of e.attachments) if (files[a.id]) state.files.set(a.id, Buffer.from(files[a.id]));
       state.received.push(e);
       return e;
