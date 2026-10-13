@@ -519,3 +519,86 @@ body.mailbox-open #park { filter: saturate(0.5) brightness(0.5); }
   padding: 0 5px;
 }
 .nav-mail:not(.has-unread) .nav-mail-count { display: none; }
+
+/* D188: the gaps that made it a viewer rather than a mail client — preview text, ticking
+   rows for a bulk action, custom labels, the bulk bar, HTML bodies in a sandboxed frame,
+   and attachments you can actually open. */
+.mb-row { grid-template-columns: 20px 20px 1fr; align-items: start; }
+.mb-row.ticked { background: var(--mb-bough); border-left-color: var(--warn); }
+.mb-tick { margin: 2px 0 0; accent-color: var(--mb-moss); cursor: pointer; }
+.mb-row-open {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: baseline;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.mb-row-open:focus-visible { outline: 2px solid var(--mb-moss); outline-offset: 2px; }
+.mb-snippet { color: var(--mb-fade); font-weight: 400; }
+.mb-row.unread .mb-snippet { color: var(--mb-fade); }
+.mb-row-tags { display: flex; gap: 5px; flex: none; }
+.mb-tag.label { background: none; color: var(--mb-lichen); border: 1px solid var(--mb-moss); }
+
+.mb-status { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.mb-sel-count { font: 600 11px var(--mono); color: var(--mb-moss); }
+.mb-chip {
+  padding: 3px 9px;
+  background: var(--mb-bough);
+  border: 1px solid var(--mb-edge);
+  border-radius: 2px;
+  color: var(--mb-bone);
+  font: 11px var(--sans);
+  cursor: pointer;
+}
+.mb-chip:hover { border-color: var(--mb-moss); }
+.mb-chip:focus-visible { outline: 2px solid var(--mb-moss); outline-offset: 1px; }
+.mb-chip.ghost { background: none; color: var(--mb-fade); }
+.mb-chip.danger, .mb-btn.danger { border-color: var(--error); color: var(--error); }
+.mb-chip.danger:hover, .mb-btn.danger:hover { background: var(--error); color: var(--mb-bark); }
+
+.mb-msg-html {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid var(--mb-edge);
+  border-radius: 2px;
+  background: #fff;
+}
+.mb-plain { margin-top: 12px; }
+.mb-plain summary { font: 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--mb-fade); cursor: pointer; }
+.mb-plain summary:focus-visible { outline: 2px solid var(--mb-moss); outline-offset: 2px; }
+.mb-spam-mark {
+  display: inline-block;
+  font: 10px var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--error);
+  border: 1px solid var(--error);
+  border-radius: 2px;
+  padding: 1px 6px;
+  margin-bottom: 10px;
+}
+.mb-attach { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.mb-attach-head { font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--mb-fade); }
+.mb-attach-link {
+  font: 11.5px var(--mono);
+  color: var(--mb-lichen);
+  background: var(--mb-bough);
+  border: 1px solid var(--mb-edge);
+  border-radius: 2px;
+  padding: 3px 8px;
+  text-decoration: none;
+}
+.mb-attach-link:hover { border-color: var(--mb-moss); color: var(--mb-moss); }
+.mb-attach-link:focus-visible { outline: 2px solid var(--mb-moss); outline-offset: 1px; }
+
+@media (max-width: 720px) {
+  .mb-row-open { grid-template-columns: 1fr auto; }
+  .mb-row-open .mb-from-cell { display: none; }
+}

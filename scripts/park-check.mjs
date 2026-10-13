@@ -150,6 +150,10 @@ async function main() {
         status: (mb.querySelector('.mb-status') || {}).textContent || '',
         keys: mb.querySelectorAll('.mb-key').length,
         composeDisabled: (mb.querySelector('.mb-btn.primary') || {}).disabled === true,
+        // D188: the parts that make it a mail client rather than a viewer.
+        ticks: mb.querySelectorAll('.mb-tick').length,
+        rows: mb.querySelectorAll('.mb-row').length,
+        hasSnippetSlot: Boolean(mb.querySelector('.mb-row-open')),
       });
     })()`);
     return out && out !== '""' ? JSON.parse(JSON.parse(JSON.stringify(out))) : 0;
@@ -158,10 +162,12 @@ async function main() {
     console.log(`park mail: ${mail.stations.length} mailbox(es) [${mail.stations.slice(0, 4).join(', ')}…], folders [${mail.folders.join(', ')}], ${mail.keys} keys listed`);
     console.log(`park mail status line: ${JSON.stringify(mail.status)}`);
     console.log(`park mail compose disabled without a provider key: ${mail.composeDisabled}`);
+    console.log(`park mail rows: ${mail.rows}, tick boxes: ${mail.ticks}, row layout: ${mail.hasSnippetSlot ? 'present' : 'missing'}`);
   }
   await evaluate("document.querySelector('.mailbox').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
   const closed = await until(async () => ((await evaluate("document.querySelector('.mailbox').hidden ? '1' : ''")) ? 1 : 0), 6000).catch(() => 0);
-  const mailOk = Boolean(mail && mail.open && mail.folders.length === 7 && mail.stations.length >= 1 && closed);
+  // D188: eight folders now (Spam joined), and a tick box on every row.
+  const mailOk = Boolean(mail && mail.open && mail.folders.length === 8 && mail.stations.length >= 1 && mail.ticks === mail.rows && closed);
   console.log('park mail:', mailOk ? 'OK' : 'NOT OK');
 
   console.log('console errors:', errors.length ? errors : 'none');

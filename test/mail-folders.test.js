@@ -35,7 +35,7 @@ async function store() {
 }
 
 test('a folder is a question asked of a message, and the set is what a mailbox needs', () => {
-  assert.deepEqual([...FOLDER_IDS], ['inbox', 'starred', 'sent', 'drafts', 'archive', 'trash', 'all']);
+  assert.deepEqual([...FOLDER_IDS], ['inbox', 'starred', 'sent', 'drafts', 'spam', 'archive', 'trash', 'all']);
   for (const f of FOLDERS) {
     assert.ok(f.label && typeof f.match === 'function', `${f.id} needs a label and a rule`);
   }
@@ -73,7 +73,7 @@ test('where each message belongs', () => {
   // happens to be starred or archived.
   const trashed = msg({ labels: ['trashed', 'starred', 'archived'] });
   assert.ok(inFolder(trashed, 'trash'));
-  for (const id of ['inbox', 'starred', 'sent', 'drafts', 'archive', 'all']) {
+  for (const id of ['inbox', 'starred', 'sent', 'drafts', 'spam', 'archive', 'all']) {
     assert.ok(!inFolder(trashed, id), `trashed mail is not in ${id}`);
   }
 
@@ -224,4 +224,74 @@ test('every department the park can build has a station address', async () => {
   // No two departments share one, or their mail would land in the same box.
   const locals = DEPARTMENT_KINDS.map((k) => STATION_LOCALS[k]);
   assert.equal(new Set(locals).size, locals.length, 'each department needs its own address');
+});
+
+// D188: the gaps between this and a mail client people recognise.
+test('spam is the classifier\'s reading, and it keeps spam out of the inbox', () => {
+  const spam = msg({ classification: 'spam' });
+  assert.ok(inFolder(spam, 'spam'));
+  assert.ok(!inFolder(spam, 'inbox'), 'the inbox is what is left after spam');
+  // A message the owner filed or binned is where they put it, not back in spam.
+  assert.ok(!inFolder(msg({ classification: 'spam', labels: ['archived'] }), 'spam'));
+  assert.ok(!inFolder(msg({ classification: 'spam', labels: ['trashed'] }), 'spam'));
+  // Mail nobody has classified is in the inbox: an unread classifier is not a reason to
+  // hide someone's mail.
+  assert.ok(inFolder(msg({ classification: null }), 'inbox'));
+  assert.ok(inFolder(msg({ classification: 'customer' }), 'inbox'));
+  // The park's own sent mail is never spam.
+  assert.ok(!inFolder(msg({ direction: 'out', status: 'sent', classification: 'spam' }), 'spam'));
+});
+
+test('a custom label is a view of its own, and the reserved ones are not offered as labels', async () => {
+  const { inLabel } = await import('../shared/mail-folders.js');
+  assert.ok(inLabel(msg({ labels: ['suppliers'] }), 'suppliers'));
+  assert.ok(!inLabel(msg({ labels: ['suppliers'] }), 'customers'));
+  assert.ok(!inLabel(msg({ labels: ['suppliers', 'trashed'] }), 'suppliers'), 'binned mail leaves its labels behind');
+  assert.ok(!inLabel(msg({ labels: [] }), ''), 'no label is not every label');
+
+  const h = await store();
+  try {
+    await h.s.add(msg({ station: 'finance', labels: ['suppliers', 'read'] }));
+    await h.s.add(msg({ station: 'finance', date: 2000, labels: ['suppliers'] }));
+    await h.s.add(msg({ station: 'finance', date: 3000, labels: ['urgent', 'starred'] }));
+    const labels = h.s.labels({ station: 'finance' });
+    assert.deepEqual(labels, [{ label: 'suppliers', messages: 2 }, { label: 'urgent', messages: 1 }], 'in order, counted, and read/starred are the folders\' own');
+    assert.equal(h.s.threads({ station: 'finance', label: 'suppliers' }).length, 2);
+    assert.equal(h.s.threads({ station: 'finance', label: 'nothing' }).length, 0);
+    assert.deepEqual(h.s.labels({ station: 'sales' }), []);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('a row carries the newest message\'s preview text', async () => {
+  const h = await store();
+  try {
+    const a = await h.s.add(msg({ station: 'finance', subject: 'Order 12', text: 'The first word on this', messageId: '<a@x>' }));
+    await h.s.add(msg({ station: 'finance', subject: 'Re: Order 12', text: 'The latest word on this', date: 9000, messageId: '<b@x>', inReplyTo: '<a@x>' }));
+    const [t] = h.s.threads({ station: 'finance', folder: 'inbox' });
+    assert.equal(t.count, 2);
+    assert.match(t.snippet, /The latest word/, 'the newest, which is what a reader wants');
+    assert.ok(Array.isArray(t.ids) && t.ids.length === 2, 'and the ids, so an action needs no second fetch');
+    assert.ok(t.ids.includes(a.id));
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('throwing mail away for good is only possible from the bin', async () => {
+  const h = await store();
+  try {
+    const m = await h.s.add(msg({ station: 'finance' }));
+    // There is no path from the inbox straight to gone — that is what a bin is for.
+    await assert.rejects(h.s.purge(m.id), (e) => e.code === 'CONFLICT' && /move it there first/.test(e.message));
+    await h.s.setLabels(m.id, { add: ['trashed'] });
+    assert.deepEqual(await h.s.purge(m.id), { purged: m.id });
+    assert.equal(h.s.folders({ station: 'finance' }).trash.threads, 0);
+    assert.equal(h.s.summary(m.id), null, 'and it is gone from the index');
+    assert.equal(await h.s.get(m.id), null, 'and from disk');
+    await assert.rejects(h.s.purge(m.id), (e) => e.code === 'NOT_FOUND');
+  } finally {
+    await h.cleanup();
+  }
 });

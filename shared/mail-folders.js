@@ -21,7 +21,7 @@ export const FOLDERS = Object.freeze([
     id: 'inbox',
     label: 'Inbox',
     // What arrived and has not been filed away.
-    match: (m) => m.direction === 'in' && m.status !== 'draft' && !has(m, 'archived') && !has(m, 'trashed'),
+    match: (m) => m.direction === 'in' && m.status !== 'draft' && m.classification !== 'spam' && !has(m, 'archived') && !has(m, 'trashed'),
     unreadCounts: true,
   },
   {
@@ -38,6 +38,16 @@ export const FOLDERS = Object.freeze([
     id: 'drafts',
     label: 'Drafts',
     match: (m) => m.status === 'draft' && !has(m, 'trashed'),
+  },
+  {
+    // D188: the classifier already sorts inbound mail into customer / supplier / platform
+    // notice / spam (sidecar/mail/classify.js) and nothing was looking at the answer. Spam
+    // is a reading of the message, not a label someone applied, so it is matched on the
+    // classification — and a message the owner has filed or binned is wherever they put it,
+    // not back here.
+    id: 'spam',
+    label: 'Spam',
+    match: (m) => m.classification === 'spam' && m.direction === 'in' && !has(m, 'trashed') && !has(m, 'archived'),
   },
   {
     id: 'archive',
@@ -88,6 +98,12 @@ export const MOVES = Object.freeze({
   archive: { add: ['archived'], remove: ['trashed'] },
   trash: { add: ['trashed'], remove: [] },
 });
+
+// D188: a custom label is a view like a folder, but there is one per label rather than a
+// fixed list, so it is asked for by name.
+export function inLabel(m, label) {
+  return Boolean(label) && has(m, label) && !has(m, 'trashed');
+}
 
 export function moveFor(folderId) {
   return MOVES[folderId] || null;

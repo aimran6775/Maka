@@ -17,7 +17,7 @@
 
 import { el, setChildren } from './windows.js';
 import { FOLDERS } from '../../shared/mail-folders.js';
-import { stationsOf, addressFor, fold, fullDate, shortAddress, nextIndex, quoteReply, replyFields } from './mailbox-model.js';
+import { stationsOf, addressFor, fold, fullDate, shortAddress, nextIndex, quoteReply, replyFields, forwardFields, cleanLabel } from './mailbox-model.js';
 
 const KEYS = [
   ['j / ↓', 'next thread'],
@@ -33,6 +33,9 @@ const KEYS = [
   ['/', 'search'],
   ['g then i', 'inbox'],
   ['m', 'mark read / unread'],
+  ['f', 'forward'],
+  ['x', 'tick for a bulk action'],
+  ['l', 'label the thread'],
 ];
 
 export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
@@ -48,6 +51,9 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
   let query = '';
   let gPending = false;
   let composing = null; // { to, cc, subject, text, replyTo }
+  let selected = new Set(); // D188: thread ids ticked for a bulk action
+  let labels = []; // D188: the custom labels in use, for the rail and the menu
+  let labelView = null; // when set, the list shows one label rather than a folder
 
   const root = el('div', { class: 'mailbox', hidden: true, tabindex: '-1', role: 'dialog', 'aria-label': 'Park mail' });
   const railStations = el('div', { class: 'mb-stations' });
@@ -124,18 +130,20 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
 
   async function load() {
     if (!open) return;
-    const q = new URLSearchParams({ folder: folderId, limit: '100' });
+    const q = new URLSearchParams(labelView ? { label: labelView, limit: '100' } : { folder: folderId, limit: '100' });
     if (station) q.set('station', station);
     if (query) q.set('q', query);
     try {
-      const [t, c, a] = await Promise.all([
+      const [t, c, a, l] = await Promise.all([
         read(`/api/mail/threads?${q}`),
         read(`/api/mail/folders?${station ? `station=${encodeURIComponent(station)}` : ''}`),
         addresses.length ? Promise.resolve(addresses) : read('/api/mail/addresses'),
+        read(`/api/mail/labels?${station ? `station=${encodeURIComponent(station)}` : ''}`),
       ]);
       threads = Array.isArray(t) ? t : [];
       counts = c || {};
       addresses = Array.isArray(a) ? a : (a && a.addresses) || [];
+      labels = Array.isArray(l) ? l : [];
       rows = fold(threads, { own: ownAddresses() });
       if (cursor >= rows.length) cursor = rows.length - 1;
       render();
@@ -162,17 +170,55 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
     }
   }
 
-  async function act(labels) {
+  // D188: acts on every ticked thread, or on the one under the cursor when none is ticked.
+  // The ids come with the row, so a bulk archive is one pass and no extra fetches.
+  function targetRows() {
+    if (selected.size) return rows.filter((r) => selected.has(r.threadId));
     const row = rows[cursor];
-    if (!row) return;
-    const msgs = thread && thread.length && thread[0].threadId === row.threadId ? thread : await read(`/api/mail/threads?threadId=${encodeURIComponent(row.threadId)}`);
+    return row ? [row] : [];
+  }
+
+  async function act(change) {
+    const targets = targetRows();
+    if (!targets.length) return;
+    const ids = [...new Set(targets.flatMap((r) => r.ids))];
+    if (!ids.length) return;
     try {
-      await Promise.all((msgs || []).map((m) => write(`/api/mail/messages/${encodeURIComponent(m.id)}/labels`, labels)));
+      await Promise.all(ids.map((id) => write(`/api/mail/messages/${encodeURIComponent(id)}/labels`, change)));
+      selected = new Set();
       thread = null;
       await load();
     } catch (err) {
       onFlash(err);
     }
+  }
+
+  // D188: gone for good, and only from the bin — the store refuses anything else.
+  async function purge() {
+    const targets = targetRows();
+    const ids = [...new Set(targets.flatMap((r) => r.ids))];
+    if (!ids.length) return;
+    try {
+      await Promise.all(ids.map((id) => write(`/api/mail/messages/${encodeURIComponent(id)}/purge`, {})));
+      selected = new Set();
+      thread = null;
+      await load();
+      onFlash(`${ids.length} message${ids.length === 1 ? '' : 's'} deleted for good`, 'ok');
+    } catch (err) {
+      onFlash(err);
+    }
+  }
+
+  // D188: put a label on what is ticked, or take it off.
+  async function label() {
+    const targets = targetRows();
+    if (!targets.length) return;
+    const typed = window.prompt('Label these as… (existing: ' + (labels.map((l) => l.label).join(', ') || 'none yet') + ')');
+    if (typed === null) return;
+    const clean = cleanLabel(typed);
+    if (!clean) return onFlash(`"${typed}" is not a usable label: letters, digits, dots and dashes, and not one the folders own.`);
+    const already = targets.every((r) => (r.labels || []).includes(clean));
+    return act(already ? { remove: [clean] } : { add: [clean] });
   }
 
   async function sync() {
@@ -263,7 +309,57 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
     startCompose({ to: f.to.join(', '), cc: f.cc.join(', '), subject: f.subject, text: quoteReply(last), replyTo: last.messageId || '' });
   }
 
+  // D188: forwarding. It goes to nobody yet and carries the message as a quoted block, so
+  // whoever receives it sees what the park saw.
+  function forward() {
+    const msgs = thread || [];
+    const last = msgs[msgs.length - 1];
+    if (!last) return;
+    const f = forwardFields(last);
+    startCompose({ to: '', cc: '', subject: f.subject, text: f.text });
+  }
+
+  // D188: the HTML body, if the message has one worth showing. A body that is only a
+  // wrapper round the same text is not worth a frame.
+  function bodyHtml(m) {
+    const html = m && typeof m.html === 'string' ? m.html.trim() : '';
+    if (!html) return '';
+    return html;
+  }
+
   // ---- render --------------------------------------------------------------
+
+  // D188: one row, extracted so the bulk bar can redraw the list without redrawing
+  // the whole mailbox.
+  function rowNodes() {
+    return rows.map((r, i) => el('div', {
+      class: `mb-row${r.unread ? ' unread' : ''}${i === cursor ? ' on' : ''}${selected.has(r.threadId) ? ' ticked' : ''}`,
+      role: 'listitem',
+    },
+      // D188: ticking a row for a bulk action, the way a mail client does.
+      el('input', {
+        class: 'mb-tick', type: 'checkbox', checked: selected.has(r.threadId) || undefined,
+        'aria-label': `Tick “${r.subject}”`,
+        onchange: (e) => { if (e.target.checked) selected.add(r.threadId); else selected.delete(r.threadId); render(); },
+      }),
+      el('button', { class: `mb-star${r.starred ? ' on' : ''}`, title: r.starred ? 'Starred' : 'Not starred', text: r.starred ? '★' : '☆', onclick: () => { const keep = selected; selected = new Set(); cursor = i; void act({ [r.starred ? 'remove' : 'add']: ['starred'] }).then(() => { selected = keep; }); } }),
+      el('button', { class: 'mb-row-open', onclick: () => void openThread(i) },
+        el('span', { class: 'mb-from-cell', text: r.from }),
+        el('span', { class: 'mb-subject' },
+          el('span', { class: 'mb-subject-text', text: r.subject }),
+          r.count > 1 ? el('span', { class: 'mb-thread-count', text: String(r.count) }) : null,
+          // D188: the preview text, which is most of what a list is for.
+          r.snippet ? el('span', { class: 'mb-snippet', text: `— ${r.snippet}` }) : null,
+        ),
+        el('span', { class: 'mb-row-tags' },
+          r.venture ? el('span', { class: 'mb-tag', text: r.venture }) : null,
+          r.kind === 'briefing' ? el('span', { class: 'mb-tag soft', text: 'briefing' }) : null,
+          ...(r.labels || []).map((l) => el('span', { class: 'mb-tag label', text: l })),
+        ),
+        el('span', { class: 'mb-when', text: r.when }),
+      ),
+    ));
+  }
 
   function render() {
     const list = stations();
@@ -288,17 +384,44 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
       ...FOLDERS.map((f) => {
         const c = counts[f.id] || { threads: 0, unread: 0 };
         return el('button', {
-          class: `mb-folder${f.id === folderId ? ' on' : ''}${c.unread ? ' has-unread' : ''}`,
-          onclick: () => { folderId = f.id; thread = null; cursor = -1; void load(); },
+          class: `mb-folder${!labelView && f.id === folderId ? ' on' : ''}${c.unread ? ' has-unread' : ''}`,
+          onclick: () => { folderId = f.id; labelView = null; thread = null; cursor = -1; selected = new Set(); void load(); },
         },
           el('span', { text: f.label }),
           el('span', { class: 'mb-count', text: c.unread ? String(c.unread) : c.threads ? String(c.threads) : '' }),
         );
       }),
+      // D188: the labels this department has actually used. Derived from the mail, so a
+      // label cannot sit in the rail without being on something.
+      ...(labels.length ? [el('div', { class: 'mb-rail-head', text: 'Labels' })] : []),
+      ...labels.map((l) => el('button', {
+        class: `mb-folder${labelView === l.label ? ' on' : ''}`,
+        onclick: () => { labelView = l.label; thread = null; cursor = -1; selected = new Set(); void load(); },
+      },
+        el('span', { text: l.label }),
+        el('span', { class: 'mb-count', text: String(l.messages) }),
+      )),
     );
 
     const here = list.find((s) => s.id === station);
     const mine = addressFor(addresses, station);
+    if (selected.size) {
+      // D188: with things ticked the status line becomes the bulk action bar.
+      setChildren(statusEl,
+        el('span', { class: 'mb-sel-count', text: `${selected.size} selected` }),
+        el('button', { class: 'mb-chip', text: 'Read', onclick: () => void act({ add: ['read'] }) }),
+        el('button', { class: 'mb-chip', text: 'Unread', onclick: () => void act({ remove: ['read'] }) }),
+        el('button', { class: 'mb-chip', text: 'Star', onclick: () => void act({ add: ['starred'] }) }),
+        el('button', { class: 'mb-chip', text: 'Label…', onclick: () => void label() }),
+        el('button', { class: 'mb-chip', text: 'Archive', onclick: () => void act({ add: ['archived'] }) }),
+        el('button', { class: 'mb-chip', text: 'Trash', onclick: () => void act({ add: ['trashed'] }) }),
+        folderId === 'trash' && !labelView ? el('button', { class: 'mb-chip danger', text: 'Delete for good', onclick: () => void purge() }) : null,
+        el('button', { class: 'mb-chip ghost', text: 'Clear', onclick: () => { selected = new Set(); render(); } }),
+      );
+      setChildren(listEl, ...rowNodes());
+      renderPane();
+      return;
+    }
     statusEl.textContent = rows.length
       ? `${here ? here.label : station} · ${rows.length} thread${rows.length === 1 ? '' : 's'}${query ? ` matching “${query}”` : ''}${mine ? ` · ${mine}` : ''}`
       : query
@@ -307,22 +430,13 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
           ? 'This folder is empty.'
           : `${here ? here.label : station} has no address yet, so nothing can arrive here. Create one at the Peak.`;
 
-    setChildren(listEl, ...rows.map((r, i) => el('button', {
-      class: `mb-row${r.unread ? ' unread' : ''}${i === cursor ? ' on' : ''}`,
-      role: 'listitem',
-      onclick: () => void openThread(i),
-    },
-      el('span', { class: `mb-star${r.starred ? ' on' : ''}`, title: r.starred ? 'Starred' : 'Not starred', text: r.starred ? '★' : '☆', onclick: (e) => { e.stopPropagation(); cursor = i; void act({ [r.starred ? 'remove' : 'add']: ['starred'] }); } }),
-      el('span', { class: 'mb-from-cell', text: r.from }),
-      el('span', { class: 'mb-subject' },
-        el('span', { class: 'mb-subject-text', text: r.subject }),
-        r.count > 1 ? el('span', { class: 'mb-thread-count', text: String(r.count) }) : null,
-        r.venture ? el('span', { class: 'mb-tag', text: r.venture }) : null,
-        r.kind === 'briefing' ? el('span', { class: 'mb-tag soft', text: 'briefing' }) : null,
-      ),
-      el('span', { class: 'mb-when', text: r.when }),
-    )));
+    setChildren(listEl, ...rowNodes());
 
+    renderPane();
+  }
+
+  // D188: the reading pane, extracted for the same reason.
+  function renderPane() {
     if (!thread || !thread.length) {
       setChildren(readEl, el('div', { class: 'mb-empty' },
         el('p', { text: rows.length ? 'Pick a thread.' : 'Nothing to read here.' }),
@@ -339,8 +453,11 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
         el('div', { class: 'mb-read-actions' },
           el('button', { class: 'mb-btn', text: 'Reply', title: 'r', onclick: () => reply() }),
           el('button', { class: 'mb-btn', text: 'Reply all', title: 'a', onclick: () => reply({ all: true }) }),
+          el('button', { class: 'mb-btn', text: 'Forward', title: 'f', onclick: () => forward() }),
+          el('button', { class: 'mb-btn', text: 'Label…', title: 'l', onclick: () => void label() }),
           el('button', { class: 'mb-btn', text: 'Archive', title: 'e', onclick: () => void act({ add: ['archived'] }) }),
           el('button', { class: 'mb-btn', text: 'Trash', title: '#', onclick: () => void act({ add: ['trashed'] }) }),
+          folderId === 'trash' && !labelView ? el('button', { class: 'mb-btn danger', text: 'Delete for good', onclick: () => void purge() }) : null,
           el('button', { class: 'mb-btn ghost mb-back', text: 'Back', title: 'u', onclick: () => { thread = null; render(); } }),
         ),
       ),
@@ -351,13 +468,34 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
           el('span', { class: 'mb-msg-when', text: fullDate(m.date) }),
         ),
         m.status === 'draft' ? el('div', { class: 'mb-draft-mark', text: 'Draft — not sent' }) : null,
-        el('pre', { class: 'mb-msg-body', text: m.text || '(no text)' }),
+        m.classification === 'spam' ? el('div', { class: 'mb-spam-mark', text: 'The classifier read this as spam' }) : null,
+        // D188: mail that came as HTML is shown as HTML, inside a sandboxed frame with no
+        // scripts, no forms and no same-origin access. Mail from outside the park is not
+        // trusted with the page, so it is never injected into it — `srcdoc` plus an empty
+        // `sandbox` is the whole guarantee.
+        bodyHtml(m)
+          ? el('iframe', { class: 'mb-msg-html', sandbox: '', referrerpolicy: 'no-referrer', title: 'Message', srcdoc: bodyHtml(m) })
+          : el('pre', { class: 'mb-msg-body', text: m.text || '(no text)' }),
+        bodyHtml(m) && m.text ? el('details', { class: 'mb-plain' }, el('summary', { text: 'Plain text version' }), el('pre', { class: 'mb-msg-body', text: m.text })) : null,
+        // D188: an attachment the park received, which could be seen but not opened.
         (m.attachments || []).length
-          ? el('div', { class: 'mb-attach' }, `${m.attachments.length} attachment${m.attachments.length === 1 ? '' : 's'}: `, (m.attachments || []).map((a) => a.filename || a.name || 'file').join(', '))
+          ? el('div', { class: 'mb-attach' },
+              el('span', { class: 'mb-attach-head', text: `${m.attachments.length} attachment${m.attachments.length === 1 ? '' : 's'}` }),
+              ...(m.attachments || []).map((a) => {
+                const name = a.filename || a.name || 'file';
+                return el('a', {
+                  class: 'mb-attach-link',
+                  href: `/api/mail/messages/${encodeURIComponent(m.id)}/attachments/${encodeURIComponent(name)}`,
+                  download: name,
+                  text: name,
+                });
+              }),
+            )
           : null,
       )),
     );
     root.classList.add('reading');
+
   }
 
   // ---- keys ----------------------------------------------------------------
@@ -394,6 +532,9 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
     if (k === '#') { e.preventDefault(); return void act({ add: ['trashed'] }); }
     if (k === 's') { e.preventDefault(); const r = rows[cursor]; return r ? void act({ [r.starred ? 'remove' : 'add']: ['starred'] }) : undefined; }
     if (k === 'm') { e.preventDefault(); const r = rows[cursor]; return r ? void act({ [r.unread ? 'add' : 'remove']: ['read'] }) : undefined; }
+    if (k === 'x') { e.preventDefault(); const r = rows[cursor]; if (!r) return; if (selected.has(r.threadId)) selected.delete(r.threadId); else selected.add(r.threadId); return render(); }
+    if (k === 'l') { e.preventDefault(); return void label(); }
+    if (k === 'f' && thread) { e.preventDefault(); return forward(); }
     if (k === 'r' && thread) { e.preventDefault(); return reply(); }
     if (k === 'a' && thread) { e.preventDefault(); return reply({ all: true }); }
   });

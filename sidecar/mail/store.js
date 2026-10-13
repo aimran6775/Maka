@@ -23,9 +23,11 @@ import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { writeJsonAtomic, readJson } from '../store.js';
-import { FOLDERS, inFolder, isUnread } from '../../shared/mail-folders.js';
+import { FOLDERS, inFolder, inLabel, isUnread } from '../../shared/mail-folders.js';
 
 const INDEX_LIMIT = 20000;
+// D188: the labels the folders own. A custom label is anything else.
+const RESERVED_LABELS = new Set(['read', 'starred', 'archived', 'trashed']);
 const SNIPPET = 160;
 
 export function normalizeAddress(a) {
@@ -158,7 +160,7 @@ export function createMailStore({ root, clock = { now: () => Date.now() } } = {}
     // shared/mail-folders.js of every message; `q` narrows it the way the search box does.
     // A thread appears in a folder when any of its messages belongs there, which is what
     // makes a reply to an archived thread bring it back to the inbox.
-    threads({ station, venture, limit = 50, folder = null, q = '' } = {}) {
+    threads({ station, venture, limit = 50, folder = null, label = null, q = '' } = {}) {
       const needle = String(q || '').trim().toLowerCase();
       const matches = (m) =>
         !needle || [m.subject, m.from, ...(m.to || []), m.snippet, m.venture || ''].some((x) => String(x).toLowerCase().includes(needle));
@@ -166,9 +168,14 @@ export function createMailStore({ root, clock = { now: () => Date.now() } } = {}
       for (const m of index) {
         if ((station && m.station !== station) || (venture && m.venture !== venture)) continue;
         if (folder && !inFolder(m, folder)) continue;
+        if (label && !inLabel(m, label)) continue;
         if (!matches(m)) continue;
-        const t = by.get(m.threadId) || { threadId: m.threadId, subject: m.subject, station: m.station, venture: m.venture, count: 0, first: m.date, last: m.date, participants: new Set(), labels: new Set(), unread: 0, lastDirection: m.direction, classification: null, kind: m.kind || null };
+        const t = by.get(m.threadId) || { threadId: m.threadId, subject: m.subject, station: m.station, venture: m.venture, count: 0, first: m.date, last: m.date, participants: new Set(), labels: new Set(), unread: 0, lastDirection: m.direction, classification: null, kind: m.kind || null, snippet: '', ids: [] };
         t.count += 1;
+        t.ids.push(m.id);
+        // D188: the preview text a row shows is the newest message's, which is what a
+        // reader wants to see — the list was showing a subject with nothing under it.
+        if (m.date >= t.last || !t.snippet) t.snippet = m.snippet || '';
         t.last = Math.max(t.last, m.date);
         t.lastDirection = m.direction;
         t.kind = m.kind || t.kind;
@@ -179,6 +186,32 @@ export function createMailStore({ root, clock = { now: () => Date.now() } } = {}
         by.set(m.threadId, t);
       }
       return [...by.values()].sort((a, b) => b.last - a.last).slice(0, limit).map((t) => ({ ...t, participants: [...t.participants], labels: [...t.labels] }));
+    },
+    // D188: the labels the park has actually put on mail, minus the ones the folders own.
+    // Derived rather than kept as a list of its own, so a label cannot exist in a menu
+    // without existing on a message.
+    labels({ station } = {}) {
+      const counts = new Map();
+      for (const m of index) {
+        if (station && m.station !== station) continue;
+        for (const l of m.labels || []) {
+          if (RESERVED_LABELS.has(l)) continue;
+          counts.set(l, (counts.get(l) || 0) + 1);
+        }
+      }
+      return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, messages]) => ({ label, messages }));
+    },
+    // D188: throw a message away for good. Only from the bin: there is no path from the
+    // inbox straight to gone, which is the whole point of a bin.
+    async purge(id) {
+      const at = index.findIndex((m) => m.id === id);
+      if (at === -1) throw fail('NOT_FOUND', `no message ${id}`, 404);
+      if (!(index[at].labels || []).includes('trashed')) throw fail('CONFLICT', `${id} is not in the bin; move it there first`, 409);
+      index.splice(at, 1);
+      await fsp.rm(path.join(messagesDir, `${id}.json`), { force: true });
+      await fsp.rm(path.join(root, 'attachments', id), { recursive: true, force: true });
+      await save(indexFile, { version: 1, messages: index });
+      return { purged: id };
     },
     // D187: how many threads and how many unread in each folder, for one department or the
     // whole park. Counted over threads, not messages, because that is what the rail shows.

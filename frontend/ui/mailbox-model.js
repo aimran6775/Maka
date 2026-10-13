@@ -45,16 +45,53 @@ export function fold(threads, { now = Date.now(), own = [] } = {}) {
     threadId: t.threadId,
     subject: t.subject || '(no subject)',
     from: participantsLabel(t, own),
+    // D188: the preview text, which a mail row has and this one did not.
+    snippet: t.snippet || '',
+    // The message ids in the thread, so starring or archiving a row needs no second fetch.
+    ids: t.ids || [],
     count: t.count || 1,
     unread: (t.unread || 0) > 0,
     starred: (t.labels || []).includes('starred'),
     archived: (t.labels || []).includes('archived'),
+    trashed: (t.labels || []).includes('trashed'),
+    // The labels the owner put on it, which the folders do not own.
+    labels: (t.labels || []).filter((l) => !['read', 'starred', 'archived', 'trashed'].includes(l)),
     venture: t.venture || null,
     kind: t.kind || null,
     classification: t.classification || null,
     last: t.last,
     when: shortDate(t.last, now),
   }));
+}
+
+// D188: forwarding. A forward goes to nobody yet, keeps the thread's subject under Fwd:,
+// and carries the message as a quoted block the way a reply does — so the person receiving
+// it sees what the park saw.
+export function forwardFields(message) {
+  if (!message) return { to: [], cc: [], subject: '', text: '' };
+  const subject = /^fwd:/i.test(message.subject || '') ? message.subject : `Fwd: ${message.subject || ''}`.trim();
+  const head = [
+    '',
+    '---------- Forwarded message ----------',
+    `From: ${message.from || ''}`,
+    `Date: ${fullDate(message.date)}`,
+    `Subject: ${message.subject || ''}`,
+    `To: ${(message.to || []).join(', ')}`,
+    '',
+    String(message.text || ''),
+  ].join('\n');
+  return { to: [], cc: [], subject, text: head };
+}
+
+// D188: a label a person typed. Lower case, no spaces, nothing that would collide with a
+// folder's own labels — otherwise "Starred" as a custom label would silently star things.
+export const RESERVED_LABELS = Object.freeze(['read', 'starred', 'archived', 'trashed']);
+
+export function cleanLabel(input) {
+  const l = String(input || '').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9._-]/g, '');
+  if (!l || l.length > 40) return null;
+  if (RESERVED_LABELS.includes(l)) return null;
+  return l;
 }
 
 // Who the row is from: the people on the thread who are not us. A thread with nobody else

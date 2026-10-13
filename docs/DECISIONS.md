@@ -2603,3 +2603,47 @@ pressed. `scripts/park-check.mjs` opens it in a real browser and asserts the mai
 seven folders and that Escape closes it — which is how two bugs were caught before the owner
 saw them: the client was treating the app's `{ ok, status, body }` envelope as the body, and
 the check itself was racing the first load.
+
+## D188 — inbound mail, and the gaps between a viewer and a mail client
+
+The owner asked whether Park Mail was "totally gmail type... with every functionality". It
+was not, and the honest list had two halves: one structural, several cosmetic.
+
+**Inbound mail now works.** The park could send and not receive, and I had previously
+stopped at "Resend's API lists no MX" without finding out why. The domain's own record says
+it plainly: `capabilities: { sending: "enabled", receiving: "disabled" }`. Resend supports
+receiving; it was switched off. Enabling it (`PATCH /domains/:id` with
+`capabilities.receiving`) made Resend ask for one more record, and the park's own DNS flow
+did the rest — `mail.dns.plan` diffed it, `mail.dns.apply` raised it at the Entrance Gate as
+`account_settings`, the card went to the owner's phone, `/approve` wrote it, and
+`dig MX makapark.com` answers `10 inbound-smtp.us-east-1.amazonaws.com`. Nothing about the
+DNS path was special-cased: the design always said the records come from Resend's API and
+never from a table here, and that is what happened.
+
+**Spam** is the classifier's reading, not a label someone applied. `sidecar/mail/classify.js`
+has sorted inbound mail into customer / supplier / platform notice / spam since phase 2 and
+nothing looked at the answer. The inbox is now what is left after spam, and a message the
+owner has filed or binned stays where they put it rather than reappearing.
+
+**Custom labels** are derived from the mail itself — `labels()` reads the labels in use and
+subtracts the four the folders own — so a label cannot sit in the rail without being on
+something. A label a person types is cleaned (lower case, dashes for spaces) and refused if
+it would collide with `read`, `starred`, `archived` or `trashed`: "Starred" as a custom
+label would otherwise silently star things.
+
+**The rest of the list.** A thread summary now carries the newest message's `snippet`, so a
+row has preview text instead of a bare subject, and the ids of its messages, so starring or
+archiving a row costs no second fetch. Rows have tick boxes and the status line becomes a
+bulk bar when anything is ticked. Forward carries the message as a quoted block to nobody
+in particular. Attachments the park received can be opened: a route serves them from the
+message's own directory, checked against what the message says it holds, always as a
+download and never rendered in place. `purge` deletes for good, and only from the bin —
+there is no path from the inbox straight to gone, which is what a bin is for.
+
+**HTML bodies** render inside `<iframe sandbox="" srcdoc>`: no scripts, no forms, no
+same-origin access. Mail from outside the park is not trusted with the page, so it is never
+injected into it, and the plain-text version stays one click away.
+
+Still not there, and said rather than implied: **sending an attachment**. `mail.send` has no
+attachment field and Resend's send API would need one plumbed through the policy and the
+ceilings; reading them is done, sending them is not.

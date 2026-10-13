@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {
   stationsOf, addressFor, fold, shortDate, fullDate, shortAddress,
   participantsLabel, nextIndex, quoteReply, replyFields, EXTRA_STATIONS,
+  forwardFields, cleanLabel, RESERVED_LABELS,
 } from '../frontend/ui/mailbox-model.js';
 import { DEPARTMENT_KINDS, ZONE_LABELS } from '../shared/world.js';
 
@@ -151,4 +152,49 @@ test('a reply goes back to the right people, with the right subject', () => {
   assert.match(q, /> of question/);
   assert.match(q, /wrote:/);
   assert.equal(quoteReply(null), '');
+});
+
+// D188: the gaps between a viewer and a mail client.
+test('a row carries its preview text, its labels and the ids an action needs', () => {
+  const [r] = fold([{
+    threadId: 't', subject: 'Order 12', participants: ['c@x.com'], count: 2, unread: 1,
+    labels: ['starred', 'read', 'suppliers', 'urgent'], snippet: 'the newest words', ids: ['m1', 'm2'], last: 1000,
+  }], { now: 1000, own: [] });
+  assert.equal(r.snippet, 'the newest words', 'the list has preview text');
+  assert.deepEqual(r.ids, ['m1', 'm2'], 'so starring a row needs no second fetch');
+  assert.deepEqual(r.labels, ['suppliers', 'urgent'], 'only the labels a person put on it');
+  assert.equal(r.starred, true, 'the folders own starred, and it is not in the label list');
+  assert.equal(r.trashed, false);
+});
+
+test('a forward goes to nobody, keeps the subject under Fwd:, and carries what the park saw', () => {
+  const m = { subject: 'Order 12', from: 'Customer <c@x.com>', to: ['support@makapark.com'], date: 1000, text: 'two\nlines' };
+  const f = forwardFields(m);
+  assert.deepEqual(f.to, [], 'the person forwarding chooses who gets it');
+  assert.deepEqual(f.cc, []);
+  assert.equal(f.subject, 'Fwd: Order 12');
+  assert.match(f.text, /Forwarded message/);
+  assert.match(f.text, /From: Customer <c@x\.com>/);
+  assert.match(f.text, /two\nlines/, 'the message itself, not a summary of it');
+  // Not prefixed twice.
+  assert.equal(forwardFields({ ...m, subject: 'Fwd: Order 12' }).subject, 'Fwd: Order 12');
+  assert.equal(forwardFields({ ...m, subject: 'FWD: shouting' }).subject, 'FWD: shouting');
+  assert.deepEqual(forwardFields(null).to, []);
+});
+
+test('a label a person typed is cleaned, and can never collide with a folder\'s own', () => {
+  assert.equal(cleanLabel('Big Suppliers'), 'big-suppliers');
+  assert.equal(cleanLabel('  Urgent  '), 'urgent');
+  assert.equal(cleanLabel('a!!b'), 'ab');
+  assert.equal(cleanLabel('q1.2_3-4'), 'q1.2_3-4');
+  // Nothing usable is nothing, not an empty label applied to everything.
+  assert.equal(cleanLabel(''), null);
+  assert.equal(cleanLabel('   '), null);
+  assert.equal(cleanLabel('!!!'), null);
+  assert.equal(cleanLabel('x'.repeat(41)), null);
+  // The folders' own labels are refused: "Starred" as a custom label would silently star.
+  for (const r of RESERVED_LABELS) {
+    assert.equal(cleanLabel(r), null, `${r} is the folders' own`);
+    assert.equal(cleanLabel(r.toUpperCase()), null, 'however it is typed');
+  }
 });
