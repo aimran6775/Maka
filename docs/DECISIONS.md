@@ -2738,3 +2738,36 @@ leashed, and anything heading for the Gate are reviewed exactly as before.
 What is still paid, and should be: the Chief's planning and re-planning, the daily
 reflection, the judge on work that leaves the park or commits money, and the owner's own
 questions to the Peak. Everything else is free.
+
+## D192 — the park can answer "does anything need me?"
+
+The owner: "The whole ui/ux could be a lot better too."
+
+Everything built since the portfolio existed only on the owner's phone. The park could be
+blocked on them, 60 % over its budget, and holding a business proposal, and the screen in
+front of them said nothing about any of it — the two rails showed a box to run a Ranger
+from, a spend total, the build palette and whatever happened to be selected. The Gate, the
+blockers, the portfolio and the departments were all reachable only by iMessage.
+
+The first panel in the right rail now answers one question, in the order it matters:
+
+1. **Does anything need me?** Open blockers, each with what it stops, the steps to clear it
+   behind a disclosure, and one button that clears it. Pending Gate items with their money
+   and their evidence, and approve / send back / no. Per-call confirmations, when the owner
+   has asked for any (D180). Nothing waiting says "Nothing needs you." plainly, because a
+   park that is fine should look fine — and the panel's border and title only take the
+   warning colour when something really is waiting, so the colour means something.
+2. **What is the park running?** Businesses running and waiting, what is committed against
+   the ceiling, each active venture's spend against its budget, departments with a head,
+   standing duties switched on, and unread mail with a way into Park Mail.
+3. **What does it costs?** The worker tier named and marked free, the judge tier named, and
+   the day's judge spend against its cap with a bar. One total would have hidden the thing
+   that matters, which is that almost everything is free (D191).
+
+`/api/state` gained `blockers`, `portfolio` and `charters` so the panel reads the snapshot
+the park already pushes rather than polling three more endpoints. `park-check.mjs` opens the
+panel in a real browser and asserts its sections and rows, the same way it does Park Mail.
+
+The local worker is pinned to `qwen3:14b` in `policy.json`: 9.3 GB, the largest that leaves
+room on 16 GB, and it calls a tool when told to rather than inventing the answer — which is
+the whole reason the per-agent paid overrides existed.

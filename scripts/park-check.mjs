@@ -133,6 +133,29 @@ async function main() {
   const navOk = walkDist > 2 && typingDist < 0.01 && Boolean(peak) && jumpedNear < 3;
   console.log(`navigation: walk moved ${walkDist.toFixed(1)} units, typing moved ${typingDist.toFixed(3)}, jump landed ${jumpedNear.toFixed(1)} from the Peak, ${places.length} places`, navOk ? 'OK' : 'NOT OK');
 
+  // D192: the "Needs you" panel. It answers the question the park is asked most, so a
+  // broken render here means the owner cannot see that the park is waiting on them.
+  const attention = JSON.parse((await evaluate(`(() => {
+    const w = document.querySelector('#attention');
+    if (!w) return JSON.stringify({ missing: true });
+    return JSON.stringify({
+      title: (w.querySelector('.win-title') || {}).textContent || '',
+      clear: Boolean(w.querySelector('.at-clear')),
+      cards: w.querySelectorAll('.at-card').length,
+      sections: [...w.querySelectorAll('.at-sec-head')].map((n) => n.textContent),
+      rows: [...w.querySelectorAll('.at-row')].map((r) => [...r.children].map((c) => c.textContent).join(' = ')),
+      hasWaiting: w.classList.contains('has-waiting'),
+    });
+  })()`)) || '{}');
+  if (attention.missing) console.log('needs-you panel: MISSING');
+  else {
+    console.log(`needs-you panel: "${attention.title}" · ${attention.cards} card(s) · waiting=${attention.hasWaiting} · clear-state=${attention.clear}`);
+    console.log(`needs-you sections: ${JSON.stringify(attention.sections)}`);
+    for (const r of attention.rows.slice(0, 8)) console.log(`  ${r}`);
+  }
+  const attentionOk = Boolean(!attention.missing && attention.sections.length >= 2 && attention.rows.length >= 2);
+  console.log('needs-you panel:', attentionOk ? 'OK' : 'NOT OK');
+
   // D187: Park Mail opens on I, shows a mailbox per department with its folders, closes on
   // Escape, and never swallows the park's own keys while it is shut. A mail client that
   // only works when someone is looking at it is not a mail client.

@@ -631,3 +631,77 @@ body.mailbox-open #park { filter: saturate(0.5) brightness(0.5); }
 }
 .mb-attach-total { font: 10px var(--mono); color: var(--mb-fade); }
 .mb-x.small { font-size: 14px; padding: 0 3px; }
+
+/* D192: "Needs you" — the park's answer to the question it is asked most. The panel is
+   quiet when nothing is waiting and loud only when something is, so the colour means
+   something rather than decorating a box. */
+#attention.has-waiting { border-color: var(--warn); }
+#attention.has-waiting .win-title { color: var(--warn); }
+.at-needs, .at-running, .at-cost { display: flex; flex-direction: column; gap: 6px; }
+.at-running, .at-cost { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--panel-border); }
+.at-clear { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+.at-list { display: flex; flex-direction: column; gap: 8px; }
+
+.at-sec-head {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.at-card {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--panel-border);
+  border-left: 2px solid var(--accent);
+  border-radius: 2px;
+  padding: 8px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.at-card.urgent { border-left-color: var(--warn); }
+.at-card-head { display: flex; flex-direction: column; gap: 3px; }
+.at-kind {
+  align-self: flex-start;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+.at-card.urgent .at-kind { background: var(--warn); }
+.at-kind.venture { background: var(--ok); }
+.at-card-title { font-size: 12.5px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.at-what { margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--muted); }
+.at-more summary {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  cursor: pointer;
+}
+.at-more summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.at-steps { margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; line-height: 1.5; color: var(--text); }
+.at-steps li { margin-bottom: 4px; }
+.at-tried, .at-ev { margin: 6px 0 0; font-size: 11px; color: var(--muted); line-height: 1.45; }
+.at-actions { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.at-by { font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin-left: auto; }
+
+.at-row { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+.at-k { color: var(--muted); min-width: 92px; }
+.at-v { color: var(--text); font-variant-numeric: tabular-nums; }
+.at-v.free { color: var(--ok); }
+.at-v.warn, .at-row .warn { color: var(--warn); }
+.at-note { font-family: var(--mono); font-size: 9.5px; color: var(--warn); margin-left: auto; }
+
+.at-bar { height: 4px; background: rgba(0, 0, 0, 0.3); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+.at-bar-fill { display: block; height: 100%; background: var(--accent); }
+.at-bar-fill.over { background: var(--error); }
+
+.btn.small.danger { border-color: var(--error); color: var(--error); }
+.btn.small.danger:hover { background: var(--error); color: var(--accent-ink); }

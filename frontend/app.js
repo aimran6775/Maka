@@ -12,6 +12,7 @@ import { createFirstRun } from './ui/firstrun.js';
 import { createVoice } from './ui/voice.js';
 import { createNav } from './ui/nav.js';
 import { createMailbox } from './ui/mailbox.js';
+import { createAttention } from './ui/attention.js';
 import { el, setChildren } from './ui/windows.js';
 import { tileToWorld, worldToTile, TILE_WORLD } from './park/placement.js';
 import { parkOptions } from './park/gpu.js';
@@ -146,6 +147,9 @@ const railRight = el('div', { class: 'rail right' });
 ui.append(railLeft, railRight);
 
 const comms = createComms({ parent: railLeft, getState, api, x: 0, y: 0, w: 348 });
+// D192: first in the right rail, because "does anything need me" is the question the park
+// is asked most and the one it could not answer on screen.
+const attention = createAttention({ parent: railRight, getState, api, onFlash: (x, kind) => (typeof x === 'string' ? flash(x, kind) : showError(x)), onMail: () => mailbox.open(), x: 0, y: 0, w: 278 });
 const spend = createSpend({ parent: railRight, getState, x: 0, y: 0, w: 278 });
 const build = createBuild({ parent: railRight, getState, world: { setBuild() { render(); } }, x: 0, y: 0, w: 278 });
 const permission = createPermission({ parent: ui, getState, api });
@@ -230,6 +234,7 @@ function render() {
     renderQueued = false;
     renderStatus();
     nav.render();
+    attention.render();
     comms.render();
     spend.render();
     build.render();

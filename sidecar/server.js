@@ -445,6 +445,13 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         agents: agents ? agents.list() : null,
         work: trails ? { inTransit: trails.inTransit(), recent: trails.list().slice(0, 20) } : null,
         mission: chief ? chief.state() : null,
+        // D192: the park's own state, so the UI can show what needs the owner without
+        // polling three more endpoints. Everything built since D182 existed only on the
+        // owner's phone: the park could be blocked, over budget and holding a business
+        // proposal, and the screen in front of them said nothing about any of it.
+        blockers: blockers ? { ...blockers.state(), items: blockers.open() } : null,
+        portfolio: portfolio ? { ...portfolio.state(), ventures: portfolio.list() } : null,
+        charters: charters ? charters.state() : null,
         reflection: reflect ? reflect.state() : null,
         away: away ? away.state() : null,
         mail: await mailStatus(),
