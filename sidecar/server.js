@@ -681,6 +681,37 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
       const q = url.searchParams;
       return sendJson(res, 200, mail.mailStore.list({ station: q.get('station') || undefined, venture: q.get('venture') || undefined, threadId: q.get('threadId') || undefined, direction: q.get('direction') || undefined, label: q.get('label') || undefined, agentId: q.get('agentId') || undefined, limit: Number(q.get('limit')) || 50 }));
     }
+    // D188: before the single-message route, which would otherwise match
+    // `/messages/:id/attachments/:name` and look up a message called
+    // "<id>/attachments/<name>" — answering "no such message". Specific paths first.
+    // D188: read an attachment the park received. The park downloads them and the client
+    // showed their names with no way to open one. The file is served from the message's own
+    // directory and the name is checked against what the message says it holds, so a path
+    // cannot be asked for that the message does not name.
+    if (p.startsWith('/api/mail/messages/') && p.includes('/attachments/') && method === 'GET') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      const [, , , , id, , rest] = p.split('/');
+      const messageId = decodeURIComponent(id);
+      const wanted = decodeURIComponent(p.slice(p.indexOf('/attachments/') + '/attachments/'.length));
+      const m = await mail.mailStore.get(messageId);
+      if (!m) throw new HttpError(404, 'no such message');
+      const found = (m.attachments || []).find((a) => (a.filename || a.name) === wanted);
+      if (!found || !found.path) throw new HttpError(404, `that message has no attachment called "${wanted}"`);
+      const file = path.join(workspaceRoot, '_mail', 'attachments', messageId, path.basename(found.path));
+      try {
+        const buf = await fsp.readFile(file);
+        res.writeHead(200, {
+          'content-type': found.contentType || 'application/octet-stream',
+          'content-length': buf.length,
+          // Never rendered in place: an attachment from outside the park is downloaded.
+          'content-disposition': `attachment; filename="${path.basename(wanted).replace(/"/g, '')}"`,
+          'x-content-type-options': 'nosniff',
+        });
+        return res.end(buf);
+      } catch {
+        throw new HttpError(404, 'the attachment is not on disk');
+      }
+    }
     if (p.startsWith('/api/mail/messages/') && method === 'GET') {
       if (!mail) throw new HttpError(404, 'no mail system');
       const m = await mail.mailStore.get(decodeURIComponent(p.slice('/api/mail/messages/'.length)));
@@ -715,34 +746,6 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
         return sendJson(res, 200, await mail.mailStore.purge(id));
       } catch (err) {
         throw new HttpError(err.status || 400, err.message, err.code);
-      }
-    }
-    // D188: read an attachment the park received. The park downloads them and the client
-    // showed their names with no way to open one. The file is served from the message's own
-    // directory and the name is checked against what the message says it holds, so a path
-    // cannot be asked for that the message does not name.
-    if (p.startsWith('/api/mail/messages/') && p.includes('/attachments/') && method === 'GET') {
-      if (!mail) throw new HttpError(404, 'no mail system');
-      const [, , , , id, , rest] = p.split('/');
-      const messageId = decodeURIComponent(id);
-      const wanted = decodeURIComponent(p.slice(p.indexOf('/attachments/') + '/attachments/'.length));
-      const m = await mail.mailStore.get(messageId);
-      if (!m) throw new HttpError(404, 'no such message');
-      const found = (m.attachments || []).find((a) => (a.filename || a.name) === wanted);
-      if (!found || !found.path) throw new HttpError(404, `that message has no attachment called "${wanted}"`);
-      const file = path.join(workspaceRoot, '_mail', 'attachments', messageId, path.basename(found.path));
-      try {
-        const buf = await fsp.readFile(file);
-        res.writeHead(200, {
-          'content-type': found.contentType || 'application/octet-stream',
-          'content-length': buf.length,
-          // Never rendered in place: an attachment from outside the park is downloaded.
-          'content-disposition': `attachment; filename="${path.basename(wanted).replace(/"/g, '')}"`,
-          'x-content-type-options': 'nosniff',
-        });
-        return res.end(buf);
-      } catch {
-        throw new HttpError(404, 'the attachment is not on disk');
       }
     }
     // D187: the folder rail — how many threads and how many unread in each folder, for one
