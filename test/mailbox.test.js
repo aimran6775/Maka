@@ -198,3 +198,48 @@ test('a label a person typed is cleaned, and can never collide with a folder\'s 
     assert.equal(cleanLabel(r.toUpperCase()), null, 'however it is typed');
   }
 });
+
+// D189: what the park will carry out of the gate as an attachment.
+test('an attachment is checked before anything is sent, never after', async () => {
+  const { normalizeAttachments, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES } = await import('../sidecar/mail/resend.js');
+  const b64 = (s) => Buffer.from(s).toString('base64');
+
+  // The ordinary case: a filename and base64 content, with the size worked out.
+  const ok = normalizeAttachments([{ filename: 'brief.md', content: b64('hello there'), contentType: 'text/markdown' }]);
+  assert.equal(ok.length, 1);
+  assert.equal(ok[0].filename, 'brief.md');
+  assert.equal(ok[0].contentType, 'text/markdown');
+  assert.ok(ok[0].bytes >= 10 && ok[0].bytes <= 12);
+  assert.deepEqual(normalizeAttachments(undefined), []);
+  assert.deepEqual(normalizeAttachments(null), []);
+
+  // Base64 only, and proven by round-tripping rather than by a charset check: `/` and `+`
+  // are base64 characters, so "/etc/passwd" passes a charset test. The park must never take
+  // a path as content.
+  for (const notB64 of ['/etc/passwd', '../../secrets', '~/notes.txt', 'hello world!', 'abc']) {
+    assert.throws(() => normalizeAttachments([{ filename: 'a.md', content: notB64 }]), /base64 content, not a path/, `${notB64} must be refused`);
+  }
+  assert.throws(() => normalizeAttachments([{ filename: 'a.md', content: '' }]), /no content/);
+  // The size comes from the decoded bytes, not from the length of the encoding.
+  assert.equal(normalizeAttachments([{ filename: 'a.txt', content: b64('hello there') }])[0].bytes, 11);
+
+  // A filename that is a path, or hostile, is refused rather than sanitised into something
+  // the sender did not ask for.
+  for (const bad of ['../escape.md', '/abs.md', 'a/b.md', '.hidden', '', 'x'.repeat(120)]) {
+    assert.throws(() => normalizeAttachments([{ filename: bad, content: b64('x') }]), /usable filename/, `${bad} must be refused`);
+  }
+
+  // The ceilings, both of them, because a provider rejection halfway through a send is
+  // worse than a refusal before it.
+  assert.throws(
+    () => normalizeAttachments(Array.from({ length: MAX_ATTACHMENTS + 1 }, (_, i) => ({ filename: `f${i}.txt`, content: b64('x') }))),
+    new RegExp(`at most ${MAX_ATTACHMENTS}`),
+  );
+  const quad = (n) => 'A'.repeat(Math.ceil(n / 4) * 4);
+  const big = quad(Math.ceil((MAX_ATTACHMENT_BYTES / 3) * 4) + 8);
+  assert.throws(() => normalizeAttachments([{ filename: 'big.bin', content: big }]), /more than 10 MB/);
+  // Two files that each fit but together do not.
+  const half = quad(Math.ceil((MAX_ATTACHMENT_BYTES / 2 / 3) * 4) + 8);
+  assert.throws(() => normalizeAttachments([{ filename: 'a.bin', content: half }, { filename: 'b.bin', content: half }, { filename: 'c.bin', content: half }]), /more than 10 MB/);
+  assert.throws(() => normalizeAttachments('nope'), /must be a list/);
+});

@@ -34,6 +34,37 @@ export const ATTACHMENT_LIMIT_BYTES = 10 * 1024 * 1024;
 export const WEBHOOK_TOLERANCE_MS = 5 * 60 * 1000;
 export const DELIVERY_EVENTS = Object.freeze({ 'email.sent': 'sent', 'email.delivered': 'delivered', 'email.delivery_delayed': 'delivery_delayed', 'email.bounced': 'bounced', 'email.complained': 'complained', 'email.opened': 'opened', 'email.clicked': 'clicked', 'email.failed': 'failed', 'email.suppressed': 'suppressed' });
 
+// D189: what the park will carry out. A ceiling on both the count and the total, because a
+// provider rejection halfway through a send is worse than a refusal before it.
+export const MAX_ATTACHMENTS = 10;
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // what Resend accepts per message
+const SAFE_FILENAME = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,95}$/;
+
+export function normalizeAttachments(list) {
+  if (list === undefined || list === null) return [];
+  if (!Array.isArray(list)) throw fail('BAD_REQUEST', 'attachments must be a list');
+  if (list.length > MAX_ATTACHMENTS) throw fail('BAD_REQUEST', `a message carries at most ${MAX_ATTACHMENTS} attachment(s); this one names ${list.length}`);
+  let total = 0;
+  const out = [];
+  for (const a of list) {
+    const filename = String((a && a.filename) || '').trim();
+    const content = String((a && a.content) || '');
+    if (!SAFE_FILENAME.test(filename)) throw fail('BAD_REQUEST', `"${filename}" is not a usable filename: letters, digits, dots, dashes, underscores and spaces, starting with a letter or digit`);
+    if (!content) throw fail('BAD_REQUEST', `${filename} has no content`);
+    // Base64 only, and proven so by round-tripping it. Checking the character set alone is
+    // not enough: `/` and `+` are base64 characters, so "/etc/passwd" passes a charset test
+    // — which the test caught. Re-encoding what decodes is the honest check.
+    const compact = content.replace(/[\r\n\s]/g, '');
+    const roundTrips = compact.length % 4 === 0 && Buffer.from(compact, 'base64').toString('base64') === compact;
+    if (!roundTrips) throw fail('BAD_REQUEST', `${filename} must be base64 content, not a path or raw bytes`);
+    const bytes = Buffer.from(compact, 'base64').length;
+    total += bytes;
+    if (total > MAX_ATTACHMENT_BYTES) throw fail('BAD_REQUEST', `the attachments add up to more than ${Math.floor(MAX_ATTACHMENT_BYTES / (1024 * 1024))} MB, which is more than the provider accepts`);
+    out.push({ filename, content: compact, contentType: a && a.contentType ? String(a.contentType) : null, bytes });
+  }
+  return out;
+}
+
 function fail(code, message, status = 400) {
   const err = new Error(message);
   err.code = code;
@@ -291,7 +322,7 @@ export function createMailSync({ store, addresses, getResend, bus, clock = { now
       return { checked: pending.length, changed };
     },
     // The send mechanics. `kind`: reply | notification | campaign. Returns the stored copy.
-    async send({ from, to, cc, subject, text, html, inReplyTo, references, kind = 'reply', station, venture, agentId, tags, replyTo, idempotencyKey } = {}) {
+    async send({ from, to, cc, subject, text, html, inReplyTo, references, kind = 'reply', station, venture, agentId, tags, replyTo, idempotencyKey, attachments } = {}) {
       if (!from || !addressList(to).length || !subject) throw fail('BAD_REQUEST', 'send needs from, to and subject');
       if (!station) throw fail('BAD_REQUEST', 'send needs the sending station');
       const wanted = addressList(to);
@@ -311,7 +342,12 @@ export function createMailSync({ store, addresses, getResend, bus, clock = { now
       const refs = refList(references);
       if (inReplyTo && !refs.includes(inReplyTo)) refs.push(inReplyTo);
       if (refs.length) headers.References = refs.join(' ');
+      // D189: files on the way out. Resend takes each as base64 `content` with a filename;
+      // the park checks the count and the total before it builds the request, so a mistake
+      // is a plain refusal rather than a provider error a Ranger cannot read.
+      const files = normalizeAttachments(attachments);
       const body = { from, to: recipients, subject, text: bodyText };
+      if (files.length) body.attachments = files.map((a) => ({ filename: a.filename, content: a.content, ...(a.contentType ? { content_type: a.contentType } : {}) }));
       if (bodyHtml) body.html = bodyHtml;
       if (cc && addressList(cc).length) body.cc = addressList(cc);
       if (replyTo) body.reply_to = replyTo;
@@ -319,7 +355,10 @@ export function createMailSync({ store, addresses, getResend, bus, clock = { now
       if (tags && tags.length) body.tags = tags;
       const resend = await getResend();
       const out = await resend.send(body, { idempotencyKey });
-      const record = await store.add({ direction: 'out', from, to: recipients, cc: body.cc, subject, text: bodyText, html: bodyHtml, inReplyTo: inReplyTo || null, references: refs, station, venture, agentId, kind, resendId: out && out.id ? out.id : null, status: 'sent', headers, labels: dropped.length ? ['partial'] : [] });
+      // D189: the sent record names what went with it — the filenames and sizes, never the
+      // bytes. The park's own copy of a file it sent is not worth the disk, and the Sent
+      // folder showing a list of what was attached is what a reader wants.
+      const record = await store.add({ direction: 'out', from, to: recipients, cc: body.cc, subject, text: bodyText, html: bodyHtml, inReplyTo: inReplyTo || null, references: refs, station, venture, agentId, kind, resendId: out && out.id ? out.id : null, status: 'sent', headers, labels: dropped.length ? ['partial'] : [], attachments: files.map((a) => ({ filename: a.filename, size: a.bytes, contentType: a.contentType || null, outbound: true })) });
       state.sent += 1;
       const payload = { messageId: record.id, threadId: record.threadId, direction: 'out', from, to: recipients, subject, station, kind };
       if (venture) payload.venture = venture;

@@ -245,20 +245,55 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
     const text = el('textarea', { class: 'mb-area', rows: 14, placeholder: 'Write your message' });
     text.value = composing.text;
     const note = el('div', { class: 'mb-note' });
+    // D189: files on the way out. Read in the browser and carried as base64, with the same
+    // ceiling the park enforces, so an oversized file is refused here rather than by the
+    // provider halfway through a send.
+    const attached = [];
+    const attachList = el('div', { class: 'mb-attached' });
+    const picker = el('input', { class: 'mb-file', type: 'file', multiple: true, 'aria-label': 'Attach files' });
+    const drawAttached = () => {
+      const total = attached.reduce((n, a) => n + a.size, 0);
+      setChildren(attachList,
+        ...attached.map((a, i) => el('span', { class: 'mb-attach-chip' },
+          el('span', { text: `${a.filename} · ${Math.max(1, Math.round(a.size / 1024))} kB` }),
+          el('button', { class: 'mb-x small', text: '×', title: `Remove ${a.filename}`, onclick: () => { attached.splice(i, 1); drawAttached(); } }),
+        )),
+        attached.length ? el('span', { class: 'mb-attach-total', text: `${Math.round(total / 1024)} kB of 10240 kB` }) : null,
+      );
+    };
+    picker.addEventListener('change', async () => {
+      for (const file of [...picker.files]) {
+        if (attached.length >= 10) { note.textContent = 'Ten attachments is the limit.'; break; }
+        const total = attached.reduce((n, a) => n + a.size, 0);
+        if (total + file.size > 10 * 1024 * 1024) { note.textContent = `${file.name} would take the attachments over 10 MB.`; continue; }
+        const buf = await file.arrayBuffer();
+        let bin = '';
+        const bytes = new Uint8Array(buf);
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        attached.push({ filename: file.name, size: file.size, contentType: file.type || null, content: btoa(bin) });
+      }
+      picker.value = '';
+      drawAttached();
+    });
     const send = el('button', { class: 'mb-btn primary', text: 'Send' });
     const draft = el('button', { class: 'mb-btn', text: 'Save draft' });
 
     const finish = async (kind) => {
+      // D189: the send API takes `from`, not a station. Sending `station` meant every
+      // Compose would have been refused with "from, to and subject are required" — found
+      // by sending a real message rather than by reading the code.
       const body = {
-        station,
+        from,
         to: to.value.split(',').map((x) => x.trim()).filter(Boolean),
         cc: cc.value.split(',').map((x) => x.trim()).filter(Boolean),
         subject: subject.value.trim(),
         text: text.value,
         kind: 'reply',
+        ...(attached.length ? { attachments: attached.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })) } : {}),
         ...(composing.replyTo ? { inReplyTo: composing.replyTo } : {}),
         ...(kind === 'draft' ? { draft: true } : {}),
       };
+      if (!from) { note.textContent = 'This department has no address to send from yet. Create one at the Peak.'; return; }
       if (!body.to.length) { note.textContent = 'Give it at least one recipient.'; return; }
       if (!body.subject) { note.textContent = 'Give it a subject.'; return; }
       send.disabled = true;
@@ -284,7 +319,9 @@ export function createMailbox({ parent, getState, api, onFlash = () => {} }) {
           el('button', { class: 'mb-x', text: '×', title: 'Escape', onclick: () => closeCompose() }),
         ),
         el('div', { class: 'mb-from' }, 'From ', el('b', { text: from || 'this department has no address yet' })),
-        to, cc, subject, text, note,
+        to, cc, subject, text,
+        el('div', { class: 'mb-attach-row' }, el('span', { class: 'mb-attach-head', text: 'Attach' }), picker), attachList,
+        note,
         el('div', { class: 'mb-compose-actions' }, send, draft),
       ),
     );

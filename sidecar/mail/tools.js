@@ -8,6 +8,23 @@
 
 import { SPECIALTIES } from '../../shared/world.js';
 import { MAX_RECIPIENTS } from './send.js';
+import { MAX_ATTACHMENTS } from './resend.js';
+import { resolveForAgent } from '../capability/tools.js';
+import { promises as fsp } from 'node:fs';
+import path from 'node:path';
+
+// D189: the type a filename says it is, for the few the park actually produces. Unknown is
+// left to the recipient's client rather than guessed at.
+const CONTENT_TYPES = Object.freeze({
+  '.md': 'text/markdown', '.txt': 'text/plain', '.csv': 'text/csv', '.json': 'application/json',
+  '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp', '.html': 'text/html', '.zip': 'application/zip',
+});
+
+function contentTypeOf(name) {
+  const ext = String(name).toLowerCase().slice(String(name).lastIndexOf('.'));
+  return CONTENT_TYPES[ext] || null;
+}
 
 function noMail(ctx) {
   return !ctx.mail ? { ok: false, error: 'the mail system is not available in this run' } : null;
@@ -103,6 +120,15 @@ export const mailDraft = {
       text: { type: 'string', minLength: 1 },
       inReplyTo: { type: 'string', description: 'Message-ID being answered (from mail.read)' },
       kind: { type: 'string', enum: ['reply', 'notification', 'campaign'], description: 'Only "campaign" is taken at its word; otherwise the kind follows the recipients and the thread' },
+      // D189: a Ranger attaches a file it wrote, by workspace path. It never pastes bytes,
+      // and the path is resolved by the same sandbox every other read uses — so a Ranger
+      // can only mail a file it could already read.
+      attach: {
+        type: 'array',
+        maxItems: MAX_ATTACHMENTS,
+        items: { type: 'string', minLength: 1, maxLength: 400 },
+        description: 'Files to attach, as workspace-relative paths you can read (your own workspace, or _teams/<department>/). At most 10, and no more than 10 MB in total.',
+      },
     },
   },
   confirm: false,
@@ -139,6 +165,15 @@ export const mailSend = {
       html: { type: 'string' },
       inReplyTo: { type: 'string' },
       kind: { type: 'string', enum: ['reply', 'notification', 'campaign'], description: 'Only "campaign" is taken at its word; otherwise the kind follows the recipients and the thread' },
+      // D189: a Ranger attaches a file it wrote, by workspace path. It never pastes bytes,
+      // and the path is resolved by the same sandbox every other read uses — so a Ranger
+      // can only mail a file it could already read.
+      attach: {
+        type: 'array',
+        maxItems: MAX_ATTACHMENTS,
+        items: { type: 'string', minLength: 1, maxLength: 400 },
+        description: 'Files to attach, as workspace-relative paths you can read (your own workspace, or _teams/<department>/). At most 10, and no more than 10 MB in total.',
+      },
     },
   },
   confirm: false,
@@ -148,13 +183,28 @@ export const mailSend = {
   // way: a campaign unless one recipient answers a known message.
   domain: (input) => (input && !input.draftId && Array.isArray(input.to) && input.to.length === 1 && input.inReplyTo && input.kind !== 'campaign' ? 'outbound_messages' : 'publishing'),
   amountUsd: () => 0,
-  summarize: (input) => `send ${input.kind || (input.inReplyTo ? 'reply' : 'mail')} to ${(input.to || []).join(', ') || (input.draftId ? `draft ${input.draftId}` : '?')}: "${(input.subject || '').slice(0, 60)}"`,
+  summarize: (input) => `send ${input.kind || (input.inReplyTo ? 'reply' : 'mail')} to ${(input.to || []).join(', ') || (input.draftId ? `draft ${input.draftId}` : '?')}: "${(input.subject || '').slice(0, 60)}"${input.attach && input.attach.length ? ` with ${input.attach.length} attachment(s): ${input.attach.join(', ')}` : ''}`,
   judgeAtDraft: null, // set by the mail system (policy.judgeAtDraft) when wired
   async run(input, ctx) {
     const missing = noMail(ctx);
     if (missing) return missing;
     const scope = scopeFor(ctx);
-    let msg = { from: input.from, to: input.to, subject: input.subject, text: input.text, html: input.html, inReplyTo: input.inReplyTo, kind: input.kind };
+    // D189: read each named file through the sandbox and carry it as base64. A path the
+    // Ranger could not read is a plain refusal here, before anything is sent.
+    let attachments;
+    if (input.attach && input.attach.length) {
+      attachments = [];
+      for (const rel of input.attach) {
+        try {
+          const file = await resolveForAgent(ctx, rel);
+          const buf = await fsp.readFile(file);
+          attachments.push({ filename: path.basename(rel), content: buf.toString('base64'), contentType: contentTypeOf(rel) });
+        } catch (err) {
+          return { ok: false, code: err.code || 'ATTACH_FAILED', error: `cannot attach ${rel}: ${err && err.message ? err.message : err}` };
+        }
+      }
+    }
+    let msg = { from: input.from, to: input.to, subject: input.subject, text: input.text, html: input.html, inReplyTo: input.inReplyTo, kind: input.kind, ...(attachments ? { attachments } : {}) };
     if (input.draftId) {
       const d = await ctx.mail.mailStore.get(input.draftId);
       if (!d || !visible(scope, d) || d.status !== 'draft') return { ok: false, error: `no draft ${input.draftId} in your mail` };

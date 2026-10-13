@@ -602,3 +602,32 @@ body.mailbox-open #park { filter: saturate(0.5) brightness(0.5); }
   .mb-row-open { grid-template-columns: 1fr auto; }
   .mb-row-open .mb-from-cell { display: none; }
 }
+
+/* D189: attaching files to a message. */
+.mb-attach-row { display: flex; align-items: center; gap: 10px; }
+.mb-file { font: 11.5px var(--mono); color: var(--mb-fade); flex: 1; }
+.mb-file::file-selector-button {
+  padding: 5px 11px;
+  margin-right: 10px;
+  background: var(--mb-bough);
+  border: 1px solid var(--mb-edge);
+  border-radius: 2px;
+  color: var(--mb-bone);
+  font: 11.5px var(--sans);
+  cursor: pointer;
+}
+.mb-file::file-selector-button:hover { border-color: var(--mb-moss); }
+.mb-attached { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mb-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 11px var(--mono);
+  color: var(--mb-lichen);
+  background: var(--mb-bough);
+  border: 1px solid var(--mb-edge);
+  border-radius: 2px;
+  padding: 2px 4px 2px 8px;
+}
+.mb-attach-total { font: 10px var(--mono); color: var(--mb-fade); }
+.mb-x.small { font-size: 14px; padding: 0 3px; }
