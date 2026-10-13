@@ -9,12 +9,15 @@
 import { el, setChildren } from './windows.js';
 import { KEY_MAP } from '../park/controls.js';
 
-export function createNav({ parent, getState, getPark, api, onFlash = () => {} }) {
+export function createNav({ parent, getState, getPark, api, onMail = null, onFlash = () => {} }) {
   const where = el('span', { class: 'nav-where', text: 'the park' });
   const jump = el('select', { class: 'sel nav-jump', title: 'Jump to a place or a Ranger (J)' });
   const modes = el('span', { class: 'nav-modes' });
   const keysBtn = el('button', { class: 'btn small', text: 'keys ?', title: 'Show the keys (?)', onclick: () => toggleKeys() });
-  const bar = el('nav', { class: 'nav-bar' }, el('span', { class: 'nav-brand', text: 'MAKA' }), where, jump, modes, keysBtn);
+  // D187: the park's mail. A count of what is unread across every department sits on the
+  // button, so the bar says whether anything is waiting without the mailbox being open.
+  const mailBtn = el('button', { class: 'btn small nav-mail', title: 'Park Mail (I)', onclick: () => onMail && onMail() }, el('span', { text: 'mail' }), el('span', { class: 'nav-mail-count' }));
+  const bar = el('nav', { class: 'nav-bar' }, el('span', { class: 'nav-brand', text: 'MAKA' }), where, jump, modes, onMail ? mailBtn : null, keysBtn);
 
   const legend = el('div', { class: 'keys-host', hidden: true });
   parent.append(bar, legend);
@@ -124,6 +127,19 @@ export function createNav({ parent, getState, getPark, api, onFlash = () => {} }
   function render() {
     renderJump();
     renderModes();
+    renderMail();
+  }
+
+  // D187: what is unread across the whole park. Nothing unread shows nothing — a zero in a
+  // badge is noise.
+  function renderMail() {
+    const st = getState();
+    const unread = st && st.mail && Number.isFinite(st.mail.unread) ? st.mail.unread : 0;
+    const count = bar.querySelector('.nav-mail-count');
+    if (!count) return;
+    count.textContent = unread ? String(unread) : '';
+    mailBtn.classList.toggle('has-unread', unread > 0);
+    mailBtn.title = unread ? `Park Mail — ${unread} unread (I)` : 'Park Mail (I)';
   }
 
   return {

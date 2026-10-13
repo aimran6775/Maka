@@ -57,6 +57,8 @@ test/memory.test.js
 test/portfolio.test.js
 test/charters.test.js
 test/blockers.test.js
+test/mail-folders.test.js
+test/mailbox.test.js
 test/recipes.test.js
 test/recipe-race.test.js
 test/listing-pipeline.test.js

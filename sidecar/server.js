@@ -126,6 +126,7 @@ import { randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
 import { makeEvent, CONTRACT_VERSION, PAYLOAD_SCHEMAS } from '../shared/events.js';
 import { validate } from '../shared/schema.js';
 import { LAYOUT_SCHEMA, OBJECT_KINDS, roomOf, tileInRoom, PEAK_REFUSED_KINDS, peakConnectorProblem, overlappingPairs, moveRoom, ZONE_GAP } from '../shared/world.js';
+import { moveFor } from '../shared/mail-folders.js';
 import { validateLeash } from '../shared/leash.js';
 
 const BODY_LIMIT = 1024 * 1024;
@@ -690,7 +691,39 @@ export function createApp({ bus, store, runs, layoutState, leashState = null, le
       if (!mail) throw new HttpError(404, 'no mail system');
       const q = url.searchParams;
       if (q.get('threadId')) return sendJson(res, 200, await mail.mailStore.thread(q.get('threadId')));
-      return sendJson(res, 200, mail.mailStore.threads({ station: q.get('station') || undefined, venture: q.get('venture') || undefined, limit: Number(q.get('limit')) || 50 }));
+      // D187: `folder` and `q` so the client can ask for one department's inbox, or search
+      // within it, instead of fetching everything and filtering in the browser.
+      return sendJson(res, 200, mail.mailStore.threads({
+        station: q.get('station') || undefined,
+        venture: q.get('venture') || undefined,
+        folder: q.get('folder') || null,
+        q: q.get('q') || '',
+        limit: Number(q.get('limit')) || 50,
+      }));
+    }
+    // D187: the folder rail — how many threads and how many unread in each folder, for one
+    // department or the whole park.
+    if (p === '/api/mail/folders' && method === 'GET') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      return sendJson(res, 200, mail.mailStore.folders({ station: url.searchParams.get('station') || undefined }));
+    }
+    // D187: moving mail. `folder` is the plain move (inbox / archive / trash) and
+    // `add` / `remove` set a label directly, which is how read and starred are toggled.
+    // Nothing here sends: moving a message between folders touches only this machine.
+    if (p.startsWith('/api/mail/messages/') && p.endsWith('/labels') && method === 'POST') {
+      if (!mail) throw new HttpError(404, 'no mail system');
+      const id = decodeURIComponent(p.slice('/api/mail/messages/'.length, -'/labels'.length));
+      const body = await readJsonBody(req);
+      const move = body && body.folder ? moveFor(String(body.folder)) : null;
+      if (body && body.folder && !move) throw new HttpError(400, `cannot move mail to "${body.folder}"`);
+      const add = [...((body && body.add) || []), ...((move && move.add) || [])].map(String);
+      const remove = [...((body && body.remove) || []), ...((move && move.remove) || [])].map(String);
+      if (!add.length && !remove.length) throw new HttpError(400, 'nothing to change: pass folder, add or remove');
+      try {
+        return sendJson(res, 200, await mail.mailStore.setLabels(id, { add, remove }));
+      } catch (err) {
+        throw new HttpError(err.status || 400, err.message, err.code);
+      }
     }
     if (p === '/api/mail/search' && method === 'GET') {
       if (!mail) throw new HttpError(404, 'no mail system');

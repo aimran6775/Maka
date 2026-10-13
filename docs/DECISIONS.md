@@ -2555,3 +2555,51 @@ filed twice — once sent, once received — and both bubbles show. The park's e
 already stops it *acting* on its own messages, which is why none of this became a loop. A
 single bubble needs a separate sender identity: a second Apple ID on the Mac, or one of the
 channels that is not self-addressed (Discord and Slack are both built and wired).
+
+## D187 — Park Mail: a mailbox per department
+
+The owner: "We will rely on emails if outside communication is needed. No phone calls right
+now. Do we have a email management system in the park. Every dept should have their own
+email system. Inbox, sent etc. everything gmail has. Clone it."
+
+Most of it was already built and none of it was reachable. The mail store has held
+messages, threads, labels, attachments, direction, status, search and a `station` — the
+zone whose address a message routed to, which *is* the department that owns it — since
+phase 2. `makapark.com` sends and is DKIM, SPF and DMARC verified. What was missing was the
+idea of a **folder**, and anything to look at it with.
+
+**Folders.** `shared/mail-folders.js` is the one definition, shared by the store and the
+client so they cannot drift. A folder is not a field, it is a question asked of a message:
+`archived` and `trashed` are *labels*, because a message moves in and out of them without
+changing what it is; `draft` and `sent` are *statuses*, because they are what a message is;
+and unread is the absence of a `read` label, which is how the store already counted it.
+Trash wins over everything — mail thrown away does not come back because it also happens to
+be starred. A thread belongs to a folder when **any** of its messages does, which is what
+makes a reply to an archived thread bring that thread back to the inbox.
+
+`threads()` gained `folder` and `q` so the client asks for one department's inbox rather
+than fetching everything and filtering in the browser, and `folders()` counts threads and
+unread per folder for one department or the whole park. Three routes: the thread list, the
+counts, and `POST /api/mail/messages/:id/labels` to move mail or toggle read and starred.
+Nothing there sends; moving mail between folders touches only this machine.
+
+**The client.** `frontend/ui/mailbox.js`, full screen rather than docked into a rail: mail
+is read, not glanced at, and 348px cannot hold a thread. Three columns — departments and
+their folders, the threads, the thread — collapsing to two and then one as the window
+narrows, with the reading pane taking over and Escape going back, so the same code serves a
+phone-shaped window. Its reasoning lives in `mailbox-model.js` and is tested under
+`node --test`, the same split the park's maths uses.
+
+The keys are the ones a person already knows: `j`/`k`, Enter, `u`, `e` to archive, `s` to
+star, `#` to trash, `r` and `a` to reply, `c` to compose, `/` to search, `g i` to the
+inbox, `m` for read and unread. `i` opens it from anywhere in the park, and the nav bar
+carries the park's unread count so the bar says whether anything is waiting without the
+mailbox being open. The palette is the park's own — bark, moss, lichen — so it reads as a
+building in the park rather than a web app bolted to the side.
+
+It shows only what is real: a department with no address says so instead of showing an
+empty inbox, and with no provider key wired Compose is disabled rather than failing when
+pressed. `scripts/park-check.mjs` opens it in a real browser and asserts the mailboxes, the
+seven folders and that Escape closes it — which is how two bugs were caught before the owner
+saw them: the client was treating the app's `{ ok, status, body }` envelope as the body, and
+the check itself was racing the first load.

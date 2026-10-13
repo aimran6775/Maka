@@ -11,6 +11,7 @@ import { createInspect } from './ui/inspect.js';
 import { createFirstRun } from './ui/firstrun.js';
 import { createVoice } from './ui/voice.js';
 import { createNav } from './ui/nav.js';
+import { createMailbox } from './ui/mailbox.js';
 import { el, setChildren } from './ui/windows.js';
 import { tileToWorld, worldToTile, TILE_WORLD } from './park/placement.js';
 import { parkOptions } from './park/gpu.js';
@@ -154,8 +155,12 @@ const firstRun = createFirstRun({ parent: ui, getState, api, onRefresh: () => re
 // the station voice for Gate items and the Peak's answers when switched on.
 const voice = createVoice({ parent: ui, getState, api, onMission: (text) => { inspect.setMissionDraft(text); } });
 
+// D187: Park Mail — every department's mailbox. Full screen, because mail is read rather
+// than glanced at; the park keeps running behind it.
+const mailbox = createMailbox({ parent: ui, getState, api, onFlash: (x, kind) => (typeof x === 'string' ? flash(x, kind) : showError(x)) });
+
 // The navigation bar: where you are, the Jump to menu, the camera modes and the keys.
-const nav = createNav({ parent: ui, getState, getPark: () => park, api, onFlash: (x, kind) => (typeof x === 'string' ? flash(x, kind) : showError(x)) });
+const nav = createNav({ parent: ui, getState, getPark: () => park, api, onMail: (station) => mailbox.toggle(station), onFlash: (x, kind) => (typeof x === 'string' ? flash(x, kind) : showError(x)) });
 
 // The park's own keys live in render.js (it needs them every frame); these are the ones
 // that drive the page: jumping, the landmarks, the modes and the legend. The table a
@@ -170,6 +175,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (!park) return;
+  if (k === 'i') { e.preventDefault(); return mailbox.toggle(); } // D187: the park's mail
   if (k === 'j') { e.preventDefault(); return nav.openJump(); }
   if (k === 'p') return nav.goToKind('peak');
   if (k === 'g') return nav.goToKind('gate');

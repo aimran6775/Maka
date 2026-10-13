@@ -21,6 +21,7 @@ export const KEY_MAP = Object.freeze([
   {
     group: 'Go to',
     rows: [
+      { keys: ['I'], what: 'Park Mail: every department\'s mailbox' },
       { keys: ['J'], what: 'Jump to… a zone, the Peak, the Gate or a Ranger' },
       { keys: ['P'], what: 'The Mountain Peak' },
       { keys: ['G'], what: 'The Entrance Gate' },

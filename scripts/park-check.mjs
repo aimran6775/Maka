@@ -133,6 +133,37 @@ async function main() {
   const navOk = walkDist > 2 && typingDist < 0.01 && Boolean(peak) && jumpedNear < 3;
   console.log(`navigation: walk moved ${walkDist.toFixed(1)} units, typing moved ${typingDist.toFixed(3)}, jump landed ${jumpedNear.toFixed(1)} from the Peak, ${places.length} places`, navOk ? 'OK' : 'NOT OK');
 
+  // D187: Park Mail opens on I, shows a mailbox per department with its folders, closes on
+  // Escape, and never swallows the park's own keys while it is shut. A mail client that
+  // only works when someone is looking at it is not a mail client.
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'i' }))");
+  const mail = await until(async () => {
+    const out = await evaluate(`(() => {
+      const mb = document.querySelector('.mailbox');
+      if (!mb || mb.hidden) return '';
+      // Wait for the first load to have drawn, not merely for the panel to be visible.
+      if (!mb.querySelector('.mb-folder')) return '';
+      return JSON.stringify({
+        open: true,
+        stations: [...mb.querySelectorAll('.mb-station-name')].map((n) => n.textContent),
+        folders: [...mb.querySelectorAll('.mb-folder span:first-child')].map((n) => n.textContent),
+        status: (mb.querySelector('.mb-status') || {}).textContent || '',
+        keys: mb.querySelectorAll('.mb-key').length,
+        composeDisabled: (mb.querySelector('.mb-btn.primary') || {}).disabled === true,
+      });
+    })()`);
+    return out && out !== '""' ? JSON.parse(JSON.parse(JSON.stringify(out))) : 0;
+  }, 10000).catch(() => null);
+  if (mail && mail.open) {
+    console.log(`park mail: ${mail.stations.length} mailbox(es) [${mail.stations.slice(0, 4).join(', ')}…], folders [${mail.folders.join(', ')}], ${mail.keys} keys listed`);
+    console.log(`park mail status line: ${JSON.stringify(mail.status)}`);
+    console.log(`park mail compose disabled without a provider key: ${mail.composeDisabled}`);
+  }
+  await evaluate("document.querySelector('.mailbox').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+  const closed = await until(async () => ((await evaluate("document.querySelector('.mailbox').hidden ? '1' : ''")) ? 1 : 0), 6000).catch(() => 0);
+  const mailOk = Boolean(mail && mail.open && mail.folders.length === 7 && mail.stations.length >= 1 && closed);
+  console.log('park mail:', mailOk ? 'OK' : 'NOT OK');
+
   console.log('console errors:', errors.length ? errors : 'none');
   if (logs.length) console.log('console logs:', logs.slice(0, 10));
   const finalStatus = await statusText();

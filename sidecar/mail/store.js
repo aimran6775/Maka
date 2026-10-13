@@ -23,6 +23,7 @@ import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { writeJsonAtomic, readJson } from '../store.js';
+import { FOLDERS, inFolder, isUnread } from '../../shared/mail-folders.js';
 
 const INDEX_LIMIT = 20000;
 const SNIPPET = 160;
@@ -153,10 +154,19 @@ export function createMailStore({ root, clock = { now: () => Date.now() } } = {}
         .slice(-limit)
         .reverse();
     },
-    threads({ station, venture, limit = 50 } = {}) {
+    // D187: a department's mail, by folder. `folder` asks the question in
+    // shared/mail-folders.js of every message; `q` narrows it the way the search box does.
+    // A thread appears in a folder when any of its messages belongs there, which is what
+    // makes a reply to an archived thread bring it back to the inbox.
+    threads({ station, venture, limit = 50, folder = null, q = '' } = {}) {
+      const needle = String(q || '').trim().toLowerCase();
+      const matches = (m) =>
+        !needle || [m.subject, m.from, ...(m.to || []), m.snippet, m.venture || ''].some((x) => String(x).toLowerCase().includes(needle));
       const by = new Map();
       for (const m of index) {
         if ((station && m.station !== station) || (venture && m.venture !== venture)) continue;
+        if (folder && !inFolder(m, folder)) continue;
+        if (!matches(m)) continue;
         const t = by.get(m.threadId) || { threadId: m.threadId, subject: m.subject, station: m.station, venture: m.venture, count: 0, first: m.date, last: m.date, participants: new Set(), labels: new Set(), unread: 0, lastDirection: m.direction, classification: null, kind: m.kind || null };
         t.count += 1;
         t.last = Math.max(t.last, m.date);
@@ -164,11 +174,28 @@ export function createMailStore({ root, clock = { now: () => Date.now() } } = {}
         t.kind = m.kind || t.kind;
         participantsOf(m).forEach((p) => t.participants.add(p));
         m.labels.forEach((l) => t.labels.add(l));
-        if (m.direction === 'in' && !m.labels.includes('read')) t.unread += 1;
+        if (isUnread(m)) t.unread += 1;
         if (m.classification) t.classification = m.classification;
         by.set(m.threadId, t);
       }
       return [...by.values()].sort((a, b) => b.last - a.last).slice(0, limit).map((t) => ({ ...t, participants: [...t.participants], labels: [...t.labels] }));
+    },
+    // D187: how many threads and how many unread in each folder, for one department or the
+    // whole park. Counted over threads, not messages, because that is what the rail shows.
+    folders({ station } = {}) {
+      const out = {};
+      for (const f of FOLDERS) {
+        const threads = new Map();
+        for (const m of index) {
+          if (station && m.station !== station) continue;
+          if (!inFolder(m, f.id)) continue;
+          const t = threads.get(m.threadId) || { unread: 0 };
+          if (isUnread(m)) t.unread += 1;
+          threads.set(m.threadId, t);
+        }
+        out[f.id] = { threads: threads.size, unread: [...threads.values()].reduce((n, t) => n + (t.unread ? 1 : 0), 0) };
+      }
+      return out;
     },
     async thread(threadId) {
       const out = [];
