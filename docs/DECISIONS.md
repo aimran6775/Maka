@@ -2704,3 +2704,37 @@ fix still failed. The poll walks back from the newest until it meets something i
 holds — by cursor **or** by the message's own id, so a cursor lost to a restore does not
 re-ingest everything — then ingests oldest-first, sorted by each message's own date rather
 than by the list's order, so a reply always finds the message it answers.
+
+## D191 — free by default, and Claude only for the decisions that deserve it
+
+The owner: "I need this to be free as much as possible and use computer memory and ram
+whatever needed. Big decisions made only by Claude."
+
+The routing policy already had the right shape and always had: `turn → worker` on Ollama,
+and only `plan`, `review`, `ambiguity`, `gate_action` and `reflect` on Claude, with the two
+biggest — the Chief's planning and the reflection — on Opus. The cost was entirely mine. On
+seeing `qwen2.5:7b` fabricate a fetch result (D177) I put all ten department heads and four
+Rangers on `claude-haiku-4-5` per agent, which made every routine turn in the park a paid
+call. Those overrides are gone; the answer to a weak local model is a better local model,
+not a paid one.
+
+This Mac has 16 GB of unified memory and an M4, so a 14B at Q4 (~9 GB) is the largest that
+leaves room for the park and the browser — a 32B does not fit. The weights live on the
+LaCie, where there is 1.6 TB, and `config.json` now carries `ollamaModels` so the park
+passes `OLLAMA_MODELS` to the server it starts. Without that the park starts an Ollama that
+cannot see any of its own models and reports "no model installed" while standing next to
+18 GB of them; on macOS a configured path also means the binary is used rather than the
+app, because the app reads its own preferences and cannot be told.
+
+**A standing duty is no longer reviewed by the judge.** The judge was already proportionate
+for actions — it only runs mid-turn when a tool call is in a non-released domain at
+act_capped or act_free — but it reviewed the closing answer of *every* run. Ten departments
+filing a daily write-up into their own folder meant ten paid reviews a day of work nobody
+would publish, which is the kind of steady cost that reached 60 % over a mission before
+anyone noticed (D186). A duty now carries `review: false` unless its charter sets
+`judge: true`; the department head reads its own department's work. Venture work, anything
+leashed, and anything heading for the Gate are reviewed exactly as before.
+
+What is still paid, and should be: the Chief's planning and re-planning, the daily
+reflection, the judge on work that leaves the park or commits money, and the owner's own
+questions to the Peak. Everything else is free.

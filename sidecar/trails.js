@@ -179,7 +179,7 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
     inTransit: () => items.filter((it) => it.status === 'queued' || it.status === 'running'),
     // `venture` (safety 2026-10-11 M3): the venture the work is for, when it is not the
     // receiver's own; the results engine attributes what the run makes to it.
-    async delegate({ toAgentId, brief, budgetUsd = 0.5, deadline = null, evidence = [], maxTurns = DEFAULT_ITEM_TURNS, venture = null } = {}, { by } = {}) {
+    async delegate({ toAgentId, brief, budgetUsd = 0.5, deadline = null, evidence = [], maxTurns = DEFAULT_ITEM_TURNS, venture = null, review = true } = {}, { by } = {}) {
       if (!by) throw fail('BAD_REQUEST', 'delegate needs a delegating agent (by)');
       if (venture !== null && venture !== undefined && (typeof venture !== 'string' || !venture.trim() || venture.length > 80)) throw fail('BAD_REQUEST', 'venture must be a venture id (a short string) or null');
       if (typeof brief !== 'string' || !brief.trim()) throw fail('BAD_REQUEST', 'brief is required');
@@ -211,6 +211,7 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
         fromAgentId: from.id,
         toAgentId: to.id,
         venture: venture ? venture.trim() : to.venture || null,
+        ...(review === false ? { review: false } : {}),
         fromRoomId: from.roomId,
         toRoomId: to.roomId,
         trailId: `trail:${from.roomId}:${to.roomId}`,
@@ -230,7 +231,10 @@ export function createTrails({ bus, store, runs, agents = null, getLayout, clock
       let started;
       try {
         before.set('pending:' + item.id, null);
-        started = await runs.start({ agentId: to.id, prompt: briefFor(item), budgetUsd, maxTurns, workItemId: item.id });
+        // D191: a work item may say its output does not need the judge. The judge is paid
+        // for and its value is highest on work that leaves the park or commits money; a
+        // department's own standing write-up into its own folder is the head's to read.
+        started = await runs.start({ agentId: to.id, prompt: briefFor(item), budgetUsd, maxTurns, workItemId: item.id, ...(item.review === false ? { review: false } : {}) });
       } catch (err) {
         item.status = 'failed';
         item.reason = err.code || 'START_FAILED';

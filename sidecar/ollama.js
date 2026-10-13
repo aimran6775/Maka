@@ -78,7 +78,12 @@ async function whichOllama({ env, fs, platform }) {
   return found;
 }
 
-export function createOllama({ env = process.env, fetch: fetchImpl = globalThis.fetch, bus = null, clock = { now: () => Date.now() }, fs = fsp, osImpl = os, spawn = spawnChild, platform = process.platform, log = console, probeTimeoutMs = OLLAMA_PROBE_TIMEOUT_MS } = {}) {
+// D191: `modelsPath` is where the weights live — on this Mac that is the LaCie, because a
+// 14B model is 9 GB and the internal disk is not where it belongs. Ollama reads
+// OLLAMA_MODELS from its own environment, so the park passes it when it starts the server;
+// without this the park would start an Ollama that could not see any of its own models and
+// would report "no model installed" next to 18 GB of them.
+export function createOllama({ env = process.env, fetch: fetchImpl = globalThis.fetch, bus = null, clock = { now: () => Date.now() }, fs = fsp, osImpl = os, spawn = spawnChild, platform = process.platform, modelsPath = null, log = console, probeTimeoutMs = OLLAMA_PROBE_TIMEOUT_MS } = {}) {
   const host = ollamaHost(env);
   let last = { at: 0, reachable: false, version: null, models: [], problem: 'not probed yet' };
   let pulling = null; // { model, status, completed, total, startedAt }
@@ -221,13 +226,17 @@ export function createOllama({ env = process.env, fetch: fetchImpl = globalThis.
       if (last.reachable) return { started: false, reachable: true, how: 'already running' };
       installed = await whichOllama({ env, fs, platform });
       let how;
-      if (platform === 'darwin' && installed.app) {
+      // D191: the models path goes to the server. The macOS app reads its own preferences
+      // and cannot be told, so when a path is configured the binary is used even on a Mac
+      // that has the app — an app that cannot see the models is worse than no app.
+      const serveEnv = { ...env, ...(modelsPath ? { OLLAMA_MODELS: modelsPath } : {}) };
+      if (platform === 'darwin' && installed.app && !modelsPath) {
         spawn('open', ['-a', installed.app], { stdio: 'ignore', detached: true }).unref();
         how = `open -a ${installed.app}`;
       } else if (installed.binary) {
-        const child = spawn(installed.binary, ['serve'], { stdio: 'ignore', detached: true, env: { ...env } });
+        const child = spawn(installed.binary, ['serve'], { stdio: 'ignore', detached: true, env: serveEnv });
         child.unref();
-        how = `${installed.binary} serve`;
+        how = `${installed.binary} serve${modelsPath ? ` (models in ${modelsPath})` : ''}`;
       } else {
         throw fail('NOT_INSTALLED', `Ollama is not installed. ${INSTALL_HINTS[platform] || INSTALL_HINTS.linux}`);
       }

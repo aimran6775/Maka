@@ -46,6 +46,7 @@ export const DUTY_SCHEMA = Object.freeze({
     },
     budgetUsd: { type: 'number', minimum: 0, maximum: 50 },
     enabled: { type: 'boolean' },
+    judge: { type: 'boolean', description: 'Have the judge review this duty\'s output. Off by default: a duty is the department\'s own write-up and the judge is paid for.' },
     evidence: { type: 'array', maxItems: 8, items: { type: 'string', minLength: 3, maxLength: 300 } },
   },
 });
@@ -213,7 +214,13 @@ export function createCharters({
     ].join('\n');
     try {
       const item = await trails.delegate(
-        { toAgentId: d.head, brief, budgetUsd, evidence: duty.evidence || [], venture: null },
+        // D191: a standing duty is the department's own housekeeping, read by its head and
+        // written into its own folder. The judge costs money and its value is on work that
+        // leaves the park or commits it to something — so a duty is not reviewed unless the
+        // owner asks for it (`judge: true` on the duty). Ten departments' daily write-ups
+        // reviewed by a paid model is the kind of steady cost nobody notices until the
+        // mission is 60 % over (D186).
+        { toAgentId: d.head, brief, budgetUsd, evidence: duty.evidence || [], venture: null, review: duty.judge === true },
         { by: 'superintendent' },
       );
       await recordSpend(dept, item.budgetUsd);
