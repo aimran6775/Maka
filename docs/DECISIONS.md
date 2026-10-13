@@ -2771,3 +2771,30 @@ panel in a real browser and asserts its sections and rows, the same way it does 
 The local worker is pinned to `qwen3:14b` in `policy.json`: 9.3 GB, the largest that leaves
 room on 16 GB, and it calls a tool when told to rather than inventing the answer — which is
 the whole reason the per-agent paid overrides existed.
+
+## D193 — the park is a service, not a background job
+
+It kept dying. Over this session the sidecar was stopped and restarted a dozen times, and
+several of those were not deliberate: it was running as a background job of whatever shell
+started it, so a closed window, a reaped job or a logout took the whole park down. For
+something that is supposed to run unwatched — departments with duties at 06:45 and 07:30,
+mail polled every minute, a daily reflection — that is the wrong mechanism entirely.
+
+`scripts/park-service.sh install` writes a LaunchAgent and starts it. `RunAtLoad` brings the
+park up at login, and `KeepAlive` with `SuccessfulExit: false` brings it back if it dies,
+throttled to ten seconds so a park that cannot start at all does not spin. Proven by killing
+it: new pid, answering again sixteen seconds later.
+
+Three things it has to carry because a LaunchAgent gets almost nothing from the shell:
+
+- **`node`'s real path.** This Mac's Node is an nvm install under `~/.nvm`, which launchd
+  would never find on a default PATH, so the path is resolved at install time and written
+  into the plist.
+- **The park's environment.** `MAKA_HOME`, `MAKA_WORKSPACE` and `OLLAMA_MODELS` — the last
+  because the model weights are on the LaCie (D191) and a park that cannot see them reports
+  no model installed.
+- **A working directory.** The repo, so `recipes/starter` and the frontend resolve.
+
+`bootstrap` / `bootout` are the current launchctl verbs, with `load` / `unload` as the
+fallback on older macOS. `uninstall` removes the plist and touches nothing in the park's home
+or workspace — a service that deletes data when you stop it is not a service anyone trusts.
